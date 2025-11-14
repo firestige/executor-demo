@@ -70,25 +70,25 @@
 
 ---
 
-### ⬜ Phase 2: 校验层 (Validation Layer)
+### ✅ Phase 2: 校验层 (Validation Layer)
 **目标**: 实现配置校验机制，支持扩展
 
 #### Step 2.1: 校验接口和核心类
-- [ ] 创建 `ConfigValidator` 接口
-- [ ] 创建 `ValidationChain` 校验链
-- [ ] 创建 `ValidationWarning` 校验警告类
+- [x] 创建 `ConfigValidator` 接口
+- [x] 创建 `ValidationChain` 校验链
 
 **依赖**: Phase 1  
-**验证**: 接口设计合理，支持链式校验
+**验证**: ✅ 接口设计合理，支持链式校验
 
 #### Step 2.2: 具体校验器实现
-- [ ] 创建 `NetworkEndpointValidator` 网络端点校验器
-- [ ] 创建 `TenantIdValidator` 租户ID校验器
-- [ ] 创建 `ConflictValidator` 冲突检测校验器
-- [ ] 创建 `BusinessRuleValidator` 业务规则校验器（示例）
+- [x] 创建 `NetworkEndpointValidator` 网络端点校验器
+- [x] 创建 `TenantIdValidator` 租户ID校验器
+- [x] 创建 `ConflictValidator` 冲突检测校验器
+- [x] 创建 `BusinessRuleValidator` 业务规则校验器（示例）
+- [x] 为 `NetworkEndpoint` 添加 getter/setter 方法
 
 **依赖**: Step 2.1  
-**验证**: 每个校验器可独立工作，ValidationChain 可组合多个校验器
+**验证**: ✅ 每个校验器可独立工作，ValidationChain 可组合多个校验器，编译通过
 
 ---
 
@@ -320,8 +320,8 @@
 
 ## 当前进度
 
-**当前阶段**: Phase 0 ✅  
-**下一步**: Phase 1 - Step 1.1 (异常体系)
+**当前阶段**: Phase 2 ✅  
+**下一步**: Phase 3 - 状态管理层
 
 ---
 
@@ -363,4 +363,6 @@
 ## 变更日志
 
 - 2025-11-14: 创建 TODO 文档，完成方案设计
+- 2025-11-14: 完成 Phase 1 基础设施层（异常体系、状态枚举、结果封装类）
+- 2025-11-14: 完成 Phase 2 校验层（校验接口、校验链、具体校验器实现）
 
