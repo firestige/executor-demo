@@ -37,3 +37,8 @@ build/
 
 ### Mac OS ###
 .DS_Store
+
+### Test Documentation ###
+TEST_*.md
+PROJECT_SUMMARY.md
+
