@@ -72,8 +72,11 @@ public class TestDataFactory {
      */
     public static NetworkEndpoint createMinimalEndpoint() {
         NetworkEndpoint endpoint = new NetworkEndpoint();
+        endpoint.setKey("endpoint-default");  // 必需字段
         endpoint.setSourceIp("192.168.1.1");
         endpoint.setSourceDomain("service.example.com");
+        endpoint.setTargetIp("10.0.0.1");  // 必需字段
+        endpoint.setTargetDomain("target.example.com");
         return endpoint;
     }
 
