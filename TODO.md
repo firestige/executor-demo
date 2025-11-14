@@ -230,24 +230,31 @@
 
 ---
 
-### ⬜ Phase 7: Facade 层 (Facade Layer)
+### ✅ Phase 7: Facade 层 (Facade Layer)
 **目标**: 实现对外统一接口
 
 #### Step 7.1: Facade 接口和实现
-- [ ] 创建 `DeploymentTaskFacade` 接口
-- [ ] 创建 `DeploymentTaskFacadeImpl` 实现类
-- [ ] 实现 `createSwitchTask` 方法（含校验）
-- [ ] 实现 `pauseTask` 方法
-- [ ] 实现 `resumeTask` 方法
-- [ ] 实现 `rollbackTask` 方法
-- [ ] 实现 `retryTask` 方法
-- [ ] 实现 `queryTaskStatus` 方法
-- [ ] 实现 `cancelTask` 方法
+- [x] 创建 `DeploymentTaskFacade` 接口
+- [x] 创建 `DeploymentTaskFacadeImpl` 实现类
+- [x] 实现 `createSwitchTask` 方法（含校验）
+- [x] 实现 `pauseTaskByTenant` / `pauseTaskByPlan` 方法
+- [x] 实现 `resumeTaskByTenant` / `resumeTaskByPlan` 方法
+- [x] 实现 `rollbackTaskByTenant` / `rollbackTaskByPlan` 方法
+- [x] 实现 `retryTaskByTenant` / `retryTaskByPlan` 方法
+- [x] 实现 `queryTaskStatus` / `queryTaskStatusByTenant` 方法
+- [x] 实现 `cancelTask` 方法
 
 **依赖**: Phase 2, Phase 6  
-**验证**: Facade 所有方法能正常调用
+**验证**: ✅ Facade 所有方法能正常调用
 
 #### Step 7.2: Spring 配置
+- [x] 创建 `ExecutorConfiguration` 配置类
+- [x] 配置所有 Bean（线程池、策略、管理器等）
+- [x] 配置 ApplicationEventPublisher
+- [x] 配置 Stage 的自动注册和排序
+
+**依赖**: Step 7.1  
+**验证**: ✅ Spring 容器能正常启动，所有 Bean 正确装配，编译通过
 - [ ] 创建 Spring Configuration 类
 - [ ] 配置所有 Bean（线程池、策略、管理器等）
 - [ ] 配置 ApplicationEventPublisher
@@ -318,8 +325,10 @@
 
 ## 当前进度
 
-**当前阶段**: Phase 6 ✅  
-**下一步**: Phase 7 - Facade 层  
+**当前阶段**: Phase 7 ✅  
+**下一步**: Phase 8 - 监控和可观测性（可选）或 Phase 9 - 测试和文档
+
+**核心功能已全部完成！**  
 **下一步**: Phase 6 - 编排层
 
 ---
@@ -365,6 +374,10 @@
 - 2025-11-14: 完成 Phase 1 基础设施层（异常体系、状态枚举、结果封装类）
 - 2025-11-14: 完成 Phase 2 校验层（校验接口、校验链、具体校验器实现）
 - 2025-11-14: 完成 Phase 3 状态管理层（状态机、事件体系、状态管理器）
+- 2025-11-14: 完成 Phase 4 执行层 Pipeline 机制（Pipeline、检查点、任务执行器）
+- 2025-11-14: 完成 Phase 5 服务通知层（策略模式、服务注册、Stage 适配）
+- 2025-11-14: 完成 Phase 6 编排层（执行单、调度器、任务编排）
+- 2025-11-14: 完成 Phase 7 Facade 层（对外接口、Spring 配置）- **核心功能全部完成！**
 - 2025-11-14: 完成 Phase 4 执行层 Pipeline 机制（Pipeline、检查点、任务执行器）
 - 2025-11-14: 完成 Phase 5 服务通知层（策略模式、服务注册、Stage 适配）
 - 2025-11-14: 完成 Phase 6 编排层（执行单、调度器、任务编排）
