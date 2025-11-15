@@ -1,4 +1,4 @@
-package xyz.firestige.dto;
+package xyz.firestige.entity.deploy;
 
 public class NetworkEndpoint {
     private String key;

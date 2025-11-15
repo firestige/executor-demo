@@ -1,6 +1,6 @@
 package xyz.firestige.executor.state.event;
 
-import xyz.firestige.dto.TenantDeployConfig;
+import xyz.firestige.dto.deploy.TenantDeployConfig;
 import xyz.firestige.executor.exception.FailureInfo;
 import xyz.firestige.executor.state.TaskStatus;
 import xyz.firestige.executor.validation.ValidationError;

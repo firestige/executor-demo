@@ -52,6 +52,11 @@ public abstract class TaskStatusEvent {
      */
     private FailureInfo failureInfo;
 
+    /**
+     * 自增序列号
+     */
+    private long sequenceId;
+
     public TaskStatusEvent() {
         this.eventId = UUID.randomUUID().toString();
         this.timestamp = LocalDateTime.now();
@@ -137,6 +142,14 @@ public abstract class TaskStatusEvent {
         this.failureInfo = failureInfo;
     }
 
+    public long getSequenceId() {
+        return sequenceId;
+    }
+
+    public void setSequenceId(long sequenceId) {
+        this.sequenceId = sequenceId;
+    }
+
     @Override
     public String toString() {
         return this.getClass().getSimpleName() + "{" +
@@ -148,4 +161,3 @@ public abstract class TaskStatusEvent {
                 '}';
     }
 }
-

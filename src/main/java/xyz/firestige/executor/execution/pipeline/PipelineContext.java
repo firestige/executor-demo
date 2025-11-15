@@ -1,6 +1,6 @@
 package xyz.firestige.executor.execution.pipeline;
 
-import xyz.firestige.dto.TenantDeployConfig;
+import xyz.firestige.dto.deploy.TenantDeployConfig;
 
 import java.util.HashMap;
 import java.util.Map;

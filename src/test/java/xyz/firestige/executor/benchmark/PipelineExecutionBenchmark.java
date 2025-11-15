@@ -4,7 +4,7 @@ import org.openjdk.jmh.annotations.*;
 import org.openjdk.jmh.runner.Runner;
 import org.openjdk.jmh.runner.options.Options;
 import org.openjdk.jmh.runner.options.OptionsBuilder;
-import xyz.firestige.dto.TenantDeployConfig;
+import xyz.firestige.dto.deploy.TenantDeployConfig;
 import xyz.firestige.executor.execution.PipelineResult;
 import xyz.firestige.executor.execution.StageResult;
 import xyz.firestige.executor.execution.pipeline.Pipeline;

@@ -1,7 +1,7 @@
 package xyz.firestige.executor.util;
 
-import xyz.firestige.dto.NetworkEndpoint;
-import xyz.firestige.dto.TenantDeployConfig;
+import xyz.firestige.entity.deploy.NetworkEndpoint;
+import xyz.firestige.dto.deploy.TenantDeployConfig;
 
 import java.util.ArrayList;
 import java.util.List;

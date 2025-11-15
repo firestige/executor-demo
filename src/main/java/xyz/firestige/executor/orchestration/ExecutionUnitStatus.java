@@ -3,6 +3,7 @@ package xyz.firestige.executor.orchestration;
 /**
  * 执行单状态枚举
  */
+@Deprecated
 public enum ExecutionUnitStatus {
 
     /**
@@ -79,4 +80,3 @@ public enum ExecutionUnitStatus {
         return this == VALIDATION_FAILED || this == FAILED;
     }
 }
-

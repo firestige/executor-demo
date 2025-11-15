@@ -2,7 +2,7 @@ package xyz.firestige.executor.service.adapter;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import xyz.firestige.dto.TenantDeployConfig;
+import xyz.firestige.dto.deploy.TenantDeployConfig;
 import xyz.firestige.executor.execution.pipeline.PipelineContext;
 import xyz.firestige.executor.service.NotificationResult;
 import xyz.firestige.executor.service.strategy.ServiceNotificationStrategy;

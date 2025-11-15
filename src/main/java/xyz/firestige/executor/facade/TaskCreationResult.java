@@ -19,12 +19,12 @@ public class TaskCreationResult {
     /**
      * 任务 ID（成功时）
      */
-    private String taskId;
+    private String planId;
 
     /**
      * 执行单 ID 列表（成功时）
      */
-    private List<String> executionUnitIds;
+    private List<String> taskIds;
 
     /**
      * 校验摘要
@@ -42,27 +42,35 @@ public class TaskCreationResult {
     private String message;
 
     public TaskCreationResult() {
-        this.executionUnitIds = new ArrayList<>();
+        this.taskIds = new ArrayList<>();
     }
 
     public TaskCreationResult(boolean success) {
         this.success = success;
-        this.executionUnitIds = new ArrayList<>();
+        this.taskIds = new ArrayList<>();
     }
 
     /**
      * 创建成功结果
+     * 
+     * @param planId 任务 ID
+     * @param taskIds 执行任务 ID 列表
+     * @return 成功结果
      */
-    public static TaskCreationResult success(String taskId, List<String> executionUnitIds) {
+    public static TaskCreationResult success(String planId, List<String> taskIds) {
         TaskCreationResult result = new TaskCreationResult(true);
-        result.setTaskId(taskId);
-        result.setExecutionUnitIds(executionUnitIds);
+        result.setPlanId(planId);
+        result.setTaskIds(taskIds);
         result.setMessage("任务创建成功");
         return result;
     }
 
     /**
      * 创建失败结果
+     * 
+     * @param failureInfo 失败信息
+     * @param message 失败消息
+     * @return 失败结果
      */
     public static TaskCreationResult failure(FailureInfo failureInfo, String message) {
         TaskCreationResult result = new TaskCreationResult(false);
@@ -73,6 +81,9 @@ public class TaskCreationResult {
 
     /**
      * 创建校验失败结果
+     * 
+     * @param validationSummary 校验摘要
+     * @return 校验失败结果
      */
     public static TaskCreationResult validationFailure(ValidationSummary validationSummary) {
         TaskCreationResult result = new TaskCreationResult(false);
@@ -91,20 +102,20 @@ public class TaskCreationResult {
         this.success = success;
     }
 
-    public String getTaskId() {
-        return taskId;
+    public String getPlanId() {
+        return planId;
     }
 
-    public void setTaskId(String taskId) {
-        this.taskId = taskId;
+    public void setPlanId(String planId) {
+        this.planId = planId;
     }
 
-    public List<String> getExecutionUnitIds() {
-        return executionUnitIds;
+    public List<String> getTaskIds() {
+        return taskIds;
     }
 
-    public void setExecutionUnitIds(List<String> executionUnitIds) {
-        this.executionUnitIds = executionUnitIds;
+    public void setTaskIds(List<String> taskIds) {
+        this.taskIds = taskIds;
     }
 
     public ValidationSummary getValidationSummary() {
@@ -135,8 +146,8 @@ public class TaskCreationResult {
     public String toString() {
         return "TaskCreationResult{" +
                 "success=" + success +
-                ", taskId='" + taskId + '\'' +
-                ", executionUnitCount=" + (executionUnitIds != null ? executionUnitIds.size() : 0) +
+                ", taskId='" + planId + '\'' +
+                ", executionUnitCount=" + (taskIds != null ? taskIds.size() : 0) +
                 ", message='" + message + '\'' +
                 '}';
     }

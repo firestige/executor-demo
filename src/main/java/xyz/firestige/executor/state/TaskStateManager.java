@@ -26,6 +26,8 @@ public class TaskStateManager {
      */
     private ApplicationEventPublisher eventPublisher;
 
+    private final Map<String, Long> sequences = new ConcurrentHashMap<>();
+
     public TaskStateManager() {
     }
 
@@ -39,6 +41,7 @@ public class TaskStateManager {
     public void initializeTask(String taskId, TaskStatus initialStatus) {
         TaskStateMachine stateMachine = new TaskStateMachine(initialStatus);
         stateMachines.put(taskId, stateMachine);
+        sequences.put(taskId, 0L);
     }
 
     /**
@@ -136,6 +139,7 @@ public class TaskStateManager {
     public void publishTaskStartedEvent(String taskId, int totalStages) {
         if (eventPublisher != null) {
             TaskStartedEvent event = new TaskStartedEvent(taskId, totalStages);
+            event.setSequenceId(nextSeq(taskId));
             eventPublisher.publishEvent(event);
         }
     }
@@ -146,6 +150,7 @@ public class TaskStateManager {
     public void publishTaskProgressEvent(String taskId, String currentStage, int completedStages, int totalStages) {
         if (eventPublisher != null) {
             TaskProgressEvent event = new TaskProgressEvent(taskId, currentStage, completedStages, totalStages);
+            event.setSequenceId(nextSeq(taskId));
             eventPublisher.publishEvent(event);
         }
     }
@@ -156,6 +161,7 @@ public class TaskStateManager {
     public void publishTaskStageCompletedEvent(String taskId, String stageName, xyz.firestige.executor.execution.StageResult stageResult) {
         if (eventPublisher != null) {
             TaskStageCompletedEvent event = new TaskStageCompletedEvent(taskId, stageName, stageResult);
+            event.setSequenceId(nextSeq(taskId));
             eventPublisher.publishEvent(event);
         }
     }
@@ -166,6 +172,7 @@ public class TaskStateManager {
     public void publishTaskStageFailedEvent(String taskId, String stageName, FailureInfo failureInfo) {
         if (eventPublisher != null) {
             TaskStageFailedEvent event = new TaskStageFailedEvent(taskId, stageName, failureInfo);
+            event.setSequenceId(nextSeq(taskId));
             eventPublisher.publishEvent(event);
         }
     }
@@ -176,6 +183,7 @@ public class TaskStateManager {
     public void publishTaskFailedEvent(String taskId, FailureInfo failureInfo, List<String> completedStages, String failedStage) {
         if (eventPublisher != null) {
             TaskFailedEvent event = new TaskFailedEvent(taskId, failureInfo, completedStages, failedStage);
+            event.setSequenceId(nextSeq(taskId));
             eventPublisher.publishEvent(event);
         }
     }
@@ -186,6 +194,7 @@ public class TaskStateManager {
     public void publishTaskCompletedEvent(String taskId, Duration duration, List<String> completedStages) {
         if (eventPublisher != null) {
             TaskCompletedEvent event = new TaskCompletedEvent(taskId, duration, completedStages);
+            event.setSequenceId(nextSeq(taskId));
             eventPublisher.publishEvent(event);
         }
     }
@@ -196,6 +205,7 @@ public class TaskStateManager {
     public void publishTaskPausedEvent(String taskId, String pausedBy, String currentStage) {
         if (eventPublisher != null) {
             TaskPausedEvent event = new TaskPausedEvent(taskId, pausedBy, currentStage);
+            event.setSequenceId(nextSeq(taskId));
             eventPublisher.publishEvent(event);
         }
     }
@@ -206,6 +216,7 @@ public class TaskStateManager {
     public void publishTaskResumedEvent(String taskId, String resumedBy, String resumeFromStage) {
         if (eventPublisher != null) {
             TaskResumedEvent event = new TaskResumedEvent(taskId, resumedBy, resumeFromStage);
+            event.setSequenceId(nextSeq(taskId));
             eventPublisher.publishEvent(event);
         }
     }
@@ -216,6 +227,7 @@ public class TaskStateManager {
     public void publishTaskRollingBackEvent(String taskId, String reason, List<String> stagesToRollback) {
         if (eventPublisher != null) {
             TaskRollingBackEvent event = new TaskRollingBackEvent(taskId, reason, stagesToRollback);
+            event.setSequenceId(nextSeq(taskId));
             eventPublisher.publishEvent(event);
         }
     }
@@ -226,6 +238,7 @@ public class TaskStateManager {
     public void publishTaskRollbackFailedEvent(String taskId, FailureInfo failureInfo, List<String> partiallyRolledBackStages) {
         if (eventPublisher != null) {
             TaskRollbackFailedEvent event = new TaskRollbackFailedEvent(taskId, failureInfo, partiallyRolledBackStages);
+            event.setSequenceId(nextSeq(taskId));
             eventPublisher.publishEvent(event);
         }
     }
@@ -236,6 +249,18 @@ public class TaskStateManager {
     public void publishTaskRolledBackEvent(String taskId, List<String> rolledBackStages) {
         if (eventPublisher != null) {
             TaskRolledBackEvent event = new TaskRolledBackEvent(taskId, rolledBackStages);
+            event.setSequenceId(nextSeq(taskId));
+            eventPublisher.publishEvent(event);
+        }
+    }
+
+    /**
+     * 发布任务取消事件
+     */
+    public void publishTaskCancelledEvent(String taskId) {
+        if (eventPublisher != null) {
+            TaskCancelledEvent event = new TaskCancelledEvent(taskId);
+            event.setSequenceId(nextSeq(taskId));
             eventPublisher.publishEvent(event);
         }
     }
@@ -280,14 +305,19 @@ public class TaskStateManager {
             case ROLLED_BACK:
                 event = new TaskRolledBackEvent(taskId, null);
                 break;
+            case CANCELLED:
+                event = new TaskCancelledEvent(taskId);
+                break;
             default:
                 break;
         }
 
-        if (event != null && message != null) {
-            event.setMessage(message);
+        if (event != null) {
+            event.setSequenceId(nextSeq(taskId));
+            if (message != null) {
+                event.setMessage(message);
+            }
         }
-
         return event;
     }
 
@@ -300,5 +330,9 @@ public class TaskStateManager {
     public void setEventPublisher(ApplicationEventPublisher eventPublisher) {
         this.eventPublisher = eventPublisher;
     }
-}
 
+    // helper
+    private long nextSeq(String taskId) {
+        return sequences.compute(taskId, (k,v) -> v == null ? 1L : v + 1L);
+    }
+}

@@ -1,6 +1,6 @@
 package xyz.firestige.executor.orchestration;
 
-import xyz.firestige.dto.TenantDeployConfig;
+import xyz.firestige.dto.deploy.TenantDeployConfig;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -11,6 +11,7 @@ import java.util.UUID;
  * 执行单
  * 代表一组可以并发或顺序执行的租户任务
  */
+@Deprecated
 public class ExecutionUnit {
 
     /**
@@ -236,4 +237,3 @@ public class ExecutionUnit {
                 '}';
     }
 }
-

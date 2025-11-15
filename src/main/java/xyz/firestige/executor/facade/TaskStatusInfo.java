@@ -78,6 +78,20 @@ public class TaskStatusInfo {
         }
     }
 
+    // 静态工厂方法
+
+    public static TaskStatusInfo failure(String message) {
+        TaskStatusInfo info = new TaskStatusInfo();
+        info.setMessage(message);
+        return info;
+    }
+
+    public static TaskStatusInfo success(String taskId, TaskStatus status, String message) {
+        TaskStatusInfo info = new TaskStatusInfo(taskId, status);
+        info.setMessage(message);
+        return info;
+    }
+
     // Getters and Setters
 
     public String getTaskId() {
@@ -155,4 +169,3 @@ public class TaskStatusInfo {
                 '}';
     }
 }
-

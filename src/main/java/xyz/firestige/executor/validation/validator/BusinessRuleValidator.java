@@ -1,6 +1,6 @@
 package xyz.firestige.executor.validation.validator;
 
-import xyz.firestige.dto.TenantDeployConfig;
+import xyz.firestige.dto.deploy.TenantDeployConfig;
 import xyz.firestige.executor.validation.ConfigValidator;
 import xyz.firestige.executor.validation.ValidationResult;
 import xyz.firestige.executor.validation.ValidationWarning;

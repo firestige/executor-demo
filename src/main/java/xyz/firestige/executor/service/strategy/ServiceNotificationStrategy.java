@@ -1,6 +1,6 @@
 package xyz.firestige.executor.service.strategy;
 
-import xyz.firestige.dto.TenantDeployConfig;
+import xyz.firestige.dto.deploy.TenantDeployConfig;
 import xyz.firestige.executor.execution.pipeline.PipelineContext;
 import xyz.firestige.executor.service.NotificationResult;
 

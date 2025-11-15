@@ -1,6 +1,6 @@
 package xyz.firestige.executor.validation;
 
-import xyz.firestige.dto.TenantDeployConfig;
+import xyz.firestige.dto.deploy.TenantDeployConfig;
 
 /**
  * 配置校验器接口

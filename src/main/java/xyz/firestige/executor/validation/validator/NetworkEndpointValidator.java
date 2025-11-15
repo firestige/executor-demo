@@ -1,7 +1,7 @@
 package xyz.firestige.executor.validation.validator;
 
-import xyz.firestige.dto.NetworkEndpoint;
-import xyz.firestige.dto.TenantDeployConfig;
+import xyz.firestige.entity.deploy.NetworkEndpoint;
+import xyz.firestige.dto.deploy.TenantDeployConfig;
 import xyz.firestige.executor.validation.ConfigValidator;
 import xyz.firestige.executor.validation.ValidationError;
 import xyz.firestige.executor.validation.ValidationResult;

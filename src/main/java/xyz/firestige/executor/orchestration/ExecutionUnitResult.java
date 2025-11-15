@@ -7,6 +7,7 @@ import java.util.Map;
 /**
  * 执行单结果
  */
+@Deprecated
 public class ExecutionUnitResult {
 
     /**
@@ -152,4 +153,3 @@ public class ExecutionUnitResult {
                 '}';
     }
 }
-

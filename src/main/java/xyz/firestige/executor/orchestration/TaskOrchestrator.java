@@ -2,10 +2,9 @@ package xyz.firestige.executor.orchestration;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import xyz.firestige.dto.TenantDeployConfig;
+import xyz.firestige.dto.deploy.TenantDeployConfig;
 import xyz.firestige.executor.exception.TaskNotFoundException;
 import xyz.firestige.executor.execution.TenantTaskExecutor;
-import xyz.firestige.executor.execution.pipeline.Pipeline;
 import xyz.firestige.executor.state.TaskStateManager;
 import xyz.firestige.executor.validation.validator.ConflictValidator;
 
@@ -18,6 +17,7 @@ import java.util.stream.Collectors;
  * 任务编排器
  * 管理执行单的创建、调度和控制
  */
+@Deprecated
 public class TaskOrchestrator {
 
     private static final Logger logger = LoggerFactory.getLogger(TaskOrchestrator.class);

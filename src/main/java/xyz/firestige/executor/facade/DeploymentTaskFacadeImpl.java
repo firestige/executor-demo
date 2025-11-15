@@ -2,17 +2,35 @@ package xyz.firestige.executor.facade;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import xyz.firestige.dto.TenantDeployConfig;
+import xyz.firestige.dto.deploy.TenantDeployConfig;
 import xyz.firestige.executor.exception.ErrorType;
 import xyz.firestige.executor.exception.FailureInfo;
 import xyz.firestige.executor.exception.TaskNotFoundException;
+import xyz.firestige.executor.factory.PlanFactory;
 import xyz.firestige.executor.orchestration.ExecutionMode;
-import xyz.firestige.executor.orchestration.ExecutionUnit;
-import xyz.firestige.executor.orchestration.TaskOrchestrator;
+import xyz.firestige.executor.orchestration.PlanOrchestrator;
+import xyz.firestige.executor.orchestration.TaskScheduler;
 import xyz.firestige.executor.state.TaskStateManager;
 import xyz.firestige.executor.state.TaskStatus;
+import xyz.firestige.executor.support.conflict.ConflictRegistry;
+import xyz.firestige.executor.event.SpringTaskEventSink;
+import xyz.firestige.executor.execution.TaskExecutor;
+import xyz.firestige.executor.execution.HeartbeatScheduler;
+import xyz.firestige.executor.checkpoint.CheckpointService;
+import xyz.firestige.executor.checkpoint.InMemoryCheckpointStore;
+import xyz.firestige.executor.domain.plan.PlanAggregate;
+import xyz.firestige.executor.domain.task.TaskAggregate;
+import xyz.firestige.executor.domain.task.TaskContext;
+import xyz.firestige.executor.config.ExecutorProperties;
 import xyz.firestige.executor.validation.ValidationChain;
 import xyz.firestige.executor.validation.ValidationSummary;
+import xyz.firestige.executor.domain.stage.TaskStage;
+import xyz.firestige.executor.domain.stage.CompositeServiceStage;
+import xyz.firestige.executor.domain.stage.StageStep;
+import xyz.firestige.executor.domain.stage.steps.HealthCheckStep;
+import xyz.firestige.executor.domain.stage.steps.NotificationStep;
+import xyz.firestige.executor.service.health.HealthCheckClient;
+import xyz.firestige.executor.service.health.MockHealthCheckClient;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -26,429 +44,284 @@ public class DeploymentTaskFacadeImpl implements DeploymentTaskFacade {
 
     private static final Logger logger = LoggerFactory.getLogger(DeploymentTaskFacadeImpl.class);
 
-    /**
-     * 校验链
-     */
+    // 核心依赖
     private final ValidationChain validationChain;
-
-    /**
-     * 任务编排器
-     */
-    private final TaskOrchestrator taskOrchestrator;
-
-    /**
-     * 状态管理器
-     */
     private final TaskStateManager stateManager;
 
-    /**
-     * 默认执行模式
-     */
-    private ExecutionMode defaultExecutionMode = ExecutionMode.CONCURRENT;
+    // 运行配置与外部客户端
+    private final ExecutorProperties executorProperties; // injected
+    private final HealthCheckClient healthCheckClient;   // injected or default
 
-    public DeploymentTaskFacadeImpl(ValidationChain validationChain,
-                                   TaskOrchestrator taskOrchestrator,
-                                   TaskStateManager stateManager) {
-        this.validationChain = validationChain;
-        this.taskOrchestrator = taskOrchestrator;
-        this.stateManager = stateManager;
+    // 其他组件
+    private final TaskScheduler taskScheduler = new TaskScheduler(Runtime.getRuntime().availableProcessors());
+    private final ConflictRegistry conflictRegistry = new ConflictRegistry();
+    private final PlanFactory planFactory = new PlanFactory();
+    private final CheckpointService checkpointService = new CheckpointService(new InMemoryCheckpointStore());
+    private PlanOrchestrator planOrchestrator; // init in ctor
+    private SpringTaskEventSink springSink; // init in ctor
+
+    // 内部注册表
+    private final Map<String, PlanAggregate> planRegistry = new HashMap<>();
+    private final Map<String, TaskAggregate> taskRegistry = new HashMap<>();
+    private final Map<String, TaskContext> contextRegistry = new HashMap<>();
+    private final Map<String, List<TaskStage>> stageRegistry = new HashMap<>();
+    private final Map<String, TaskExecutor> executorRegistry = new HashMap<>();
+
+    private TaskStage buildStageForTask(TaskAggregate task, TenantDeployConfig cfg) {
+        StageStep notify = new NotificationStep("notify-service");
+        StageStep health = new HealthCheckStep(
+                "health-check",
+                cfg.getNetworkEndpoints() != null ? cfg.getNetworkEndpoints() : List.of(),
+                String.valueOf(cfg.getDeployUnitVersion()),
+                "version",
+                healthCheckClient,
+                executorProperties
+        );
+        return new CompositeServiceStage("switch-service", List.of(notify, health));
     }
 
     @Override
     public TaskCreationResult createSwitchTask(List<TenantDeployConfig> configs) {
-        logger.info("开始创建切换任务，配置数量: {}", configs != null ? configs.size() : 0);
+        logger.info("[Phase7] 开始创建切换任务（新架构），配置数量: {}", configs != null ? configs.size() : 0);
 
         try {
             // Step 1: 校验配置
             if (configs == null || configs.isEmpty()) {
-                FailureInfo failureInfo = FailureInfo.of(
-                        ErrorType.VALIDATION_ERROR,
-                        "配置列表不能为空"
-                );
+                FailureInfo failureInfo = FailureInfo.of(ErrorType.VALIDATION_ERROR, "配置列表不能为空");
                 return TaskCreationResult.failure(failureInfo, "配置列表为空");
             }
 
-            // 发布任务创建事件
-            String taskId = generateTaskId();
-            stateManager.initializeTask(taskId, TaskStatus.CREATED);
-            stateManager.publishTaskCreatedEvent(taskId, configs.size());
+            Long planIdInput = configs.get(0).getPlanId();
+            String planId = planIdInput != null ? String.valueOf(planIdInput) : generateTaskId();
 
-            // 开始校验
-            stateManager.updateState(taskId, TaskStatus.VALIDATING);
-
+            // 校验链仍沿用旧逻辑（不改接口）
             ValidationSummary validationSummary = validationChain.validateAll(configs);
-
             if (validationSummary.hasErrors()) {
-                logger.error("配置校验失败，错误数量: {}", validationSummary.getAllErrors().size());
-
-                FailureInfo failureInfo = FailureInfo.of(
-                        ErrorType.VALIDATION_ERROR,
-                        "配置校验失败，有 " + validationSummary.getInvalidCount() + " 个无效配置"
-                );
-
-                // 发布校验失败事件
-                stateManager.publishTaskValidationFailedEvent(taskId, failureInfo, validationSummary.getAllErrors());
-                stateManager.updateState(taskId, TaskStatus.VALIDATION_FAILED, failureInfo);
-
+                FailureInfo failureInfo = FailureInfo.of(ErrorType.VALIDATION_ERROR, "配置校验失败，有 " + validationSummary.getInvalidCount() + " 个无效配置");
+                stateManager.publishTaskValidationFailedEvent(planId, failureInfo, validationSummary.getAllErrors());
+                stateManager.initializeTask(planId, TaskStatus.VALIDATION_FAILED);
                 TaskCreationResult result = TaskCreationResult.validationFailure(validationSummary);
-                result.setTaskId(taskId);
+                result.setPlanId(planId);
                 return result;
             }
 
-            logger.info("配置校验通过，有效配置数量: {}", validationSummary.getValidCount());
+            // 构建 Plan 聚合与内部 Task 模型
+            PlanAggregate plan = planFactory.createPlan(planId, configs);
+            for (int i=0;i<configs.size();i++) {
+                TenantDeployConfig cfg = configs.get(i);
+                TaskAggregate t = plan.getTasks().get(i);
+                List<TaskStage> stages = List.of(buildStageForTask(t, cfg));
+                stageRegistry.put(t.getTaskId(), stages);
+            }
+            stateManager.initializeTask(planId, TaskStatus.PENDING);
+            stateManager.publishTaskValidatedEvent(planId, validationSummary.getValidCount());
 
-            // 发布校验通过事件
-            stateManager.publishTaskValidatedEvent(taskId, validationSummary.getValidCount());
-            stateManager.updateState(taskId, TaskStatus.PENDING);
+            List<String> taskIds = new ArrayList<>();
+            for (TaskAggregate t : plan.getTasks()) {
+                taskIds.add(t.getTaskId());
+                stateManager.initializeTask(t.getTaskId(), TaskStatus.PENDING);
+            }
+            planOrchestrator.submitPlan(plan, task -> (taskIdParam) -> {
+                TaskContext ctx = new TaskContext(planId, task.getTaskId(), task.getTenantId(), new xyz.firestige.executor.execution.pipeline.PipelineContext(task.getTaskId(), null));
+                contextRegistry.put(task.getTaskId(), ctx);
+                List<TaskStage> stages = stageRegistry.getOrDefault(task.getTaskId(), List.of());
+                TaskExecutor executor = new TaskExecutor(planId, task, stages, ctx, checkpointService, springSink, executorProperties.getTaskProgressIntervalSeconds());
+                HeartbeatScheduler heartbeat = new HeartbeatScheduler(planId, task.getTaskId(), stages.size(), executor::getCompletedStageCount, springSink, executorProperties.getTaskProgressIntervalSeconds());
+                executor.setHeartbeatScheduler(heartbeat);
+                executorRegistry.put(task.getTaskId(), executor);
+                executor.execute();
+            });
 
-            // Step 2: 创建执行单
-            List<ExecutionUnit> executionUnits = createExecutionUnits(
-                    validationSummary.getValidConfigs(),
-                    defaultExecutionMode
-            );
+            stateManager.updateState(planId, TaskStatus.RUNNING);
+            stateManager.publishTaskStartedEvent(planId, plan.getTasks().size());
 
-            logger.info("创建执行单数量: {}", executionUnits.size());
+            planRegistry.put(planId, plan);
+            for (TaskAggregate t : plan.getTasks()) taskRegistry.put(t.getTaskId(), t);
 
-            // Step 3: 提交执行单到编排器
-            List<String> executionUnitIds = taskOrchestrator.submitExecutionUnits(executionUnits);
-
-            logger.info("任务创建成功: taskId={}, executionUnitCount={}", taskId, executionUnitIds.size());
-
-            return TaskCreationResult.success(taskId, executionUnitIds);
-
-        } catch (IllegalStateException e) {
-            // 租户冲突异常
-            logger.error("任务创建失败: 租户冲突", e);
-
-            FailureInfo failureInfo = FailureInfo.of(
-                    ErrorType.VALIDATION_ERROR,
-                    e.getMessage()
-            );
-
-            return TaskCreationResult.failure(failureInfo, "租户冲突");
-
+            TaskCreationResult result = TaskCreationResult.success(planId, taskIds);
+            result.setMessage("计划创建并提交成功 (新架构)");
+            return result;
         } catch (Exception e) {
-            logger.error("任务创建失败", e);
-
-            FailureInfo failureInfo = FailureInfo.fromException(
-                    e,
-                    ErrorType.SYSTEM_ERROR,
-                    "createSwitchTask"
-            );
-
-            return TaskCreationResult.failure(failureInfo, "任务创建失败: " + e.getMessage());
+            logger.error("[Phase7] 新架构任务创建失败", e);
+            FailureInfo failureInfo = FailureInfo.fromException(e, ErrorType.SYSTEM_ERROR, "createSwitchTask:new");
+            return TaskCreationResult.failure(failureInfo, "新架构任务创建失败: " + e.getMessage());
         }
     }
 
+    // 新架构暂停实现（租户）
     @Override
     public TaskOperationResult pauseTaskByTenant(String tenantId) {
-        logger.info("暂停租户任务: tenantId={}", tenantId);
-
-        try {
-            taskOrchestrator.pauseByTenant(tenantId);
-
-            ExecutionUnit unit = taskOrchestrator.findExecutionUnitByTenant(tenantId);
-
-            return TaskOperationResult.success(
-                    unit != null ? unit.getId() : null,
-                    TaskStatus.PAUSED,
-                    "租户任务已暂停"
-            );
-
-        } catch (TaskNotFoundException e) {
-            logger.error("暂停任务失败: 任务不存在", e);
-            return TaskOperationResult.failure(e.getMessage());
-
-        } catch (Exception e) {
-            logger.error("暂停任务失败", e);
-            FailureInfo failureInfo = FailureInfo.fromException(e, ErrorType.SYSTEM_ERROR, "pauseTask");
-            return TaskOperationResult.failure(null, failureInfo, "暂停任务失败");
-        }
+        TaskAggregate target = taskRegistry.values().stream().filter(t -> tenantId.equals(t.getTenantId())).findFirst().orElse(null);
+        if (target == null) return TaskOperationResult.failure("未找到租户任务");
+        TaskContext ctx = contextRegistry.get(target.getTaskId());
+        if (ctx != null) ctx.requestPause();
+        return TaskOperationResult.success(target.getTaskId(), TaskStatus.PAUSED, "租户任务暂停请求已登记，下一 Stage 生效");
     }
 
     @Override
     public TaskOperationResult pauseTaskByPlan(Long planId) {
-        logger.info("暂停计划任务: planId={}", planId);
-
-        try {
-            taskOrchestrator.pauseByPlan(planId);
-
-            return TaskOperationResult.success(
-                    null,
-                    TaskStatus.PAUSED,
-                    "计划任务已暂停"
-            );
-
-        } catch (TaskNotFoundException e) {
-            logger.error("暂停任务失败: 任务不存在", e);
-            return TaskOperationResult.failure(e.getMessage());
-
-        } catch (Exception e) {
-            logger.error("暂停任务失败", e);
-            FailureInfo failureInfo = FailureInfo.fromException(e, ErrorType.SYSTEM_ERROR, "pauseTask");
-            return TaskOperationResult.failure(null, failureInfo, "暂停任务失败");
-        }
+        String pid = String.valueOf(planId);
+        PlanAggregate plan = planRegistry.get(pid);
+        if (plan == null) return TaskOperationResult.failure("计划不存在");
+        plan.getTasks().forEach(t -> {
+            TaskContext c = contextRegistry.get(t.getTaskId());
+            if (c != null) c.requestPause();
+        });
+        return TaskOperationResult.success(pid, TaskStatus.PAUSED, "计划暂停请求已登记，下一 Stage 生效");
     }
 
     @Override
     public TaskOperationResult resumeTaskByTenant(String tenantId) {
-        logger.info("恢复租户任务: tenantId={}", tenantId);
-
-        try {
-            taskOrchestrator.resumeByTenant(tenantId);
-
-            ExecutionUnit unit = taskOrchestrator.findExecutionUnitByTenant(tenantId);
-
-            return TaskOperationResult.success(
-                    unit != null ? unit.getId() : null,
-                    TaskStatus.RUNNING,
-                    "租户任务已恢复"
-            );
-
-        } catch (TaskNotFoundException e) {
-            logger.error("恢复任务失败: 任务不存在", e);
-            return TaskOperationResult.failure(e.getMessage());
-
-        } catch (Exception e) {
-            logger.error("恢复任务失败", e);
-            FailureInfo failureInfo = FailureInfo.fromException(e, ErrorType.SYSTEM_ERROR, "resumeTask");
-            return TaskOperationResult.failure(null, failureInfo, "恢复任务失败");
-        }
+        TaskAggregate target = taskRegistry.values().stream().filter(t -> tenantId.equals(t.getTenantId())).findFirst().orElse(null);
+        if (target == null) return TaskOperationResult.failure("未找到租户任务");
+        TaskContext ctx = contextRegistry.get(target.getTaskId());
+        if (ctx != null) ctx.clearPause();
+        return TaskOperationResult.success(target.getTaskId(), TaskStatus.RUNNING, "租户任务恢复请求已登记");
     }
 
     @Override
     public TaskOperationResult resumeTaskByPlan(Long planId) {
-        logger.info("恢复计划任务: planId={}", planId);
-
-        try {
-            taskOrchestrator.resumeByPlan(planId);
-
-            return TaskOperationResult.success(
-                    null,
-                    TaskStatus.RUNNING,
-                    "计划任务已恢复"
-            );
-
-        } catch (TaskNotFoundException e) {
-            logger.error("恢复任务失败: 任务不存在", e);
-            return TaskOperationResult.failure(e.getMessage());
-
-        } catch (Exception e) {
-            logger.error("恢复任务失败", e);
-            FailureInfo failureInfo = FailureInfo.fromException(e, ErrorType.SYSTEM_ERROR, "resumeTask");
-            return TaskOperationResult.failure(null, failureInfo, "恢复任务失败");
-        }
+        String pid = String.valueOf(planId);
+        PlanAggregate plan = planRegistry.get(pid);
+        if (plan == null) return TaskOperationResult.failure("计划不存在");
+        plan.getTasks().forEach(t -> {
+            TaskContext c = contextRegistry.get(t.getTaskId());
+            if (c != null) c.clearPause();
+        });
+        return TaskOperationResult.success(pid, TaskStatus.RUNNING, "计划恢复请求已登记");
     }
 
     @Override
     public TaskOperationResult rollbackTaskByTenant(String tenantId) {
-        logger.info("回滚租户任务: tenantId={}", tenantId);
-
-        try {
-            taskOrchestrator.rollbackByTenant(tenantId);
-
-            ExecutionUnit unit = taskOrchestrator.findExecutionUnitByTenant(tenantId);
-
-            return TaskOperationResult.success(
-                    unit != null ? unit.getId() : null,
-                    TaskStatus.ROLLED_BACK,
-                    "租户任务已回滚"
-            );
-
-        } catch (TaskNotFoundException e) {
-            logger.error("回滚任务失败: 任务不存在", e);
-            return TaskOperationResult.failure(e.getMessage());
-
-        } catch (Exception e) {
-            logger.error("回滚任务失败", e);
-            FailureInfo failureInfo = FailureInfo.fromException(e, ErrorType.SYSTEM_ERROR, "rollbackTask");
-            return TaskOperationResult.failure(null, failureInfo, "回滚任务失败");
+        TaskAggregate target = taskRegistry.values().stream().filter(t -> tenantId.equals(t.getTenantId())).findFirst().orElse(null);
+        if (target == null) return TaskOperationResult.failure("未找到租户任务");
+        TaskExecutor exec = executorRegistry.get(target.getTaskId());
+        if (exec == null) {
+            List<TaskStage> stages = stageRegistry.getOrDefault(target.getTaskId(), List.of());
+            TaskContext ctx = contextRegistry.get(target.getTaskId());
+            exec = new TaskExecutor(target.getPlanId(), target, stages, ctx, checkpointService, springSink, executorProperties.getTaskProgressIntervalSeconds());
         }
+        List<TaskStage> stages = stageRegistry.getOrDefault(target.getTaskId(), List.of());
+        List<String> stageNames = new java.util.ArrayList<>();
+        for (TaskStage s : stages) stageNames.add(s.getName());
+        springSink.publishTaskRollingBack(target.getPlanId(), target.getTaskId(), stageNames, 0);
+        var res = exec.invokeRollback();
+        if (target.getStatus() == TaskStatus.ROLLED_BACK) {
+            springSink.publishTaskRolledBack(target.getPlanId(), target.getTaskId(), stageNames, 0);
+        } else if (target.getStatus() == TaskStatus.ROLLBACK_FAILED) {
+            stateManager.publishTaskRollbackFailedEvent(target.getTaskId(), FailureInfo.of(ErrorType.SYSTEM_ERROR, "rollback failed"), null);
+        }
+        return TaskOperationResult.success(target.getTaskId(), target.getStatus(), "租户任务回滚结束: " + res.getFinalStatus());
     }
 
     @Override
     public TaskOperationResult rollbackTaskByPlan(Long planId) {
-        logger.info("回滚计划任务: planId={}", planId);
-
-        try {
-            taskOrchestrator.rollbackByPlan(planId);
-
-            return TaskOperationResult.success(
-                    null,
-                    TaskStatus.ROLLED_BACK,
-                    "计划任务已回滚"
-            );
-
-        } catch (TaskNotFoundException e) {
-            logger.error("回滚任务失败: 任务不存在", e);
-            return TaskOperationResult.failure(e.getMessage());
-
-        } catch (Exception e) {
-            logger.error("回滚任务失败", e);
-            FailureInfo failureInfo = FailureInfo.fromException(e, ErrorType.SYSTEM_ERROR, "rollbackTask");
-            return TaskOperationResult.failure(null, failureInfo, "回滚任务失败");
-        }
+        String pid = String.valueOf(planId);
+        PlanAggregate plan = planRegistry.get(pid);
+        if (plan == null) return TaskOperationResult.failure("计划不存在");
+        plan.getTasks().forEach(t -> {
+            List<TaskStage> stages = stageRegistry.getOrDefault(t.getTaskId(), List.of());
+            List<String> stageNames = new java.util.ArrayList<>();
+            for (TaskStage s : stages) stageNames.add(s.getName());
+            springSink.publishTaskRollingBack(pid, t.getTaskId(), stageNames, 0);
+        });
+        plan.getTasks().forEach(t -> {
+            TaskExecutor exec = executorRegistry.get(t.getTaskId());
+            if (exec == null) {
+                List<TaskStage> stages = stageRegistry.getOrDefault(t.getTaskId(), List.of());
+                TaskContext c = contextRegistry.get(t.getTaskId());
+                exec = new TaskExecutor(pid, t, stages, c, checkpointService, springSink, executorProperties.getTaskProgressIntervalSeconds());
+            }
+            exec.invokeRollback();
+            List<TaskStage> stages = stageRegistry.getOrDefault(t.getTaskId(), List.of());
+            List<String> stageNames = new java.util.ArrayList<>();
+            for (TaskStage s : stages) stageNames.add(s.getName());
+            if (t.getStatus() == TaskStatus.ROLLED_BACK) {
+                springSink.publishTaskRolledBack(pid, t.getTaskId(), stageNames, 0);
+            } else if (t.getStatus() == TaskStatus.ROLLBACK_FAILED) {
+                stateManager.publishTaskRollbackFailedEvent(t.getTaskId(), FailureInfo.of(ErrorType.SYSTEM_ERROR, "rollback failed"), null);
+            }
+        });
+        return TaskOperationResult.success(pid, TaskStatus.ROLLED_BACK, "计划回滚完成");
     }
 
     @Override
     public TaskOperationResult retryTaskByTenant(String tenantId, boolean fromCheckpoint) {
-        logger.info("重试租户任务: tenantId={}, fromCheckpoint={}", tenantId, fromCheckpoint);
-
-        try {
-            taskOrchestrator.retryByTenant(tenantId, fromCheckpoint);
-
-            ExecutionUnit unit = taskOrchestrator.findExecutionUnitByTenant(tenantId);
-
-            return TaskOperationResult.success(
-                    unit != null ? unit.getId() : null,
-                    TaskStatus.RUNNING,
-                    "租户任务已重试"
-            );
-
-        } catch (TaskNotFoundException e) {
-            logger.error("重试任务失败: 任务不存在", e);
-            return TaskOperationResult.failure(e.getMessage());
-
-        } catch (Exception e) {
-            logger.error("重试任务失败", e);
-            FailureInfo failureInfo = FailureInfo.fromException(e, ErrorType.SYSTEM_ERROR, "retryTask");
-            return TaskOperationResult.failure(null, failureInfo, "重试任务失败");
+        TaskAggregate target = taskRegistry.values().stream().filter(t -> tenantId.equals(t.getTenantId())).findFirst().orElse(null);
+        if (target == null) return TaskOperationResult.failure("未找到租户任务");
+        TaskExecutor exec = executorRegistry.get(target.getTaskId());
+        if (exec == null) {
+            List<TaskStage> stages = stageRegistry.getOrDefault(target.getTaskId(), List.of());
+            TaskContext ctx = contextRegistry.get(target.getTaskId());
+            exec = new TaskExecutor(target.getPlanId(), target, stages, ctx, checkpointService, springSink, executorProperties.getTaskProgressIntervalSeconds());
+            executorRegistry.put(target.getTaskId(), exec);
         }
+        // 补偿进度事件（checkpoint retry）
+        if (fromCheckpoint) {
+            int completed = target.getCurrentStageIndex();
+            int total = stageRegistry.getOrDefault(target.getTaskId(), List.of()).size();
+            stateManager.publishTaskProgressEvent(target.getTaskId(), null, completed, total);
+        }
+        var res = exec.retry(fromCheckpoint);
+        return TaskOperationResult.success(target.getTaskId(), res.getFinalStatus(), "租户任务重试启动");
     }
 
     @Override
     public TaskOperationResult retryTaskByPlan(Long planId, boolean fromCheckpoint) {
-        logger.info("重试计划任务: planId={}, fromCheckpoint={}", planId, fromCheckpoint);
-
-        try {
-            taskOrchestrator.retryByPlan(planId, fromCheckpoint);
-
-            return TaskOperationResult.success(
-                    null,
-                    TaskStatus.RUNNING,
-                    "计划任务已重试"
-            );
-
-        } catch (TaskNotFoundException e) {
-            logger.error("重试任务失败: 任务不存在", e);
-            return TaskOperationResult.failure(e.getMessage());
-
-        } catch (Exception e) {
-            logger.error("重试任务失败", e);
-            FailureInfo failureInfo = FailureInfo.fromException(e, ErrorType.SYSTEM_ERROR, "retryTask");
-            return TaskOperationResult.failure(null, failureInfo, "重试任务失败");
-        }
+        String pid = String.valueOf(planId);
+        PlanAggregate plan = planRegistry.get(pid);
+        if (plan == null) return TaskOperationResult.failure("计划不存在");
+        plan.getTasks().forEach(t -> {
+            TaskExecutor exec = executorRegistry.get(t.getTaskId());
+            if (exec == null) {
+                List<TaskStage> stages = stageRegistry.getOrDefault(t.getTaskId(), List.of());
+                TaskContext c = contextRegistry.get(t.getTaskId());
+                exec = new TaskExecutor(pid, t, stages, c, checkpointService, springSink, executorProperties.getTaskProgressIntervalSeconds());
+                executorRegistry.put(t.getTaskId(), exec);
+            }
+            if (fromCheckpoint) {
+                int completed = t.getCurrentStageIndex();
+                int total = stageRegistry.getOrDefault(t.getTaskId(), List.of()).size();
+                stateManager.publishTaskProgressEvent(t.getTaskId(), null, completed, total);
+            }
+            exec.retry(fromCheckpoint);
+        });
+        return TaskOperationResult.success(pid, TaskStatus.RUNNING, "计划重试启动");
     }
 
     @Override
     public TaskStatusInfo queryTaskStatus(String executionUnitId) {
-        logger.info("查询任务状态: executionUnitId={}", executionUnitId);
-
-        try {
-            ExecutionUnit unit = taskOrchestrator.getExecutionUnit(executionUnitId);
-
-            if (unit == null) {
-                throw new TaskNotFoundException("执行单不存在: " + executionUnitId);
-            }
-
-            TaskStatusInfo statusInfo = new TaskStatusInfo(executionUnitId, TaskStatus.RUNNING);
-            statusInfo.setMessage("执行单状态: " + unit.getStatus().getDescription());
-
-            return statusInfo;
-
-        } catch (Exception e) {
-            logger.error("查询任务状态失败", e);
-
-            TaskStatusInfo statusInfo = new TaskStatusInfo(executionUnitId, null);
-            statusInfo.setMessage("查询失败: " + e.getMessage());
-
-            return statusInfo;
-        }
+        TaskAggregate t = taskRegistry.get(executionUnitId);
+        if (t == null) return TaskStatusInfo.failure("任务不存在: " + executionUnitId);
+        int completed = t.getCurrentStageIndex();
+        int total = stageRegistry.getOrDefault(executionUnitId, List.of()).size();
+        TaskExecutor exec = executorRegistry.get(executionUnitId);
+        String currentStage = exec != null ? exec.getCurrentStageName() : null;
+        TaskContext ctx = contextRegistry.get(executionUnitId);
+        boolean paused = ctx != null && ctx.isPauseRequested();
+        boolean cancelled = ctx != null && ctx.isCancelRequested();
+        double progress = total == 0 ? 0 : (completed * 100.0 / total);
+        TaskStatusInfo info = new TaskStatusInfo(executionUnitId, t.getStatus());
+        info.setMessage(String.format("进度 %.2f%% (%d/%d), currentStage=%s, paused=%s, cancelled=%s", progress, completed, total, currentStage, paused, cancelled));
+        return info;
     }
 
     @Override
     public TaskStatusInfo queryTaskStatusByTenant(String tenantId) {
-        logger.info("查询租户任务状态: tenantId={}", tenantId);
-
-        try {
-            ExecutionUnit unit = taskOrchestrator.findExecutionUnitByTenant(tenantId);
-
-            if (unit == null) {
-                throw new TaskNotFoundException("未找到租户的执行单: " + tenantId);
-            }
-
-            return queryTaskStatus(unit.getId());
-
-        } catch (Exception e) {
-            logger.error("查询任务状态失败", e);
-
-            TaskStatusInfo statusInfo = new TaskStatusInfo(null, null);
-            statusInfo.setMessage("查询失败: " + e.getMessage());
-
-            return statusInfo;
-        }
+        TaskAggregate t = taskRegistry.values().stream().filter(x -> tenantId.equals(x.getTenantId())).findFirst().orElse(null);
+        if (t == null) return TaskStatusInfo.failure("未找到租户任务: " + tenantId);
+        return queryTaskStatus(t.getTaskId());
     }
 
     @Override
     public TaskOperationResult cancelTask(String executionUnitId) {
-        logger.info("取消任务: executionUnitId={}", executionUnitId);
-
-        try {
-            ExecutionUnit unit = taskOrchestrator.getExecutionUnit(executionUnitId);
-
-            if (unit == null) {
-                throw new TaskNotFoundException("执行单不存在: " + executionUnitId);
-            }
-
-            unit.markAsCancelled();
-
-            return TaskOperationResult.success(
-                    executionUnitId,
-                    TaskStatus.CANCELLED,
-                    "任务已取消"
-            );
-
-        } catch (TaskNotFoundException e) {
-            logger.error("取消任务失败: 任务不存在", e);
-            return TaskOperationResult.failure(e.getMessage());
-
-        } catch (Exception e) {
-            logger.error("取消任务失败", e);
-            FailureInfo failureInfo = FailureInfo.fromException(e, ErrorType.SYSTEM_ERROR, "cancelTask");
-            return TaskOperationResult.failure(executionUnitId, failureInfo, "取消任务失败");
-        }
-    }
-
-    /**
-     * 创建执行单
-     * 根据配置列表创建执行单，这里简单实现为一个执行单包含所有配置
-     */
-    private List<ExecutionUnit> createExecutionUnits(List<TenantDeployConfig> configs, ExecutionMode executionMode) {
-        List<ExecutionUnit> units = new ArrayList<>();
-
-        // 按照 planId 分组
-        Map<Long, List<TenantDeployConfig>> planGroups = new HashMap<>();
-
-        for (TenantDeployConfig config : configs) {
-            Long planId = config.getPlanId() != null ? config.getPlanId() : 0L;
-            planGroups.computeIfAbsent(planId, k -> new ArrayList<>()).add(config);
-        }
-
-        // 为每个 planId 创建一个执行单
-        for (Map.Entry<Long, List<TenantDeployConfig>> entry : planGroups.entrySet()) {
-            Long planId = entry.getKey();
-            List<TenantDeployConfig> groupConfigs = entry.getValue();
-
-            ExecutionUnit unit = new ExecutionUnit(
-                    planId != 0L ? planId : null,
-                    groupConfigs,
-                    executionMode
-            );
-
-            units.add(unit);
-        }
-
-        return units;
+        TaskAggregate t = taskRegistry.get(executionUnitId);
+        if (t == null) return TaskOperationResult.failure("任务不存在");
+        TaskContext ctx = contextRegistry.get(t.getTaskId());
+        if (ctx != null) ctx.requestCancel();
+        t.setStatus(TaskStatus.CANCELLED);
+        stateManager.publishTaskCancelledEvent(t.getTaskId());
+        return TaskOperationResult.success(t.getTaskId(), TaskStatus.CANCELLED, "任务取消请求已登记");
     }
 
     /**
@@ -467,5 +340,30 @@ public class DeploymentTaskFacadeImpl implements DeploymentTaskFacade {
     public void setDefaultExecutionMode(ExecutionMode defaultExecutionMode) {
         this.defaultExecutionMode = defaultExecutionMode;
     }
-}
 
+    public DeploymentTaskFacadeImpl(ValidationChain validationChain, TaskStateManager stateManager) {
+        this.validationChain = validationChain;
+        this.stateManager = stateManager;
+        this.executorProperties = new ExecutorProperties();
+        this.healthCheckClient = new MockHealthCheckClient();
+        this.springSink = new SpringTaskEventSink(this.stateManager);
+        this.planOrchestrator = new PlanOrchestrator(taskScheduler, conflictRegistry, executorProperties);
+    }
+    public DeploymentTaskFacadeImpl() { // convenience for tests (no legacy deps)
+        this.validationChain = new ValidationChain();
+        this.stateManager = new TaskStateManager();
+        this.executorProperties = new ExecutorProperties();
+        this.healthCheckClient = new MockHealthCheckClient();
+        this.springSink = new SpringTaskEventSink(this.stateManager);
+        this.planOrchestrator = new PlanOrchestrator(taskScheduler, conflictRegistry, executorProperties);
+    }
+    public DeploymentTaskFacadeImpl(ValidationChain validationChain, TaskStateManager stateManager,
+                                    ExecutorProperties executorProperties, HealthCheckClient healthCheckClient) {
+        this.validationChain = validationChain;
+        this.stateManager = stateManager;
+        this.executorProperties = executorProperties != null ? executorProperties : new ExecutorProperties();
+        this.healthCheckClient = healthCheckClient != null ? healthCheckClient : new MockHealthCheckClient();
+        this.springSink = new SpringTaskEventSink(this.stateManager);
+        this.planOrchestrator = new PlanOrchestrator(taskScheduler, conflictRegistry, this.executorProperties);
+    }
+}

@@ -2,7 +2,7 @@ package xyz.firestige.executor.orchestration;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import xyz.firestige.dto.TenantDeployConfig;
+import xyz.firestige.dto.deploy.TenantDeployConfig;
 import xyz.firestige.executor.execution.PipelineResult;
 import xyz.firestige.executor.execution.TenantTaskExecutor;
 import xyz.firestige.executor.execution.pipeline.Pipeline;
@@ -16,6 +16,7 @@ import java.util.concurrent.*;
  * 执行单调度器
  * 负责调度执行单的执行，支持并发和 FIFO 两种模式
  */
+@Deprecated
 public class ExecutionUnitScheduler {
 
     private static final Logger logger = LoggerFactory.getLogger(ExecutionUnitScheduler.class);
@@ -218,4 +219,3 @@ public class ExecutionUnitScheduler {
         Pipeline createPipeline();
     }
 }
-

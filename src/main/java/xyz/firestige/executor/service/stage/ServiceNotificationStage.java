@@ -2,7 +2,7 @@ package xyz.firestige.executor.service.stage;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import xyz.firestige.dto.TenantDeployConfig;
+import xyz.firestige.dto.deploy.TenantDeployConfig;
 import xyz.firestige.executor.exception.ErrorType;
 import xyz.firestige.executor.exception.FailureInfo;
 import xyz.firestige.executor.execution.StageResult;
@@ -18,6 +18,7 @@ import java.time.LocalDateTime;
  * 服务通知 Stage
  * 将 ServiceNotificationStrategy 适配为 PipelineStage
  */
+@Deprecated
 public class ServiceNotificationStage implements PipelineStage {
 
     private static final Logger logger = LoggerFactory.getLogger(ServiceNotificationStage.class);
@@ -178,4 +179,3 @@ public class ServiceNotificationStage implements PipelineStage {
         this.order = order;
     }
 }
-

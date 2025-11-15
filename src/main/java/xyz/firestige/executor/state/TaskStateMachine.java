@@ -7,8 +7,11 @@ import java.util.*;
 
 /**
  * 任务状态机
- * 管理任务状态转移，确保状态转移的合法性
+ * 管理任务状态迁移，确保状态迁移的合法性
+ *
+ * @deprecated 请使用新的状态机实现：xyz.firestige.executor.domain.state.TaskStateMachine
  */
+@Deprecated
 public class TaskStateMachine {
 
     /**
@@ -17,13 +20,13 @@ public class TaskStateMachine {
     private TaskStatus currentStatus;
 
     /**
-     * 状态转移历史
+     * 状态迁移历史
      */
     private List<StateTransition> transitionHistory;
 
     /**
-     * 状态转移规则映射
-     * Key: 当前状态, Value: 允许转移到的状态列表
+     * 状态迁移规则映射
+     * Key: 当前状态, Value: 允许迁移到的状态列表
      */
     private static final Map<TaskStatus, Set<TaskStatus>> TRANSITION_RULES = new HashMap<>();
 
@@ -95,7 +98,7 @@ public class TaskStateMachine {
     }
 
     /**
-     * 转移到新状态
+     * 迁移到新状态
      */
     public synchronized StateTransitionResult transitionTo(TaskStatus newStatus, FailureInfo failureInfo) {
         // 检查是否可以转移
@@ -124,14 +127,14 @@ public class TaskStateMachine {
     }
 
     /**
-     * 转移到新状态（无失败信息）
+     * 迁移到新状态（无失败信息）
      */
     public StateTransitionResult transitionTo(TaskStatus newStatus) {
         return transitionTo(newStatus, null);
     }
 
     /**
-     * 检查是否可以转移
+     * 检查是否可以迁移
      */
     public boolean canTransition(TaskStatus from, TaskStatus to) {
         if (from == null || to == null) {
@@ -182,4 +185,3 @@ public class TaskStateMachine {
         }
     }
 }
-

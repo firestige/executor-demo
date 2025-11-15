@@ -2,7 +2,7 @@ package xyz.firestige.executor.unit.validation;
 
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.extension.ExtendWith;
-import xyz.firestige.dto.TenantDeployConfig;
+import xyz.firestige.dto.deploy.TenantDeployConfig;
 import xyz.firestige.executor.util.TestDataFactory;
 import xyz.firestige.executor.util.TimingExtension;
 import xyz.firestige.executor.validation.ValidationResult;

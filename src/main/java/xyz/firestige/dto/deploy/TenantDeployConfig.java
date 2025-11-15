@@ -1,4 +1,6 @@
-package xyz.firestige.dto;
+package xyz.firestige.dto.deploy;
+
+import xyz.firestige.entity.deploy.NetworkEndpoint;
 
 import java.util.List;
 

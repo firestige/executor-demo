@@ -2,7 +2,7 @@ package xyz.firestige.executor.execution;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import xyz.firestige.dto.TenantDeployConfig;
+import xyz.firestige.dto.deploy.TenantDeployConfig;
 import xyz.firestige.executor.exception.ExecutionException;
 import xyz.firestige.executor.exception.FailureInfo;
 import xyz.firestige.executor.execution.pipeline.Pipeline;
@@ -19,6 +19,7 @@ import java.util.stream.Collectors;
  * 租户任务执行器
  * 负责执行单个租户的蓝绿切换任务
  */
+@Deprecated
 public class TenantTaskExecutor {
 
     private static final Logger logger = LoggerFactory.getLogger(TenantTaskExecutor.class);
