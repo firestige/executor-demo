@@ -1,10 +1,9 @@
 package xyz.firestige.executor.event;
 
+import xyz.firestige.executor.exception.ErrorType;
 import xyz.firestige.executor.state.TaskStateManager;
 import xyz.firestige.executor.exception.FailureInfo;
 import xyz.firestige.executor.execution.StageResult;
-import xyz.firestige.executor.state.event.TaskRetryCompletedEvent;
-import xyz.firestige.executor.state.event.TaskRetryStartedEvent;
 import xyz.firestige.executor.support.conflict.ConflictRegistry;
 
 import java.time.Duration;
@@ -100,7 +99,7 @@ public class SpringTaskEventSink implements TaskEventSink {
     }
 
     @Override
-    public void publishTaskRollingBack(String planId, String taskId, java.util.List<String> stagesToRollback, long sequenceIdIgnored) {
+    public void publishTaskRollingBack(String planId, String taskId, List<String> stagesToRollback, long sequenceIdIgnored) {
         stateManager.publishTaskRollingBackEvent(taskId, "rollback", stagesToRollback);
     }
 
@@ -123,7 +122,7 @@ public class SpringTaskEventSink implements TaskEventSink {
     }
 
     @Override
-    public void publishTaskRolledBack(String planId, String taskId, java.util.List<String> rolledBackStages, long sequenceIdIgnored) {
+    public void publishTaskRolledBack(String planId, String taskId, List<String> rolledBackStages, long sequenceIdIgnored) {
         stateManager.publishTaskRolledBackEvent(taskId, rolledBackStages);
         releaseIfTerminal(taskId);
     }
@@ -146,6 +145,6 @@ public class SpringTaskEventSink implements TaskEventSink {
 
     @Override
     public void publishTaskRollbackFailed(String planId, String taskId, List<String> partiallyRolledBackStages, String reason, long sequenceIdIgnored) {
-        stateManager.publishTaskRollbackFailedEvent(taskId, xyz.firestige.executor.exception.FailureInfo.of(xyz.firestige.executor.exception.ErrorType.SYSTEM_ERROR, reason), partiallyRolledBackStages);
+        stateManager.publishTaskRollbackFailedEvent(taskId, FailureInfo.of(ErrorType.SYSTEM_ERROR, reason), partiallyRolledBackStages);
     }
 }

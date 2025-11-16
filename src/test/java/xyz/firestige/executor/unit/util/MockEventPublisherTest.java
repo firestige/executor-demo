@@ -5,8 +5,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.springframework.context.ApplicationEvent;
-import xyz.firestige.executor.state.TaskStatus;
+import xyz.firestige.executor.orchestration.ExecutionMode;
 import xyz.firestige.executor.state.event.TaskCreatedEvent;
 import xyz.firestige.executor.state.event.TaskStartedEvent;
 import xyz.firestige.executor.util.MockEventPublisher;
@@ -14,7 +13,9 @@ import xyz.firestige.executor.util.TimingExtension;
 
 import java.util.List;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * MockEventPublisher 单元测试
@@ -38,7 +39,7 @@ class MockEventPublisherTest {
     void testPublishEvent() {
         // Given: 事件
         TaskCreatedEvent event = new TaskCreatedEvent("task1", 5,
-            xyz.firestige.executor.orchestration.ExecutionMode.CONCURRENT);
+            ExecutionMode.CONCURRENT);
 
         // When: 发布事件
         publisher.publishEvent(event);
@@ -53,7 +54,7 @@ class MockEventPublisherTest {
     void testPublishMultipleEvents() {
         // Given: 多个事件
         TaskCreatedEvent event1 = new TaskCreatedEvent("task1", 5,
-            xyz.firestige.executor.orchestration.ExecutionMode.CONCURRENT);
+            ExecutionMode.CONCURRENT);
         TaskStartedEvent event2 = new TaskStartedEvent("task1", 3);
 
         // When: 发布多个事件
@@ -71,9 +72,9 @@ class MockEventPublisherTest {
     void testGetEventsByType() {
         // Given: 发布多个事件
         TaskCreatedEvent event1 = new TaskCreatedEvent("task1", 5,
-            xyz.firestige.executor.orchestration.ExecutionMode.CONCURRENT);
+            ExecutionMode.CONCURRENT);
         TaskCreatedEvent event2 = new TaskCreatedEvent("task2", 3,
-            xyz.firestige.executor.orchestration.ExecutionMode.FIFO);
+            ExecutionMode.FIFO);
         TaskStartedEvent event3 = new TaskStartedEvent("task1", 3);
 
         publisher.publishEvent(event1);
@@ -94,7 +95,7 @@ class MockEventPublisherTest {
     void testClearEvents() {
         // Given: 发布一些事件
         publisher.publishEvent(new TaskCreatedEvent("task1", 5,
-            xyz.firestige.executor.orchestration.ExecutionMode.CONCURRENT));
+            ExecutionMode.CONCURRENT));
         publisher.publishEvent(new TaskStartedEvent("task1", 3));
 
         assertEquals(2, publisher.getEventCount());
@@ -112,7 +113,7 @@ class MockEventPublisherTest {
     void testGetAllEvents() {
         // Given: 发布多个事件
         publisher.publishEvent(new TaskCreatedEvent("task1", 5,
-            xyz.firestige.executor.orchestration.ExecutionMode.CONCURRENT));
+            ExecutionMode.CONCURRENT));
         publisher.publishEvent(new TaskStartedEvent("task1", 3));
 
         // When: 获取所有事件

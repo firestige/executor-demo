@@ -13,11 +13,11 @@ import xyz.firestige.executor.event.SpringTaskEventSink;
 import xyz.firestige.executor.domain.stage.TaskStage;
 import xyz.firestige.executor.domain.stage.StageExecutionResult;
 import xyz.firestige.executor.domain.stage.StageStep;
-import xyz.firestige.executor.domain.stage.CompositeServiceStage;
 
 import java.util.List;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * 持续时间字段测试（COMPLETED / FAILED / ROLLED_BACK）。

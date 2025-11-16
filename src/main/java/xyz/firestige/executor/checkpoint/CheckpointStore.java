@@ -4,6 +4,7 @@ import xyz.firestige.executor.domain.task.TaskCheckpoint;
 
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 /**
  * 可插拔检查点存储抽象。
@@ -20,7 +21,7 @@ public interface CheckpointStore {
     }
 
     default Map<String, TaskCheckpoint> getBatch(List<String> taskIds) {
-        return taskIds.stream().collect(java.util.stream.Collectors.toMap(id -> id, this::get));
+        return taskIds.stream().collect(Collectors.toMap(id -> id, this::get));
     }
 }
 

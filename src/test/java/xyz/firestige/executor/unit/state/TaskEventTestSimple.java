@@ -8,12 +8,16 @@ import xyz.firestige.executor.exception.ErrorType;
 import xyz.firestige.executor.exception.FailureInfo;
 import xyz.firestige.executor.orchestration.ExecutionMode;
 import xyz.firestige.executor.state.TaskStatus;
-import xyz.firestige.executor.state.event.*;
+import xyz.firestige.executor.state.event.TaskCreatedEvent;
+import xyz.firestige.executor.state.event.TaskFailedEvent;
+import xyz.firestige.executor.state.event.TaskStartedEvent;
 import xyz.firestige.executor.util.TimingExtension;
 
 import java.util.List;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 
 /**
  * 事件类单元测试 - 简化版

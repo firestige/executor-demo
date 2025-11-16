@@ -12,10 +12,11 @@ import xyz.firestige.executor.domain.task.TaskRuntimeContext;
 import xyz.firestige.executor.event.SpringTaskEventSink;
 import xyz.firestige.executor.execution.TaskExecutor;
 import xyz.firestige.executor.state.TaskStateManager;
+import xyz.firestige.executor.state.TaskStatus;
 
 import java.util.List;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class MdcCleanupTest {
 
@@ -31,7 +32,7 @@ public class MdcCleanupTest {
     void mdcClearedAfterExecute() {
         TaskStateManager sm = new TaskStateManager(e -> {});
         TaskAggregate agg = new TaskAggregate("t-mdc","p","tenant");
-        sm.initializeTask(agg.getTaskId(), xyz.firestige.executor.state.TaskStatus.PENDING);
+        sm.initializeTask(agg.getTaskId(), TaskStatus.PENDING);
         TaskRuntimeContext ctx = new TaskRuntimeContext("p","t-mdc","tenant", null);
         sm.registerTaskAggregate(agg.getTaskId(), agg, ctx, 1);
         TaskExecutor exec = new TaskExecutor("p", agg, List.of(new OneStage()), ctx, new CheckpointService(new InMemoryCheckpointStore()), new SpringTaskEventSink(sm), 5, sm);

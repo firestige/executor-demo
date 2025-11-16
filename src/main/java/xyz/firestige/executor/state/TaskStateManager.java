@@ -2,14 +2,36 @@ package xyz.firestige.executor.state;
 
 import org.springframework.context.ApplicationEventPublisher;
 import xyz.firestige.executor.exception.FailureInfo;
-import xyz.firestige.executor.state.event.*;
+import xyz.firestige.executor.execution.StageResult;
+import xyz.firestige.executor.service.health.AlwaysTrueRollbackHealthVerifier;
+import xyz.firestige.executor.service.health.RollbackHealthVerifier;
+import xyz.firestige.executor.state.event.TaskCancelledEvent;
 import xyz.firestige.executor.domain.state.TaskStateMachine;
 import xyz.firestige.executor.domain.state.ctx.TaskTransitionContext;
 import xyz.firestige.executor.domain.task.TaskAggregate;
 import xyz.firestige.executor.domain.task.TaskRuntimeContext;
 import xyz.firestige.executor.domain.task.TenantDeployConfigSnapshot;
+import xyz.firestige.executor.state.event.TaskCompletedEvent;
+import xyz.firestige.executor.state.event.TaskCreatedEvent;
+import xyz.firestige.executor.state.event.TaskFailedEvent;
+import xyz.firestige.executor.state.event.TaskPausedEvent;
+import xyz.firestige.executor.state.event.TaskProgressEvent;
+import xyz.firestige.executor.state.event.TaskResumedEvent;
+import xyz.firestige.executor.state.event.TaskRetryCompletedEvent;
+import xyz.firestige.executor.state.event.TaskRetryStartedEvent;
+import xyz.firestige.executor.state.event.TaskRollbackFailedEvent;
+import xyz.firestige.executor.state.event.TaskRolledBackEvent;
+import xyz.firestige.executor.state.event.TaskRollingBackEvent;
+import xyz.firestige.executor.state.event.TaskStageCompletedEvent;
+import xyz.firestige.executor.state.event.TaskStageFailedEvent;
+import xyz.firestige.executor.state.event.TaskStartedEvent;
+import xyz.firestige.executor.state.event.TaskStatusEvent;
+import xyz.firestige.executor.state.event.TaskValidatedEvent;
+import xyz.firestige.executor.state.event.TaskValidationFailedEvent;
+import xyz.firestige.executor.validation.ValidationError;
 
 import java.time.Duration;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -37,8 +59,8 @@ public class TaskStateManager {
     private final Map<String, TaskAggregate> aggregates = new ConcurrentHashMap<>();
     private final Map<String, TaskRuntimeContext> runtimeContexts = new ConcurrentHashMap<>();
     private final Map<String, Integer> totalStagesMap = new ConcurrentHashMap<>();
-    private final Map<String, java.util.List<String>> stageNamesMap = new ConcurrentHashMap<>();
-    private xyz.firestige.executor.service.health.RollbackHealthVerifier rollbackHealthVerifier = new xyz.firestige.executor.service.health.AlwaysTrueRollbackHealthVerifier();
+    private final Map<String, List<String>> stageNamesMap = new ConcurrentHashMap<>();
+    private RollbackHealthVerifier rollbackHealthVerifier = new AlwaysTrueRollbackHealthVerifier();
 
     public TaskStateManager() {
     }
@@ -70,9 +92,9 @@ public class TaskStateManager {
         sm.registerGuard(TaskStatus.PAUSED, TaskStatus.RUNNING, ctx -> ctx.getContext() != null && !ctx.getContext().isPauseRequested());
         sm.registerGuard(TaskStatus.RUNNING, TaskStatus.COMPLETED, ctx -> ctx.getAggregate().getCurrentStageIndex() >= ctx.getTotalStages());
         // Actions
-        sm.registerAction(TaskStatus.PENDING, TaskStatus.RUNNING, ctx -> ctx.getAggregate().setStartedAt(java.time.LocalDateTime.now()));
-        sm.registerAction(TaskStatus.RUNNING, TaskStatus.COMPLETED, ctx -> ctx.getAggregate().setEndedAt(java.time.LocalDateTime.now()));
-        sm.registerAction(TaskStatus.RUNNING, TaskStatus.FAILED, ctx -> ctx.getAggregate().setEndedAt(java.time.LocalDateTime.now()));
+        sm.registerAction(TaskStatus.PENDING, TaskStatus.RUNNING, ctx -> ctx.getAggregate().setStartedAt(LocalDateTime.now()));
+        sm.registerAction(TaskStatus.RUNNING, TaskStatus.COMPLETED, ctx -> ctx.getAggregate().setEndedAt(LocalDateTime.now()));
+        sm.registerAction(TaskStatus.RUNNING, TaskStatus.FAILED, ctx -> ctx.getAggregate().setEndedAt(LocalDateTime.now()));
     }
 
     /**
@@ -120,11 +142,11 @@ public class TaskStateManager {
         }
     }
 
-    public void registerStageNames(String taskId, java.util.List<String> stageNames) {
+    public void registerStageNames(String taskId, List<String> stageNames) {
         if (stageNames != null) stageNamesMap.put(taskId, new ArrayList<>(stageNames));
     }
 
-    public void setRollbackHealthVerifier(xyz.firestige.executor.service.health.RollbackHealthVerifier v) {
+    public void setRollbackHealthVerifier(RollbackHealthVerifier v) {
         if (v != null) this.rollbackHealthVerifier = v;
     }
 
@@ -134,17 +156,17 @@ public class TaskStateManager {
         // keep aggregate status in sync with state machine
         agg.setStatus(to);
         if (from == TaskStatus.PENDING && to == TaskStatus.RUNNING) {
-            if (agg.getStartedAt() == null) agg.setStartedAt(java.time.LocalDateTime.now());
+            if (agg.getStartedAt() == null) agg.setStartedAt(LocalDateTime.now());
         }
         if (from == TaskStatus.RUNNING && (to == TaskStatus.COMPLETED || to == TaskStatus.FAILED)) {
-            agg.setEndedAt(java.time.LocalDateTime.now());
+            agg.setEndedAt(LocalDateTime.now());
             if (agg.getStartedAt() != null && agg.getEndedAt() != null) {
                 long ms = Duration.between(agg.getStartedAt(), agg.getEndedAt()).toMillis();
                 agg.setDurationMillis(ms);
             }
         }
         if (from == TaskStatus.ROLLING_BACK && (to == TaskStatus.ROLLED_BACK || to == TaskStatus.ROLLBACK_FAILED)) {
-            agg.setEndedAt(java.time.LocalDateTime.now());
+            agg.setEndedAt(LocalDateTime.now());
             if (agg.getStartedAt() != null && agg.getEndedAt() != null) {
                 long ms = Duration.between(agg.getStartedAt(), agg.getEndedAt()).toMillis();
                 agg.setDurationMillis(ms);
@@ -204,7 +226,7 @@ public class TaskStateManager {
     /**
      * 发布任务校验失败事件
      */
-    public void publishTaskValidationFailedEvent(String taskId, FailureInfo failureInfo, List<xyz.firestige.executor.validation.ValidationError> validationErrors) {
+    public void publishTaskValidationFailedEvent(String taskId, FailureInfo failureInfo, List<ValidationError> validationErrors) {
         if (eventPublisher != null) {
             TaskValidationFailedEvent event = new TaskValidationFailedEvent(taskId, failureInfo, validationErrors);
             eventPublisher.publishEvent(event);
@@ -246,7 +268,7 @@ public class TaskStateManager {
     /**
      * 发布 Stage 完成事件
      */
-    public void publishTaskStageCompletedEvent(String taskId, String stageName, xyz.firestige.executor.execution.StageResult stageResult) {
+    public void publishTaskStageCompletedEvent(String taskId, String stageName, StageResult stageResult) {
         if (eventPublisher != null) {
             TaskStageCompletedEvent event = new TaskStageCompletedEvent(taskId, stageName, stageResult);
             event.setSequenceId(nextSeq(taskId));
@@ -360,7 +382,7 @@ public class TaskStateManager {
                 event.setCancelledBy("system");
                 int idx = agg.getCurrentStageIndex() - 1;
                 String last = null;
-                java.util.List<String> names = stageNamesMap.get(taskId);
+                List<String> names = stageNamesMap.get(taskId);
                 if (names != null && idx >= 0 && idx < names.size()) {
                     last = names.get(idx);
                 }
@@ -382,7 +404,7 @@ public class TaskStateManager {
             if (agg != null) {
                 int idx = agg.getCurrentStageIndex() - 1;
                 String last = null;
-                java.util.List<String> names = stageNamesMap.get(taskId);
+                List<String> names = stageNamesMap.get(taskId);
                 if (names != null && idx >= 0 && idx < names.size()) {
                     last = names.get(idx);
                 }

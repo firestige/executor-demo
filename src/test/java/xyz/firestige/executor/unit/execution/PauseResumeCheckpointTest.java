@@ -4,6 +4,7 @@ import org.junit.jupiter.api.Test;
 import xyz.firestige.executor.checkpoint.CheckpointService;
 import xyz.firestige.executor.checkpoint.InMemoryCheckpointStore;
 import xyz.firestige.executor.domain.stage.StageExecutionResult;
+import xyz.firestige.executor.domain.stage.StageStep;
 import xyz.firestige.executor.domain.stage.TaskStage;
 import xyz.firestige.executor.domain.task.TaskAggregate;
 import xyz.firestige.executor.domain.task.TaskRuntimeContext;
@@ -15,7 +16,9 @@ import xyz.firestige.executor.state.TaskStatus;
 
 import java.util.List;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 
 public class PauseResumeCheckpointTest {
 
@@ -30,7 +33,7 @@ public class PauseResumeCheckpointTest {
             return r;
         }
         @Override public void rollback(TaskRuntimeContext ctx) {}
-        @Override public java.util.List<xyz.firestige.executor.domain.stage.StageStep> getSteps() { return java.util.List.of(); }
+        @Override public List<StageStep> getSteps() { return java.util.List.of(); }
     }
 
     @Test

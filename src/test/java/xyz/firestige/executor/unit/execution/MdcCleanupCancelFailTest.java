@@ -12,10 +12,11 @@ import xyz.firestige.executor.domain.task.TaskRuntimeContext;
 import xyz.firestige.executor.event.SpringTaskEventSink;
 import xyz.firestige.executor.execution.TaskExecutor;
 import xyz.firestige.executor.state.TaskStateManager;
+import xyz.firestige.executor.state.TaskStatus;
 
 import java.util.List;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class MdcCleanupCancelFailTest {
 
@@ -39,7 +40,7 @@ public class MdcCleanupCancelFailTest {
     void mdcClearedAfterFailure() {
         TaskStateManager sm = new TaskStateManager(e -> {});
         TaskAggregate agg = new TaskAggregate("t-mdc-f","p","tenant");
-        sm.initializeTask(agg.getTaskId(), xyz.firestige.executor.state.TaskStatus.PENDING);
+        sm.initializeTask(agg.getTaskId(), TaskStatus.PENDING);
         TaskRuntimeContext ctx = new TaskRuntimeContext("p","t-mdc-f","tenant", null);
         sm.registerTaskAggregate(agg.getTaskId(), agg, ctx, 1);
         TaskExecutor exec = new TaskExecutor("p", agg, List.of(new FailingStage()), ctx, new CheckpointService(new InMemoryCheckpointStore()), new SpringTaskEventSink(sm), 5, sm);
@@ -51,7 +52,7 @@ public class MdcCleanupCancelFailTest {
     void mdcClearedAfterCancel() {
         TaskStateManager sm = new TaskStateManager(e -> {});
         TaskAggregate agg = new TaskAggregate("t-mdc-c","p","tenant");
-        sm.initializeTask(agg.getTaskId(), xyz.firestige.executor.state.TaskStatus.PENDING);
+        sm.initializeTask(agg.getTaskId(), TaskStatus.PENDING);
         TaskRuntimeContext ctx = new TaskRuntimeContext("p","t-mdc-c","tenant", null);
         sm.registerTaskAggregate(agg.getTaskId(), agg, ctx, 1);
         TaskExecutor exec = new TaskExecutor("p", agg, List.of(new CancellableStage()), ctx, new CheckpointService(new InMemoryCheckpointStore()), new SpringTaskEventSink(sm), 5, sm);

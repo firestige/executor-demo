@@ -5,6 +5,7 @@ import org.slf4j.LoggerFactory;
 import xyz.firestige.dto.deploy.TenantDeployConfig;
 import xyz.firestige.executor.exception.ErrorType;
 import xyz.firestige.executor.exception.FailureInfo;
+import xyz.firestige.executor.execution.pipeline.PipelineContext;
 import xyz.firestige.executor.factory.PlanFactory;
 import xyz.firestige.executor.orchestration.PlanOrchestrator;
 import xyz.firestige.executor.orchestration.TaskScheduler;
@@ -22,11 +23,6 @@ import xyz.firestige.executor.config.ExecutorProperties;
 import xyz.firestige.executor.validation.ValidationChain;
 import xyz.firestige.executor.validation.ValidationSummary;
 import xyz.firestige.executor.domain.stage.TaskStage;
-import xyz.firestige.executor.domain.stage.CompositeServiceStage;
-import xyz.firestige.executor.domain.stage.StageStep;
-import xyz.firestige.executor.domain.stage.steps.HealthCheckStep;
-import xyz.firestige.executor.domain.stage.steps.ConfigUpdateStep;
-import xyz.firestige.executor.domain.stage.steps.BroadcastStep;
 import xyz.firestige.executor.service.health.HealthCheckClient;
 import xyz.firestige.executor.service.health.MockHealthCheckClient;
 import xyz.firestige.executor.domain.state.PlanStateMachine;
@@ -62,8 +58,8 @@ public class DeploymentTaskFacadeImpl implements DeploymentTaskFacade {
     private final ConflictRegistry conflictRegistry = new ConflictRegistry();
     private final PlanFactory planFactory = new PlanFactory();
     private final CheckpointService checkpointService = new CheckpointService(new InMemoryCheckpointStore());
-    private PlanOrchestrator planOrchestrator; // init in ctor
-    private SpringTaskEventSink springSink; // init in ctor
+    private final PlanOrchestrator planOrchestrator; // init in ctor
+    private final SpringTaskEventSink springSink; // init in ctor
 
     // 内部注册表
     private final Map<String, PlanAggregate> planRegistry = new HashMap<>();
@@ -75,21 +71,6 @@ public class DeploymentTaskFacadeImpl implements DeploymentTaskFacade {
 
     private final StageFactory stageFactory = new DefaultStageFactory();
     private final TaskWorkerFactory workerFactory = new DefaultTaskWorkerFactory();
-
-    private TaskStage buildStageForTask(TaskAggregate task, TenantDeployConfig cfg) {
-        // deprecated: use factory (kept for backward compatibility while tests migrate)
-        StageStep configUpdate = new ConfigUpdateStep("config-update", cfg.getDeployUnitVersion());
-        StageStep broadcast = new BroadcastStep("broadcast-change");
-        StageStep health = new HealthCheckStep(
-                "health-check",
-                cfg.getNetworkEndpoints() != null ? cfg.getNetworkEndpoints() : List.of(),
-                String.valueOf(cfg.getDeployUnitVersion()),
-                "version",
-                healthCheckClient,
-                executorProperties
-        );
-        return new CompositeServiceStage("switch-service", List.of(configUpdate, broadcast, health));
-    }
 
     @Override
     public TaskCreationResult createSwitchTask(List<TenantDeployConfig> configs) {
@@ -146,10 +127,9 @@ public class DeploymentTaskFacadeImpl implements DeploymentTaskFacade {
                 plan.setStartedAt(java.time.LocalDateTime.now());
                 List<TaskStage> stages = stageRegistry.getOrDefault(task.getTaskId(), List.of());
                 // register stage names for later cancellation event enrichment
-                List<String> names = new java.util.ArrayList<>();
-                for (TaskStage s : stages) names.add(s.getName());
+                List<String> names = stages.stream().map(TaskStage::getName).toList();
                 stateManager.registerStageNames(task.getTaskId(), names);
-                TaskRuntimeContext ctx = new TaskRuntimeContext(planId, task.getTaskId(), task.getTenantId(), new xyz.firestige.executor.execution.pipeline.PipelineContext(task.getTaskId(), null));
+                TaskRuntimeContext ctx = new TaskRuntimeContext(planId, task.getTaskId(), task.getTenantId(), new PipelineContext(task.getTaskId(), null));
                 contextRegistry.put(task.getTaskId(), ctx);
                 stateManager.registerTaskAggregate(task.getTaskId(), task, ctx, stages.size());
                 stateManager.updateState(task.getTaskId(), TaskStatus.RUNNING); // 进入运行态
@@ -162,7 +142,7 @@ public class DeploymentTaskFacadeImpl implements DeploymentTaskFacade {
             stateManager.publishTaskStartedEvent(planId, plan.getTasks().size());
 
             planRegistry.put(planId, plan);
-            for (TaskAggregate t : plan.getTasks()) taskRegistry.put(t.getTaskId(), t);
+            plan.getTasks().forEach(t -> taskRegistry.put(t.getTaskId(), t));
 
             TaskCreationResult result = TaskCreationResult.success(planId, taskIds);
             result.setMessage("计划创建并提交成功 (新架构)");

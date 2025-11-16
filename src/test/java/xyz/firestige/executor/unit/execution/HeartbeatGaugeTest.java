@@ -8,7 +8,8 @@ import xyz.firestige.executor.execution.HeartbeatScheduler;
 
 import java.util.concurrent.atomic.AtomicInteger;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class HeartbeatGaugeTest {
     static class SpyMetrics implements MetricsRegistry {

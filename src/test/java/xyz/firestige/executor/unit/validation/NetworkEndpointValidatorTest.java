@@ -13,7 +13,8 @@ import xyz.firestige.executor.validation.validator.NetworkEndpointValidator;
 import java.util.ArrayList;
 import java.util.List;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * NetworkEndpointValidator 单元测试

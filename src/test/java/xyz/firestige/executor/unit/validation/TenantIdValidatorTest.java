@@ -10,7 +10,8 @@ import xyz.firestige.executor.util.TimingExtension;
 import xyz.firestige.executor.validation.ValidationResult;
 import xyz.firestige.executor.validation.validator.TenantIdValidator;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * TenantIdValidator 单元测试

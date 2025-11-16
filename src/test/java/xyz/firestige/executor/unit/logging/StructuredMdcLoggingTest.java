@@ -12,10 +12,12 @@ import xyz.firestige.executor.domain.task.TaskRuntimeContext;
 import xyz.firestige.executor.event.SpringTaskEventSink;
 import xyz.firestige.executor.execution.TaskExecutor;
 import xyz.firestige.executor.state.TaskStateManager;
+import xyz.firestige.executor.state.TaskStatus;
 
 import java.util.List;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class StructuredMdcLoggingTest {
 
@@ -28,7 +30,7 @@ public class StructuredMdcLoggingTest {
             assertEquals("t-log", MDC.get("taskId"));
             assertEquals("tenant", MDC.get("tenantId"));
             assertEquals("mdc-stage", MDC.get("stageName"));
-            StageExecutionResult r=StageExecutionResult.start(getName()); r.finishSuccess(); return r;
+            StageExecutionResult r = StageExecutionResult.start(getName()); r.finishSuccess(); return r;
         }
         public void rollback(TaskRuntimeContext c){}
         public List<StageStep> getSteps(){return List.of();}
@@ -38,7 +40,7 @@ public class StructuredMdcLoggingTest {
     void mdcFieldsPresentDuringStage() {
         TaskStateManager sm = new TaskStateManager(e -> {});
         TaskAggregate agg = new TaskAggregate("t-log","p","tenant");
-        sm.initializeTask(agg.getTaskId(), xyz.firestige.executor.state.TaskStatus.PENDING);
+        sm.initializeTask(agg.getTaskId(), TaskStatus.PENDING);
         TaskRuntimeContext ctx = new TaskRuntimeContext("p","t-log","tenant", null);
         sm.registerTaskAggregate(agg.getTaskId(), agg, ctx, 1);
         TaskExecutor exec = new TaskExecutor("p", agg, List.of(new InspectMdcStage()), ctx, new CheckpointService(new InMemoryCheckpointStore()), new SpringTaskEventSink(sm), 5, sm);

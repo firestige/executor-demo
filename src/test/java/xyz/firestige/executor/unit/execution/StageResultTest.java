@@ -10,7 +10,13 @@ import xyz.firestige.executor.execution.StageResult;
 import xyz.firestige.executor.execution.StageStatus;
 import xyz.firestige.executor.util.TimingExtension;
 
-import static org.junit.jupiter.api.Assertions.*;
+import java.time.LocalDateTime;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * StageResult 单元测试
@@ -60,8 +66,8 @@ class StageResultTest {
         // Given: 创建结果并设置时间
         StageResult result = StageResult.success("TestStage");
 
-        java.time.LocalDateTime startTime = java.time.LocalDateTime.now().minusSeconds(1); // 1秒前
-        java.time.LocalDateTime endTime = java.time.LocalDateTime.now();
+        LocalDateTime startTime = LocalDateTime.now().minusSeconds(1); // 1秒前
+        LocalDateTime endTime = LocalDateTime.now();
 
         result.setStartTime(startTime);
         result.setEndTime(endTime);

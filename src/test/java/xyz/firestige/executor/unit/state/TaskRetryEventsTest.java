@@ -19,7 +19,7 @@ import xyz.firestige.executor.state.event.TaskRetryCompletedEvent;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * 重试事件测试：验证 RetryStarted / RetryCompleted 发布及 sequenceId 递增。

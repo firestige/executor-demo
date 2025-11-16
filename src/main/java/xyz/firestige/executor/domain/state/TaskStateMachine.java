@@ -3,7 +3,14 @@ package xyz.firestige.executor.domain.state;
 import xyz.firestige.executor.domain.state.ctx.TaskTransitionContext;
 import xyz.firestige.executor.state.TaskStatus;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.EnumMap;
+import java.util.EnumSet;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 /**
  * 新 Task 状态机（不使用 V2 命名），带 Guard/Action 扩展。

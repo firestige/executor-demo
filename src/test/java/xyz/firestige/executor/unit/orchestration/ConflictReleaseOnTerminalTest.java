@@ -3,7 +3,8 @@ package xyz.firestige.executor.unit.orchestration;
 import org.junit.jupiter.api.Test;
 import xyz.firestige.executor.support.conflict.ConflictRegistry;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class ConflictReleaseOnTerminalTest {
 

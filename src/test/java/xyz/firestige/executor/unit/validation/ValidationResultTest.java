@@ -9,7 +9,9 @@ import xyz.firestige.executor.validation.ValidationError;
 import xyz.firestige.executor.validation.ValidationResult;
 import xyz.firestige.executor.validation.ValidationWarning;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * ValidationResult 单元测试

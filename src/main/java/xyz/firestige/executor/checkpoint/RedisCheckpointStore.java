@@ -6,7 +6,6 @@ import com.fasterxml.jackson.databind.SerializationFeature;
 import xyz.firestige.executor.domain.task.TaskCheckpoint;
 import xyz.firestige.executor.redis.RedisClient;
 
-import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;

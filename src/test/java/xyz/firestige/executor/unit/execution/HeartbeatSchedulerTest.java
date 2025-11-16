@@ -7,6 +7,7 @@ import xyz.firestige.executor.execution.HeartbeatScheduler;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class HeartbeatSchedulerTest {
@@ -35,7 +36,7 @@ public class HeartbeatSchedulerTest {
         hs.stop();
 
         assertTrue(publishCount.get() >= 2, "Should publish at least two heartbeats");
-        assertTrue(lastCompleted.get() == 3, "Last completed should be updated to 3");
+        assertEquals(3, (int) lastCompleted.get(), "Last completed should be updated to 3");
     }
 }
 

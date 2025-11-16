@@ -3,7 +3,14 @@ package xyz.firestige.executor.domain.state;
 import xyz.firestige.executor.domain.plan.PlanContext;
 import xyz.firestige.executor.domain.plan.PlanStatus;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.EnumMap;
+import java.util.EnumSet;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 /**
  * Plan 状态机（新实现，不使用 V2 命名）。

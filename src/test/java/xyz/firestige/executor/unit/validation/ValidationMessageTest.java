@@ -8,7 +8,10 @@ import xyz.firestige.executor.util.TimingExtension;
 import xyz.firestige.executor.validation.ValidationError;
 import xyz.firestige.executor.validation.ValidationWarning;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 
 /**
  * ValidationError 和 ValidationWarning 单元测试
@@ -65,8 +68,8 @@ class ValidationMessageTest {
 
         // Then: 是不同的类型
         assertNotEquals(error.getClass(), warning.getClass());
-        assertTrue(error instanceof ValidationError);
-        assertTrue(warning instanceof ValidationWarning);
+        assertInstanceOf(ValidationError.class, error);
+        assertInstanceOf(ValidationWarning.class, warning);
     }
 }
 

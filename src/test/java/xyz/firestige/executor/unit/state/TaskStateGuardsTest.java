@@ -7,7 +7,7 @@ import xyz.firestige.executor.domain.task.TaskRuntimeContext;
 import xyz.firestige.executor.state.TaskStateManager;
 import xyz.firestige.executor.state.TaskStatus;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 /**
  * Guard 测试：验证 FAILED->RUNNING, RUNNING->PAUSED, RUNNING->COMPLETED 迁移约束

@@ -3,11 +3,11 @@ package xyz.firestige.executor.execution.pipeline;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import xyz.firestige.executor.exception.ErrorType;
-import xyz.firestige.executor.exception.ExecutionException;
 import xyz.firestige.executor.exception.FailureInfo;
 import xyz.firestige.executor.execution.PipelineResult;
 import xyz.firestige.executor.execution.StageResult;
 import xyz.firestige.executor.execution.StageStatus;
+import xyz.firestige.executor.execution.checkpoint.Checkpoint;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -141,7 +141,7 @@ public class Pipeline {
         }
 
         // 加载检查点
-        xyz.firestige.executor.execution.checkpoint.Checkpoint checkpoint =
+        Checkpoint checkpoint =
                 checkpointManager.loadCheckpoint(context.getTaskId());
 
         if (checkpoint == null) {
@@ -210,7 +210,7 @@ public class Pipeline {
         }
 
         // 加载检查点
-        xyz.firestige.executor.execution.checkpoint.Checkpoint checkpoint =
+        Checkpoint checkpoint =
                 checkpointManager.loadCheckpoint(context.getTaskId());
 
         if (checkpoint == null) {
@@ -281,8 +281,8 @@ public class Pipeline {
      */
     private void saveCheckpoint(PipelineContext context, String stageName, List<StageResult> completedStages) {
         try {
-            xyz.firestige.executor.execution.checkpoint.Checkpoint checkpoint =
-                    new xyz.firestige.executor.execution.checkpoint.Checkpoint(context.getTaskId(), stageName);
+            Checkpoint checkpoint =
+                    new Checkpoint(context.getTaskId(), stageName);
 
             // 保存每个 Stage 的输出数据
             for (StageResult stageResult : completedStages) {

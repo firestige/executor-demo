@@ -13,19 +13,15 @@ import xyz.firestige.executor.event.SpringTaskEventSink;
 import xyz.firestige.executor.domain.stage.TaskStage;
 import xyz.firestige.executor.domain.stage.StageExecutionResult;
 import xyz.firestige.executor.domain.stage.StageStep;
-import xyz.firestige.executor.domain.stage.CompositeServiceStage;
-import xyz.firestige.executor.domain.stage.rollback.RollbackStrategy;
-import xyz.firestige.executor.state.event.TaskStageFailedEvent;
-import xyz.firestige.executor.state.event.TaskStageCompletedEvent;
 import xyz.firestige.executor.state.event.TaskRollingBackEvent;
-import xyz.firestige.executor.state.event.TaskRolledBackEvent;
 import xyz.firestige.executor.state.event.TaskRollbackFailedEvent;
 
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.stream.Collectors;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * 回滚阶段事件测试：验证 per-stage 事件按成功/失败发布。

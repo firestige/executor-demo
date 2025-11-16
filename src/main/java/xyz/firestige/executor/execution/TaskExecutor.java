@@ -17,6 +17,8 @@ import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
+
 import xyz.firestige.executor.domain.stage.CompositeServiceStage;
 import xyz.firestige.executor.domain.stage.rollback.RollbackStrategy;
 import xyz.firestige.executor.domain.stage.steps.ConfigUpdateStep;
@@ -39,7 +41,7 @@ public class TaskExecutor {
     private final TaskEventSink eventSink;
     private final int progressIntervalSeconds;
     private volatile HeartbeatScheduler heartbeatScheduler; // 允许后置注入
-    private final java.util.concurrent.atomic.AtomicInteger completedCounter = new java.util.concurrent.atomic.AtomicInteger();
+    private final AtomicInteger completedCounter = new AtomicInteger();
     private final TaskStateManager stateManager; // new
     private final ConflictRegistry conflicts; // for SC-02 release
     private final MetricsRegistry metrics;

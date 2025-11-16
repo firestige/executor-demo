@@ -5,13 +5,20 @@ import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import xyz.firestige.dto.deploy.TenantDeployConfig;
+import xyz.firestige.executor.exception.ErrorType;
+import xyz.firestige.executor.exception.FailureInfo;
 import xyz.firestige.executor.facade.TaskCreationResult;
 import xyz.firestige.executor.util.TestDataFactory;
 import xyz.firestige.executor.util.TimingExtension;
+import xyz.firestige.executor.validation.ValidationError;
+import xyz.firestige.executor.validation.ValidationSummary;
 
 import java.util.List;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * DeploymentTaskFacade 单元测试 - 简化版
@@ -48,9 +55,9 @@ class DeploymentTaskFacadeTest {
     @DisplayName("场景: TaskCreationResult 失败结果")
     void testTaskCreationResultFailure() {
         // Given: 失败信息
-        xyz.firestige.executor.exception.FailureInfo failureInfo =
-            xyz.firestige.executor.exception.FailureInfo.of(
-                xyz.firestige.executor.exception.ErrorType.VALIDATION_ERROR,
+        FailureInfo failureInfo =
+            FailureInfo.of(
+                ErrorType.VALIDATION_ERROR,
                 "配置校验失败"
             );
 
@@ -67,15 +74,15 @@ class DeploymentTaskFacadeTest {
     @DisplayName("场景: TaskCreationResult 校验失败结果")
     void testTaskCreationResultValidationFailure() {
         // Given: 校验摘要
-        xyz.firestige.executor.validation.ValidationSummary summary =
-            new xyz.firestige.executor.validation.ValidationSummary();
+        ValidationSummary summary =
+            new ValidationSummary();
         summary.setTotalConfigs(3);
 
         // 添加无效配置
         List<TenantDeployConfig> configs = TestDataFactory.createConfigList(1);
         summary.addInvalidConfig(
             configs.get(0),
-            List.of(xyz.firestige.executor.validation.ValidationError.of("field", "错误"))
+            List.of(ValidationError.of("field", "错误"))
         );
 
         // When: 创建校验失败结果
