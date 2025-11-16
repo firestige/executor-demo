@@ -3,6 +3,8 @@ package xyz.firestige.executor.state;
 import org.springframework.context.ApplicationEventPublisher;
 import xyz.firestige.executor.exception.FailureInfo;
 import xyz.firestige.executor.state.event.*;
+import xyz.firestige.executor.domain.state.TaskStateMachine;
+import xyz.firestige.executor.domain.state.ctx.TaskTransitionContext;
 
 import java.time.Duration;
 import java.util.List;
@@ -19,7 +21,7 @@ public class TaskStateManager {
      * 任务状态机映射
      * Key: taskId, Value: TaskStateMachine
      */
-    private final Map<String, TaskStateMachine> stateMachines = new ConcurrentHashMap<>();
+    private final Map<String, xyz.firestige.executor.domain.state.TaskStateMachine> stateMachines = new ConcurrentHashMap<>();
 
     /**
      * Spring 事件发布器
@@ -39,8 +41,15 @@ public class TaskStateManager {
      * 初始化任务状态
      */
     public void initializeTask(String taskId, TaskStatus initialStatus) {
-        TaskStateMachine stateMachine = new TaskStateMachine(initialStatus);
-        stateMachines.put(taskId, stateMachine);
+        TaskStateMachine sm = new TaskStateMachine(initialStatus);
+        // 注册 Guards 与 Actions（简化版本）
+        sm.registerGuard(TaskStatus.FAILED, TaskStatus.RUNNING, ctx -> ctx.getAggregate().getRetryCount() < (ctx.getAggregate().getMaxRetry() != null ? ctx.getAggregate().getMaxRetry() : 3));
+        sm.registerGuard(TaskStatus.RUNNING, TaskStatus.PAUSED, ctx -> ctx.getContext() != null && ctx.getContext().isPauseRequested());
+        sm.registerGuard(TaskStatus.RUNNING, TaskStatus.COMPLETED, ctx -> ctx.getAggregate().getCurrentStageIndex() >= ctx.getTotalStages());
+        sm.registerAction(TaskStatus.PENDING, TaskStatus.RUNNING, ctx -> ctx.getAggregate().setStartedAt(java.time.LocalDateTime.now()));
+        sm.registerAction(TaskStatus.RUNNING, TaskStatus.COMPLETED, ctx -> ctx.getAggregate().setEndedAt(java.time.LocalDateTime.now()));
+        sm.registerAction(TaskStatus.RUNNING, TaskStatus.FAILED, ctx -> ctx.getAggregate().setEndedAt(java.time.LocalDateTime.now()));
+        stateMachines.put(taskId, sm);
         sequences.put(taskId, 0L);
     }
 
@@ -62,22 +71,21 @@ public class TaskStateManager {
      * 更新状态（完整版）
      */
     public void updateState(String taskId, TaskStatus newStatus, FailureInfo failureInfo, String message) {
-        TaskStateMachine stateMachine = stateMachines.get(taskId);
-        if (stateMachine == null) {
+        TaskStateMachine sm = stateMachines.get(taskId);
+        if (sm == null) {
             // 如果状态机不存在，创建一个新的
             initializeTask(taskId, newStatus);
             return;
         }
-
-        // 尝试状态转移
-        StateTransitionResult result = stateMachine.transitionTo(newStatus, failureInfo);
-
-        if (result.isSuccess() && eventPublisher != null) {
+        TaskStatus old = sm.getCurrent();
+        // 构造迁移上下文（task 聚合后续由调用方传入，这里暂仅 totalStages=0）
+        TaskTransitionContext txCtx = new TaskTransitionContext(null, null, 0);
+        TaskStatus after = sm.transitionTo(newStatus, txCtx);
+        boolean transitioned = after != null && after != old && after == newStatus;
+        if (transitioned && eventPublisher != null) {
             // 根据新状态创建并发布对应的事件
             TaskStatusEvent event = createEventForStatus(taskId, newStatus, failureInfo, message);
-            if (event != null) {
-                eventPublisher.publishEvent(event);
-            }
+            if (event != null) eventPublisher.publishEvent(event);
         }
     }
 
@@ -85,14 +93,14 @@ public class TaskStateManager {
      * 获取任务当前状态
      */
     public TaskStatus getState(String taskId) {
-        TaskStateMachine stateMachine = stateMachines.get(taskId);
-        return stateMachine != null ? stateMachine.getCurrentStatus() : null;
+        xyz.firestige.executor.domain.state.TaskStateMachine sm = stateMachines.get(taskId);
+        return sm != null ? sm.getCurrent() : null;
     }
 
     /**
      * 获取状态机
      */
-    public TaskStateMachine getStateMachine(String taskId) {
+    public xyz.firestige.executor.domain.state.TaskStateMachine getStateMachine(String taskId) {
         return stateMachines.get(taskId);
     }
 

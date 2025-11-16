@@ -1,9 +1,9 @@
 package xyz.firestige.executor.domain.state;
 
 /**
- * 状态迁移 Guard，返回是否允许迁移。
+ * 通用状态迁移 Guard 接口。
  */
-public interface TransitionGuard<C> {
-    boolean canTransition(C context);
+public interface TransitionGuard<T> {
+    boolean canTransition(T ctx);
 }
 

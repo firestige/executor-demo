@@ -1,6 +1,7 @@
 package xyz.firestige.executor.domain.state;
 
 import xyz.firestige.executor.domain.task.TaskContext;
+import xyz.firestige.executor.domain.state.ctx.TaskTransitionContext;
 import xyz.firestige.executor.state.TaskStatus;
 
 import java.util.*;
@@ -16,6 +17,8 @@ public class TaskStateMachine {
     private final Map<TaskStatus, Set<TaskStatus>> rules = new EnumMap<>(TaskStatus.class);
     private final Map<String, List<TransitionGuard<TaskContext>>> guards = new HashMap<>();
     private final Map<String, List<TransitionAction<TaskContext>>> actions = new HashMap<>();
+    private final Map<String, List<TransitionGuard<TaskTransitionContext>>> guardsCtx = new HashMap<>();
+    private final Map<String, List<TransitionAction<TaskTransitionContext>>> actionsCtx = new HashMap<>();
 
     public TaskStateMachine(TaskStatus initial) {
         this.current = initial;
@@ -48,6 +51,14 @@ public class TaskStateMachine {
         actions.computeIfAbsent(key(from,to), k-> new ArrayList<>()).add(action);
     }
 
+    public void registerGuard(TaskStatus from, TaskStatus to, TransitionGuard<TaskTransitionContext> guard) {
+        guardsCtx.computeIfAbsent(key(from,to), k-> new ArrayList<>()).add(guard);
+    }
+
+    public void registerAction(TaskStatus from, TaskStatus to, TransitionAction<TaskTransitionContext> action) {
+        actionsCtx.computeIfAbsent(key(from,to), k-> new ArrayList<>()).add(action);
+    }
+
     public synchronized boolean canTransition(TaskStatus to, TaskContext ctx) {
         Set<TaskStatus> allowed = rules.getOrDefault(current, Collections.emptySet());
         if (!allowed.contains(to)) return false;
@@ -69,6 +80,29 @@ public class TaskStateMachine {
         List<TransitionAction<TaskContext>> as = actions.get(key(old,to));
         if (as != null) {
             for (TransitionAction<TaskContext> a : as) a.onTransition(ctx);
+        }
+        return current;
+    }
+
+    public synchronized boolean canTransition(TaskStatus to, TaskTransitionContext ctx) {
+        Set<TaskStatus> allowed = rules.getOrDefault(current, Collections.emptySet());
+        if (!allowed.contains(to)) return false;
+        List<TransitionGuard<TaskTransitionContext>> gs = guardsCtx.get(key(current,to));
+        if (gs != null) {
+            for (TransitionGuard<TaskTransitionContext> g : gs) {
+                if (!g.canTransition(ctx)) return false;
+            }
+        }
+        return true;
+    }
+
+    public synchronized TaskStatus transitionTo(TaskStatus to, TaskTransitionContext ctx) {
+        if (!canTransition(to, ctx)) return current;
+        TaskStatus old = current;
+        current = to;
+        List<TransitionAction<TaskTransitionContext>> as = actionsCtx.get(key(old,to));
+        if (as != null) {
+            for (TransitionAction<TaskTransitionContext> a : as) a.onTransition(ctx);
         }
         return current;
     }
