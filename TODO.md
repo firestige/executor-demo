@@ -18,245 +18,84 @@
 
 ---
 
-## Phase 0 — 启动前准备与回退策略
-- 建立工作分支：feature/plan-task-stage-refactor
-- 打开持续集成的单测与编译校验（mvn -q -DskipTests=false test）
-- 约定回退方式：若任一阶段验收失败，使用 git revert/restore 回滚到上一验收点 tag
+## Completed History (归档已完成内容，不再作为当前执行 Phase)
+- Phase 0: 启动准备与分支建立 (已完成)
+- Phase 1: 新领域模型与上下文引入 (已完成)
+- Phase 2: 初版状态机 (TaskStateMachine + 基础 Guard/Action 接口) (已完成基础, 等待增强单测)
+- Phase 3: 冲突注册表与调度骨架 (已完成初版)
+- Phase 4: Stage/Step 机制与 HealthCheckStep (已完成)
+- Phase 5: Checkpoint 抽象与内存实现 (已完成)
+- Phase 6: 新 TaskExecutor 骨架 + 心跳 + MDC + 回滚/重试基础 (已完成接线, 等待状态机统一化 retry/cancel)
+- Phase 7: Facade 接线新架构 (已完成)
+- Phase 8: 旧体系文件清理 (已完成, legacy 删除)
+- Phase 9: 文档初步更新 (README / ARCHITECTURE_PROMPT) (已完成)
 
-Checkpoint（必须满足）
-- 分支已创建；本文件合入；CI 可跑单测
-灾难恢复
-- git switch main && git revert <last-merge> 或直接回滚到最近 tag
-
----
-
-## Phase 1 — 新领域模型与上下文（不改现有业务流）
-目标：引入全新领域对象与上下文，不接线老流程，确保可编译与单测可写。
-- 新增 domain 聚合：
-  - PlanAggregate(planId, version, tasks, status, maxConcurrency, failureSummary, progress)
-  - TaskAggregate(taskId, planId, tenantId, deployUnitId/version/name, status, currentStageIndex, retryCount/maxRetry, failureInfo, checkpoint, stageResults)
-- 新增上下文：
-  - PlanContext（start/end、running/queued 统计、pause/cancel 标志）
-  - TaskContext（PipelineContext 包装；pause/cancel 标志；MDC 注入/清理）
-- 不接入旧 TaskStateManager/Orchestrator；仅提供最小构造器与 getter/setter；添加基础单测（构建/序列化/空行为）。
-
-Checkpoint
-- 编译通过；PlanAggregate/TaskAggregate/Contexts 的构造与基本方法单测通过
-灾难恢复
-- 回滚本阶段提交；不影响旧流程
+> 以上阶段不再参与后续排期；需要回溯时参考提交 Tag 与此列表。
 
 ---
 
-## Phase 2 — 状态机（带 Guard/Action 与自增 sequence）
-目标：引入 TaskStateMachine 与 PlanStateMachine（新实现），具备 Guard/Action 扩展点与事件序列能力；暂不替换旧状态机调用。
-- 已完成：新增 `domain/state/TaskStateMachine`, `domain/state/PlanStateMachine`, `TransitionGuard`, `TransitionAction`
-- 待办（后续 Phase 接线）：
-  - 将 sequenceId 注入事件（TaskStateManager 内部），保持事件幂等
-  - 定义核心 Guard：FAILED→RUNNING（重试：retryCount<maxRetry 且非 rolling_back）、RUNNING→PAUSED（pauseRequested）等
-  - 定义 Action：进入 RUNNING 记录开始时间；COMPLETED/FAILED 记录耗时与失败原因
+## Upcoming Phases (现行与未来执行计划)
 
-Checkpoint
-- ✅ 新状态机编译通过，新增最小单测（后续阶段补充更完整测试）
+### Phase 10 – 状态机强化与关键事件补齐
+目标: 完善 Guards/Actions, 引入 RetryStarted/RetryCompleted, per-stage rollback events, 补核心测试。
+任务:
+- Guards 单测 (FAILED→RUNNING, RUNNING→COMPLETED, RUNNING→PAUSED)
+- Actions: 记录 startedAt / endedAt / durationMillis
+- 事件: RetryStarted / RetryCompleted (fromCheckpoint 标志), StageRollingBack / StageRolledBack / StageRollbackFailed
+- Heartbeat 长耗时 Step 测试
+- FIFO & 并发单测 (maxConcurrency=1 & >1)
+验收: 测试全部通过, 事件日志包含新增事件, 序列号连续。
 
----
+### Phase 11 – 状态机统一化 + 回滚快照恢复
+目标: 去除直接 task.setStatus, 回滚使用 prevConfigSnapshot 恢复版本, 查询补充新字段。
+任务:
+- 替换 retry/cancel 直接赋值 → stateManager.updateState
+- PreviousConfigRollbackStrategy: 恢复 deployUnitId/version/name + lastKnownGoodVersion
+- TaskAggregate.durationMillis 字段 + 查询输出
+验收: 重试/取消路径仅通过状态机, 回滚后版本/lastKnownGoodVersion 正确, 查询显示 durationMillis。
 
-## Phase 3 — 冲突注册表与并发阈值调度（新 Orchestrator/Scheduler）
-目标：用 PlanOrchestrator + TaskScheduler 取代旧 TaskOrchestrator/ExecutionUnitScheduler（先并行存在，引用尚不切换）。
-- 已完成：
-  - `support/conflict/ConflictRegistry`
-  - `orchestration/TaskScheduler`（并发阈值 + FIFO 等待）
-  - `orchestration/PlanOrchestrator`（submitPlan 接口 + 冲突检测 + 调度）
-- 待办（后续 Phase 接线）：
-  - pausePlan/resumePlan/rollbackPlan 路由实现
-  - 调度完成回调中释放 ConflictRegistry、推进队列
-  - 引入 TaskWorkerFactory 的默认实现（调用 TaskExecutor）
-  - 端到端并发阈值与 FIFO 顺序测试
+### Phase 12 – Checkpoint 增强与持久化 SPI
+目标: 完善 checkpoint 行为与可插拔存储。
+任务:
+- 每 Stage 结束保存, 终态/回滚后清理统一方法
+- Batch 恢复 API
+- RedisCheckpointStore 占位实现 + SPI 选择 (memory|redis|db)
+验收: 单测覆盖暂停→恢复、回滚后清理、批量恢复。
 
-Checkpoint
-- ✅ 新组件编译通过，未接线旧流
+### Phase 13 – 健康检查可配置化与 Step 工厂
+目标: 解耦硬编码 versionKey/path, 统一 Stage 构建工厂。
+任务:
+- ExecutorProperties 支持 healthCheck.versionKey / healthCheck.path
+- HealthCheckStep 使用配置值
+- 通用 StageFactory (将 buildStageForTask 逻辑抽离)
+验收: 配置项变更反映到健康检查请求; 单测覆盖自定义键/路径。
 
----
+### Phase 14 – 可观测性与指标
+目标: 引入基础 Micrometer 指标与 MDC 稳定性验证。
+任务:
+- 指标: task_active, task_completed, task_failed, rollback_count, heartbeat_lag
+- MDC 清理测试 & 日志结构化
+验收: 指标注册成功, MDC 无残留, 日志包含标准字段。
 
-## Phase 4 — Stage 与多步骤策略（含健康检查 Step）
-目标：将服务切换动作建模为可多步骤的 Stage；健康检查编入策略中，固定间隔 3s，10 次失败判定失败。
-- 已完成：
-  - `domain/stage/TaskStage`, `StageStep`, `StageExecutionResult`, `StepExecutionResult`
-  - `domain/stage/CompositeServiceStage`（顺序执行 + 逆序回滚）
-  - `service/health/HealthCheckClient`（抽象）与 `MockHealthCheckClient`（默认实现）
-  - `domain/stage/steps/HealthCheckStep`（3s 间隔，10 次失败，全实例成功）
-- 待办：
-  - 将现有 ServiceNotificationStrategy → 组合 Stage 的映射工厂
-  - 将 CompositeServiceStage 接入 TaskExecutor 的执行链
-  - 健康检查版本键/端点路径可配置化（按 DTO/应用配置）
-  - 单元测试：成功/失败/部分失败分支
+### Phase 15 – 性能与批量恢复/并发压测
+目标: 验证在高并发与大批量任务下的性能与稳定性。
+任务:
+- 压测脚本/基准测试 (大规模计划, 并发租户)
+- 锁释放兜底策略测试
+- Batch 恢复性能评估
+验收: 基准结果记录, 无死锁/泄漏, 锁释放彻底。
 
-Checkpoint
-- ✅ 新增类型编译通过；未接线旧流
-
----
-
-## Phase 5 — CheckpointStore 抽象与集成
-目标：将检查点抽象为可插拔存储；默认内存实现；与 Task 执行对齐，仅在 Stage 间保存。
-- 已完成：
-  - `checkpoint/CheckpointStore`（接口）、`checkpoint/InMemoryCheckpointStore`（默认实现）
-  - `checkpoint/CheckpointService`（save/load/clear，更新 TaskAggregate 并持久化到 Store）
-- 待办：
-  - 在 TaskExecutor 中调用 CheckpointService 在每个 Stage 边界保存检查点；暂停时保存；成功/失败/回滚后清理
-  - 增加 batch 接口在大规模 Task 恢复时优化
-  - 引入持久化实现（Redis/DB）
-  - 单测：保存/恢复/清理、暂停恢复路径
-
-Checkpoint
-- ✅ 新增类型编译通过；未接线旧流
+### Phase 16 – 文档与治理终稿
+目标: 完成最终架构文档、事件 payload 示例与扩展指南。
+任务:
+- README: 事件示例/扩展策略章节
+- ARCHITECTURE_PROMPT: 上下文分离 (Runtime vs Transition), RollbackStrategy, 扩展点列表
+- 升级迁移指南 (旧→新)
+验收: 文档经审核无遗留旧术语, 与实现同步。
 
 ---
 
-## Phase 6 — TaskExecutor（替换 TenantTaskExecutor）与事件/心跳/MDC
-目标：实现新 TaskExecutor，整合状态机、事件序列、MDC、心跳进度（当前仅骨架，不接线旧流）。
-- 已完成：
-  - `execution/TaskExecutor`（执行、暂停/取消检测、回滚、CheckpointService 集成、心跳进度、MDC 注入与清理）
-  - `execution/TaskExecutionResult`（扩展字段 planId/taskId/status/duration）
-  - `event/TaskEventSink` 与 `event/NoopTaskEventSink`（含回滚阶段事件）
-- 待办：
-  - 接入状态机序列号（sequenceId 由 TaskStateManager 驱动，而非本地计数）
-  - 心跳进度调度改为独立调度器（避免长 Stage 阻塞心跳）
-  - 事件下沉接线到 Spring ApplicationEventPublisher（替代 Noop）
-  - Pause/Cancel 事件完整化（取消事件发布）
-  - 重试路径（从检查点 vs 从头）逻辑与事件
-  - 单测：成功、失败、暂停恢复、回滚失败、心跳频率、Checkpoint 清理
-
-Checkpoint
-- ✅ 骨架编译通过；未影响旧执行流；事件接口与结果模型就绪
-
----
-
-## Phase 7 — FacadeImpl 接线新流程（保持方法签名）
-当前状态：
-- ✅ createSwitchTask 已接线新 Plan/Task/Stage，返回 planId + taskIds
-- ✅ Stage 模型接入（NotificationStep + HealthCheckStep）
-- ✅ PlanOrchestrator + TaskScheduler 调度接入
-- ✅ 心跳与事件序列号接入（TaskStateManager 驱动）
-- ✅ 暂停/恢复/取消 请求标志对接 TaskContext（协作式）
-- ✅ 回滚与重试逻辑初步接入（TaskExecutor.retry / invokeRollback）
-- ✅ 查询接口使用新注册表（动态 totalStages）
-- ✅ stageRegistry / executorRegistry / contextRegistry 建立
-
-剩余待办（实时更新）：
-- [x] HeartbeatSupplier 改为基于 executor.completedCounter（当前依赖 currentStageIndex）
-- [x] 回滚/重试重用原始 executorRegistry 中实例（避免重新构造丢失状态）
-- [x] 重试 fromCheckpoint 时补发必要进度事件（确保序列号连续）
-- [ ] 回滚事件补充阶段级明细（单独事件可选）
-- [x] Query 增加当前 Stage 名称、是否 pause/cancel 标志输出
-- [x] createSwitchTask 中重复构建 stage 两次（taskStages 与 stageRegistry）已合并
-- [ ] 移除旧 ExecutionUnit 相关代码并标记 @Deprecated（Phase8）
-- [x] E2E 测试：创建→暂停→恢复→取消→重试（fromCheckpoint / scratch）→回滚（已通过，后续增强断言）
-- [x] 健康检查失败路径单测（全部失败、部分失败、最后一次成功）
-- [ ] 文档补充：查询字段含义、重试策略、回滚语义
-
-Checkpoint 通过标准（完成以上待办后）：
-- 新增 E2E 测试全部通过（当前已通过，建议增强回滚后状态断言）
-- Heartbeat 精确反映已完成 Stage 数（跳过也计数）
-- 重试不重复已完成 Stage 事件（或明确发生补偿事件，序列号严格递增）
-- 回滚后任务状态为 ROLLED_BACK 或 ROLLBACK_FAILED 并发布相应事件
-
----
-
-## Phase 8 — 弃用与清理（不直接删除文件）
-当前进度（已完成）：
-- ✅ 标注 @Deprecated：
-  - orchestration：ExecutionUnit.java / ExecutionUnitStatus.java / ExecutionUnitResult.java / ExecutionUnitScheduler.java / TaskOrchestrator.java
-  - service/stage：ServiceNotificationStage.java
-  - execution：TenantTaskExecutor.java
-- ✅ 主线引用清理：
-  - Spring 配置 `ExecutorConfiguration` 切换到新架构装配（ExecutorProperties + HealthCheckClient + 新 Facade 构造器）
-  - Facade 无参构造移除旧调度器/旧 orchestrator 依赖；新增不依赖旧类的构造器（供测试/新接入）
-  - 集成测试 `FacadeE2ERefactorTest` 改用新构造器与 stub，不再依赖旧类
-- ✅ 构建与测试：mvn test 通过
-- ✅ 删除操作（已执行，见提交记录）：
-  - 移除文件：
-    - src/main/java/xyz/firestige/executor/orchestration/ExecutionUnit.java
-    - src/main/java/xyz/firestige/executor/orchestration/ExecutionUnitStatus.java
-    - src/main/java/xyz/firestige/executor/orchestration/ExecutionUnitResult.java
-    - src/main/java/xyz/firestige/executor/orchestration/ExecutionUnitScheduler.java
-    - src/main/java/xyz/firestige/executor/orchestration/TaskOrchestrator.java
-    - src/main/java/xyz/firestige/executor/service/stage/ServiceNotificationStage.java
-    - src/main/java/xyz/firestige/executor/execution/TenantTaskExecutor.java
-  - 提交信息：refactor(p8): remove deprecated legacy classes; tests green
-
-Checkpoint（已满足）：
-- 主代码不再引用上述旧类；相关文件已删除
-- 全量测试通过
-
----
-
-## Phase 9 — 文档与交付（当前）
-- ✅ README 审校完成（同步新架构、API、健康检查与测试策略）
-- ✅ ARCHITECTURE_PROMPT.md 终稿（去除旧实现，聚焦新架构）
-- ✅ 删除操作指导（如下）：
-
-删除操作指导
-- 创建分支：
-```bash
-git checkout -b refactor/p8-remove-legacy
-```
-- 删除文件（已执行，仅供留档）：
-```bash
-git rm src/main/java/xyz/firestige/executor/orchestration/ExecutionUnit.java \
-       src/main/java/xyz/firestige/executor/orchestration/ExecutionUnitStatus.java \
-       src/main/java/xyz/firestige/executor/orchestration/ExecutionUnitResult.java \
-       src/main/java/xyz/firestige/executor/orchestration/ExecutionUnitScheduler.java \
-       src/main/java/xyz/firestige/executor/orchestration/TaskOrchestrator.java \
-       src/main/java/xyz/firestige/executor/service/stage/ServiceNotificationStage.java \
-       src/main/java/xyz/firestige/executor/execution/TenantTaskExecutor.java
-```
-- 构建与测试：
-```bash
-mvn -q -DskipTests=false test
-```
-- 提交与推送：
-```bash
-git commit -m "refactor(p8): remove deprecated legacy classes; tests green"
-```
-
-Checkpoint
-- 文档更新；你审核通过
-灾难恢复
-- 无
-
----
-
-## 验收标准（统一）
-- 构建：mvn -q -DskipTests=false test 通过
-- Lint/格式：保持与现有风格一致
-- 事件：包含自增 sequenceId，消费方可按序处理；MDC 字段正确
-- 暂停/恢复：仅在 Stage 间响应；checkpoint 可恢复
-- 并发：尊重 Plan.maxConcurrency；FIFO 等待
-- 冲突：同租户不并发执行；任务结束与异常路径均释放；有兜底清理
-- 健康检查：3s 间隔，10 次失败；“全实例成功”通过
-
----
-
-## 变更审计与回滚指引（通用）
-- 每阶段结束：
-  - 打 Tag：refactor-P{N}-ok
-  - 记录 CI 构建日志与测试报告
-  - 提交“阶段验收记录”到 TEST_PROGRESS_REPORT.md
-- 回滚：
-  - git switch feature/plan-task-stage-refactor
-  - git reset --hard <refactor-P{N-1}-ok> 或 git revert <bad-merge-commit>
-
----
-
-## 后续可选项（非本轮）
-- Checkpoint 持久化实现（Redis/DB）
-- Plan 级 MAX_CONCURRENCY 动态调优接口
-- 指标上报与可观测性埋点（Micrometer）
-- 事件幂等增强（加入 epoch/启动时间戳）
-- 优雅停机与“在途任务”策略
-
----
-
-## Remaining Backlog (未完成待办梳理)
+## Remaining Backlog (主题分类参考, 与 Phases 对应)
 > 以下为尚未完成或部分完成的任务，已按主题重新分解，供后续迭代：
 
 ### 1. 状态机与语义强化 (State Machine Enhancements)
@@ -345,35 +184,3 @@ Checkpoint
 - RedisCheckpointStore & SPI 切换
 - Metrics + MDC 自动化测试
 - Batch 恢复与性能压测
-
-## 状态同步
-- “文档补充：查询字段含义、重试策略、回滚语义” 已在 README 与 ARCHITECTURE_PROMPT 完成，标记为 ✅（原 TODO 未勾选）
-- “回滚事件补充阶段级明细” 部分完成（总事件含阶段列表），需补 per-stage 事件 → 保持为进行中
-
----
-
-## 新增待办（本次交互补充）
-### 状态机与行为一致性增强
-- [ ] Guard/Action 单测：
-  - FAILED→RUNNING 重试上限拦截（retryCount == maxRetry 禁止迁移）
-  - RUNNING→COMPLETED 仅在 currentStageIndex == totalStages 时允许
-  - RUNNING→PAUSED 在 pauseRequested=true 时允许，其他拒绝
-  - 验证非法迁移保持原状态（no-op）并不发布事件
-- [ ] 回滚时恢复 prevConfigSnapshot：
-  - PreviousConfigRollbackStrategy 在成功回滚后重置 deployUnitVersion/deployUnitId/deployUnitName 到快照值
-  - 设置 lastKnownGoodVersion=快照版本，并发布 TaskStageRolledBack/TaskRolledBack 事件
-- [ ] 用状态机替换 retry/cancel 的直接赋值：
-  - retry(fromCheckpoint=false) 将 PENDING→RUNNING 通过 stateManager.updateState 而非 task.setStatus
-  - cancelTask 使用 stateManager.updateState(taskId, CANCELLED) 替代直接赋值
-  - 单测覆盖：取消后不再允许 RUNNING→COMPLETED
-- [ ] 记录任务持续时间字段：
-  - TaskAggregate 增加 durationMillis 字段（COMPLETED/FAILED/RolledBack 设置）
-  - Action 在 COMPLETED/FAILED/ROLLED_BACK/ROLLBACK_FAILED 时写入 durationMillis = endedAt-startedAt
-  - 查询接口 TaskStatusInfo 输出 durationMillis（若存在）
-
-### 后续执行顺序建议
-1. 增加 TaskAggregate.durationMillis 字段及状态机 Action 设置逻辑
-2. 更新 PreviousConfigRollbackStrategy 以恢复快照并设置 lastKnownGoodVersion
-3. 改造 cancel & retry 流程调用 stateManager.updateState
-4. 编写 Guard/Action 单测（分文件：RetryGuardTest, PauseGuardTest, CompletionGuardTest）
-5. 扩展查询 DTO 输出 durationMillis 与 lastKnownGoodVersion
