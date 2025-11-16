@@ -1,6 +1,6 @@
 # Executor Demo – Architecture Prompt (English Clean Version)
 
-Updated: 2025-11-16
+Updated: 2025-11-17
 
 ## Purpose
 Multi-tenant blue/green (or weighted) configuration switch executor. A Plan groups tenant-specific Tasks; each Task runs a sequential list of Stages (each composed of ordered Steps) to push new config, broadcast change events, and verify health. Supports max concurrency, FIFO ordering when needed, pause/resume, manual rollback, manual retry, and heartbeat progress events.
@@ -64,14 +64,19 @@ Multi-tenant blue/green (or weighted) configuration switch executor. A Plan grou
 - Metrics: Micrometer counters/gauges (task_active, task_completed, task_failed, rollback_count, heartbeat_lag).
 - RollbackHealthVerifier: Pluggable health reconfirmation for rollback success to gate lastKnownGoodVersion update.
 
+## Completed Phases (Archive)
+- Phase 10-13: Core state machine, events, checkpoint, health check, factory abstractions - DONE
+- Phase 14: Observability metrics + MDC stability tests - DONE
+- Phase 15: Performance / concurrency stress tests, lock release safeguards - DONE
+- Phase 16: Final documentation & migration guide, 4+1 architecture views - DONE (2025-11-17)
+
 ## Upcoming Phases (High-Level)
-- Phase 10: Strengthen Guards/Actions, add RetryStarted / RetryCompleted, per-stage rollback events, core tests.
-- Phase 11: Unify status changes, rollback snapshot restore + durationMillis tracking, cancellation enrichment, plan PAUSED wiring, rollback verifier hook.
-- Phase 12: Persistent checkpoint SPI + batch recovery.
-- Phase 13: Health check configurability (versionKey/path) + StageFactory.
-- Phase 14: Observability metrics + MDC stability tests.
-- Phase 15: Performance / concurrency stress tests, lock release safeguards.
-- Phase 16: Final documentation & migration guide.
+- Phase 17: Architecture refactoring & integration tests
+  - RF-01: Extract business logic from Facade to Application Service layer
+  - RF-02: Simplify TaskWorkerFactory parameters (introduce parameter object)
+  - RF-04: Comprehensive integration test suite (Testcontainers, 7 core scenarios)
+- Phase 18: Stage strategy pattern (low priority)
+  - RF-03: Declarative Stage assembly via @Component + @Order auto-discovery
 
 ## Key Invariants
 - No concurrent active Task for the same tenant.

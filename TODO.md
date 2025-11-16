@@ -43,75 +43,153 @@
   - HC-01（ExecutorProperties 支持 healthCheckPath / healthCheckVersionKey）
   - HC-03（StageFactory 抽象与接线）
   - SC-05（TaskWorkerFactory 抽象与接线）
+- **Phase 14**：可观测性与测试完善 — 已完成
+> 截至当前 Phase 16 全部完成。所有状态机、事件、回滚、Checkpoint、健康检查、并发调度、测试覆盖、可观测性、文档均已完成。
+  - C-03（执行后 MDC 清理）
+- **Phase 15**：文档与治理 — 已完成
+  - **问题**：DeploymentTaskFacadeImpl.createSwitchTask 方法包含大量业务逻辑
+### 2.1. 架构重构（Phase 17）
+- **RF-01** Facade 业务逻辑剥离 — TODO
+  - **问题**：DeploymentTaskFacadeImpl.createSwitchTask 方法包含大量业务逻辑
+  - **目标**：Facade 作为防腐层，仅负责数据结构转换和协调调用
+  - **方案**：
+    - 提取业务逻辑到专门的应用服务层（Application Service）
+    - 考虑引入 PlanApplicationService / TaskApplicationService
+    - Facade 仅负责：DTO 转换 + 调用应用服务 + 结果封装
+  - **优先级**：高
+    - Facade 仅负责：DTO 转换 + 调用应用服务 + 结果封装
+- **RF-02** TaskWorkerFactory 参数简化 — TODO
+  - **问题**：DefaultTaskWorkerFactory.create() 方法参数过多（8+ 个参数）
+  - **目标**：提升可读性和可维护性
+  - **方案**：
+    - 引入 TaskWorkerCreationContext 参数对象（Builder 模式）
+    - 或使用 TaskWorkerConfig 配置对象封装相关参数
+    - 保持扩展性：便于后续增加新参数
+  - **优先级**：中
+    - 引入 TaskWorkerCreationContext 参数对象（Builder 模式）
+- **RF-03** StageFactory 策略模式与自动装配 — TODO
+  - **问题**：StageFactory.buildStages 目前硬编码 Stage 创建逻辑
+  - **目标**：支持声明式 Stage 装配，便于扩展自定义 Stage
+  - **方案**：
+    - 定义 StageProvider 接口（提供单个 Stage）
+    - 使用 @Component + @Order 注解标记 StageProvider 实现类
+    - StageFactory 通过 Spring 容器自动发现所有 StageProvider
+    - 按 @Order 排序后组装为 List<TaskStage>
+    - 支持条件装配（@ConditionalOnProperty）
+  - **设计要点**：
+    - StageProvider 接口：`TaskStage provide(TaskAggregate, TenantDeployConfig, ExecutorProperties)`
+    - 自定义注解 @StageComponent(order=100, name="config-update")
+    - 自动装配机制：使用 ApplicationContext.getBeansOfType() 或 @Autowired List<StageProvider>
+    - 排序策略：Order 值越小越先执行
+  - **优先级**：低（需详细设计）
+- **RF-03** StageFactory 策略模式与自动装配 — TODO
+### 2.2. 测试增强
+- **T-01** Facade 业务逻辑剥离后的单测更新 — TODO（依赖 RF-01）
+- **T-02** TaskWorkerFactory 重构后的单测更新 — TODO（依赖 RF-02）
+- **T-03** StageFactory 策略模式的集成测试 — TODO（依赖 RF-03）
+    - 按 @Order 排序后组装为 List<TaskStage>
+### 2.3. 文档更新
+- **D-01** 更新 ARCHITECTURE_PROMPT.md 反映重构后的架构 — TODO（依赖 RF-01/02/03）
+- **D-02** 更新类图和组件图 — TODO（依赖 RF-01/02）
 
-> 截至当前 Phase 13 全部完成。
+### Phase 17（计划中）：架构重构与集成测试
 
-## 2. 待办目录（编号可追踪）
-### 2.1. 状态机
-- **SM-01** FAILED→RUNNING Guard（retryCount < maxRetry） — DONE
-- **SM-02** RUNNING→PAUSED Guard（pauseRequested = true） — DONE
-- **SM-03** RUNNING→COMPLETED Guard（currentStageIndex == totalStages） — DONE
-- **SM-04** RUNNING 进入 Action：记录 startedAt — DONE
-- **SM-05** COMPLETED / FAILED / ROLLED_BACK / ROLLBACK_FAILED Action：记录 endedAt + durationMillis — DONE
-- **SM-06** PlanStateMachine 基本迁移（READY→RUNNING→PAUSED/ RUNNING） — DONE
-- **SM-07** 替换 retry / cancel 直接 task.setStatus 为 stateManager.updateState — DONE
+### Phase 17（计划中）：架构重构与优化
+- 目标：优化 Facade 层、工厂参数、Stage 装配机制
+- 任务：RF-01（Facade 重构）、RF-02（参数简化）
+- 预计完成时间：待定
+  - RF-01（Facade 重构）
+### Phase 18（计划中）：Stage 策略模式（低优先级）
+- 目标：实现声明式 Stage 装配
+- 任务：RF-03（详细设计 + 实现）、T-03（集成测试）
+- 预计完成时间：待定
 
-### 2.2. 事件
-- **EV-01** RetryStarted / RetryCompleted（包含 fromCheckpoint 标志） — DONE
-- **EV-02** 每阶段回滚事件（StageRollingBack / StageRolledBack / StageRollbackFailed） — DONE
-- **EV-03** Cancel 事件增强（cancelledBy + lastStage） — DONE（通过注册 stage 名称解析 lastStage）
-- **EV-04** sequenceId 连续性测试（无跳号/回退） — DONE（已有通用与重试覆盖）
-- **EV-05** README 中关键事件示例章节 — DONE（README.md 已提供事件 payload 示例）
+## 4. 当前工作集（Phase 17）
+- RF-01：Facade 业务逻辑剥离（优先级：高）
+- RF-02：TaskWorkerFactory 参数简化（优先级：中）
+- RF-04：集成测试方案准备（优先级：中高）
+  - T-04：测试基础设施搭建
+  - T-05：核心场景集成测试实现
+  - T-04（测试基础设施）
+  - T-05（核心场景测试）
+- 预计完成时间：待定
+  - 多租户并发测试
+### Phase 18（计划中）：Stage 策略模式（低优先级）
+- 目标：实现声明式 Stage 装配
+- 任务：RF-03（详细设计 + 实现）、T-03（集成测试）
+- 预计完成时间：待定
 
-### 2.3. 回滚/快照
-- **RB-01** 回滚成功恢复 prevConfigSnapshot（deployUnitId/version/name） — DONE
-- **RB-02** 回滚健康确认后更新 lastKnownGoodVersion — DONE（VersionRollbackHealthVerifier 已实现并有成功/失败单测）
-- **RB-03** 在 RolledBack 事件中发布快照恢复详情 — DONE
+## 4. 当前工作集（Phase 17）
+- RF-01：Facade 业务逻辑剥离（优先）
+- RF-02：TaskWorkerFactory 参数简化
+- **T-07** Checkpoint 持久化集成测试 — TODO（依赖 T-04）
+  - Redis 模式测试
+  - 故障恢复测试
+  - 批量恢复测试
+    - 按 @Order 排序后组装为 List<TaskStage>
+### 2.3. 文档更新
+- **D-01** 更新 ARCHITECTURE_PROMPT.md 反映重构后的架构 — TODO（依赖 RF-01/02/03）
+- **D-02** 更新类图和组件图 — TODO（依赖 RF-01/02）
+      - 异常场景：失败 → 重试 → 成功
+      - 控制流程：暂停 → 恢复 → 完成
 
-### 2.4. Checkpoint
-- **CP-01** 每个成功 Stage 后保存 checkpoint — DONE
-- **CP-02** 终态/回滚后统一清理 checkpoint — DONE
-- **CP-03** 批量恢复 API（loadMultiple） — DONE（CheckpointService.loadMultiple）
-- **CP-04** RedisCheckpointStore 占位 + SPI 选择（memory|redis|db） — DONE（自动配置 + 客户端隔离，可通过属性切换 memory/redis）
-- **CP-05** Pause→Resume 正确性测试（checkpoint 连续性） — DONE（Pause→Resume 测试通过，checkpoint 连续）
+### Phase 17（计划中）：架构重构与优化
+- 目标：优化 Facade 层、工厂参数、Stage 装配机制
+- 任务：RF-01（Facade 重构）、RF-02（参数简化）
+- 预计完成时间：待定
+    - 事件流验证
+### Phase 18（计划中）：Stage 策略模式（低优先级）
+- 目标：实现声明式 Stage 装配
+- 任务：RF-03（详细设计 + 实现）、T-03（集成测试）
+- 预计完成时间：待定
 
-### 2.5. 健康检查
-- **HC-01** ExecutorProperties 支持 versionKey / path 可配置 — DONE
-- **HC-02** 部分实例失败用例（部分端点滞后导致 Stage 失败） — DONE
-- **HC-03** StageFactory 抽象（声明式组合步骤） — DONE
+## 4. 当前工作集（Phase 17）
+- RF-01：Facade 业务逻辑剥离（优先）
+- RF-02：TaskWorkerFactory 参数简化
+      - 事件幂等性（重复处理）
+    - Checkpoint 持久化验证
+      - 内存模式基础测试
+      - Redis 模式集成测试（使用 Testcontainers）
+      - 故障恢复测试
+  - **技术栈**：
+    - Spring Boot Test + @SpringBootTest
+    - Testcontainers (Redis)
+    - Awaitility（异步等待断言）
+    - MockMvc（如果需要 REST API 测试）
+  - **测试类设计**：
+    - `E2ELifecycleIntegrationTest`：完整生命周期
+    - `E2ERetryIntegrationTest`：重试场景
+    - `E2EPauseResumeIntegrationTest`：暂停恢复
+    - `E2ERollbackIntegrationTest`：回滚场景
+    - `E2EConcurrencyIntegrationTest`：并发控制
+    - `E2ECheckpointRedisIntegrationTest`：Redis Checkpoint
+    - `E2EEventSequenceIntegrationTest`：事件流验证
+  - **优先级**：中高
 
-### 2.6. 并发/调度
-- **SC-01** PlanOrchestrator 支持 plan 级 pause/resume/rollback 路由 — DONE
-- **SC-02** 任务结束各路径释放 ConflictRegistry 锁（成功/失败/取消/回滚） — DONE（执行路径释放 + 事件兜底释放）
-- **SC-03** FIFO 测试（maxConcurrency=1）保证启动顺序 — DONE
-- **SC-04** 并发启动测试（maxConcurrency>1）正确性 — DONE
-- **SC-05** TaskWorkerFactory 抽象（封装 TaskExecutor 创建） — DONE
+### 2.2. 测试增强
+- **T-01** Facade 业务逻辑剥离后的单测更新 — TODO（依赖 RF-01）
+- **T-02** TaskWorkerFactory 重构后的单测更新 — TODO（依赖 RF-02）
+- **T-03** StageFactory 策略模式的集成测试 — TODO（依赖 RF-03）
 
-### 2.7. 测试覆盖
-- **C-01** 长耗时 Step 心跳测试（≥2 次心跳） — DONE（HeartbeatSchedulerTest）
-- **C-02** fromCheckpoint 与 fresh 重试差异（不重复已完成 Stage） — DONE（RetryFromCheckpointTest）
-- **C-03** 执行后 MDC 清理（线程局部检查） — DONE（MdcCleanupTest / MdcCleanupCancelFailTest）
-- **C-04** 回滚失败路径（某 Stage rollback 抛异常）触发 RollbackFailed — DONE
-- **C-05** durationMillis 字段正确性测试 — DONE
-- **C-06** RollbackHealthVerifier 成功/失败分支测试 — DONE
-
-### 2.8. 可观测性/指标
-- **OB-01** Micrometer 计数器（task_active / task_completed / task_failed / rollback_count） — DONE（MetricsRegistry 适配 + 可选自动配置示例）
-- **OB-02** heartbeat_lag Gauge — DONE（HeartbeatScheduler + MetricsRegistry#setGauge）
-- **OB-03** 结构化日志 + MDC 稳定性测试 — DONE（StructuredMdcLoggingTest + 失败/取消路径覆盖）
-
-### 2.9. 文档/治理
-- **DG-01** 最终架构文档扩展点矩阵 — DONE（ARCHITECTURE_PROMPT.md 已更新）
-- **DG-02** 迁移指南（旧 → 新）最终版 — DONE（MIGRATION_GUIDE.md）
-- **DG-03** README 事件 payload 示例章节 — DONE（README.md 事件示例）
-- **DG-04** Glossary 扩展（policies / instrumentation） — DONE（GLOSSARY.md）
+### 2.3. 文档更新
+- **D-01** 更新 ARCHITECTURE_PROMPT.md 反映重构后的架构 — TODO（依赖 RF-01/02/03）
+- **D-02** 更新类图和组件图 — TODO（依赖 RF-01/02）
 
 ## 3. 阶段路线图（待办编号映射）
-- Phase 15（已完成）：OB-01..03、C-03
-- Phase 16（已完成）：DG-01..04、EV-05
 
-## 4. 当前工作集（Phase 16）
-- （空）
+### Phase 17（计划中）：架构重构与优化
+- 目标：优化 Facade 层、工厂参数、Stage 装配机制
+- 任务：RF-01（Facade 重构）、RF-02（参数简化）
+- 预计完成时间：待定
+
+### Phase 18（计划中）：Stage 策略模式（低优先级）
+- 目标：实现声明式 Stage 装配
+- 任务：RF-03（详细设计 + 实现）、T-03（集成测试）
+- 预计完成时间：待定
+
+## 4. 当前工作集（Phase 17）
+- RF-01：Facade 业务逻辑剥离（优先）
+- RF-02：TaskWorkerFactory 参数简化
 
 ## 5. 说明
 - 冲突锁释放：仅终止态（COMPLETED/FAILED/CANCELLED/ROLLED_BACK/ROLLBACK_FAILED）释放；执行路径释放 + 事件兜底释放双层保障；回滚中（ROLLING_BACK）与暂停（PAUSED）不释放。

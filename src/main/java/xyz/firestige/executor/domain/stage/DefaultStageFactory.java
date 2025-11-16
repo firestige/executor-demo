@@ -16,6 +16,8 @@ public class DefaultStageFactory implements StageFactory {
                                        TenantDeployConfig cfg,
                                        ExecutorProperties props,
                                        HealthCheckClient healthClient) {
+        // todo: 根据不同服务的配置生成对应的 Stage 列表，
+        //  这里简化为固定的三个步骤，实际上ASBC的步骤不一样
         TaskStage stage = new CompositeServiceStage(
                 "switch-service",
                 List.of(

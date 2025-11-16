@@ -1,8 +1,8 @@
 # Executor Demo 架构设计报告
 
 **项目名称：** Multi-Tenant Blue/Green Configuration Switch Executor  
-**文档版本：** 1.0  
-**编写日期：** 2025-11-16  
+**文档版本：** 1.1  
+**最后更新：** 2025-11-17  
 
 ---
 
@@ -395,7 +395,7 @@ boolean verify(TaskAggregate, TaskRuntimeContext)
 
 ## 9. 演进路线
 
-### 已完成（Phase 0-13）
+### 已完成（Phase 0-16）
 - ✅ 核心领域模型（Plan/Task/Stage/Step）
 - ✅ 状态机与状态管理（Guard/Action）
 - ✅ 并发控制与调度（maxConcurrency、ConflictRegistry）
@@ -406,6 +406,27 @@ boolean verify(TaskAggregate, TaskRuntimeContext)
 - ✅ MDC 上下文管理
 - ✅ 指标收集抽象（MetricsRegistry）
 - ✅ 工厂扩展点（StageFactory、TaskWorkerFactory）
+- ✅ 完整的可观测性方案（Micrometer集成、结构化日志）
+- ✅ 完整的文档体系（架构文档、迁移指南、术语表）
+- ✅ 4+1架构视图（用例图、时序图、状态图、组件图、类图、部署图）
+
+### 计划中（Phase 17-18）
+
+#### Phase 17：架构重构与集成测试
+- **RF-01** Facade 业务逻辑剥离（高优先级）
+  - 将 DeploymentTaskFacadeImpl 中的业务逻辑提取到应用服务层
+  - Facade 仅负责 DTO 转换和协调调用
+- **RF-02** TaskWorkerFactory 参数简化（中优先级）
+  - 引入参数对象模式，提升可维护性
+- **RF-04** 集成测试方案（中高优先级）
+  - 建立完整的集成测试框架（Testcontainers + Awaitility）
+  - 覆盖7大核心场景（生命周期、重试、暂停恢复、回滚、并发、Checkpoint、事件流）
+  - Redis Checkpoint 持久化测试
+
+#### Phase 18：Stage 策略模式（低优先级）
+- **RF-03** StageFactory 声明式装配
+  - 支持通过 @Component + @Order 自动发现 StageProvider
+该架构已完成 Phase 0-16 的所有核心功能开发，通过完整的单元测试验证，并建立了完整的文档体系和4+1架构视图。当前正进入 Phase 17 的架构优化和集成测试阶段，以进一步提升代码质量和系统稳定性。
 
 ### 未来规划
 - 🔜 性能压测与并发稳定性测试
