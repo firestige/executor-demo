@@ -32,6 +32,10 @@ public class TaskAggregate {
     private LocalDateTime startedAt;
     private LocalDateTime endedAt;
 
+    private TenantDeployConfigSnapshot prevConfigSnapshot; // 上一次可用配置快照
+    private Long lastKnownGoodVersion; // 上一次成功切换完成的版本号
+    private Long durationMillis; // 任务持续时长（毫秒）
+
     public TaskAggregate(String taskId, String planId, String tenantId) {
         this.taskId = taskId;
         this.planId = planId;
@@ -73,5 +77,12 @@ public class TaskAggregate {
     public void setStartedAt(LocalDateTime startedAt) { this.startedAt = startedAt; }
     public LocalDateTime getEndedAt() { return endedAt; }
     public void setEndedAt(LocalDateTime endedAt) { this.endedAt = endedAt; }
-}
 
+    public TenantDeployConfigSnapshot getPrevConfigSnapshot() { return prevConfigSnapshot; }
+    public void setPrevConfigSnapshot(TenantDeployConfigSnapshot prevConfigSnapshot) { this.prevConfigSnapshot = prevConfigSnapshot; }
+    public Long getLastKnownGoodVersion() { return lastKnownGoodVersion; }
+    public void setLastKnownGoodVersion(Long lastKnownGoodVersion) { this.lastKnownGoodVersion = lastKnownGoodVersion; }
+
+    public Long getDurationMillis() { return durationMillis; }
+    public void setDurationMillis(Long durationMillis) { this.durationMillis = durationMillis; }
+}

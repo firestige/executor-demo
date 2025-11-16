@@ -14,6 +14,18 @@
 - 所有实例必须成功（全通过）才算 Stage 成功。
 - 可通过 ExecutorProperties 配置（测试中可压低为 0 秒间隔、3 次）。
 
+## 健康检查配置（HC-01）
+- 全局配置项（ExecutorProperties）：
+  - healthCheckPath：健康检查路径（默认 /health）
+  - healthCheckVersionKey：响应体中的版本键（默认 version）
+  - healthCheckIntervalSeconds：轮询间隔秒（默认 3）
+  - healthCheckMaxAttempts：最大尝试次数（默认 10）
+- 优先级：TenantDeployConfig > application 配置 > 默认值。
+- URL 解析策略：
+  - 如果 NetworkEndpoint.value 以 http/https 开头，直接使用。
+  - 否则使用 targetDomain 或 targetIp + healthCheckPath 组装。
+- 测试建议：在单测中压低间隔与次数（例如 0s/3 次），通过 stub 的 HealthCheckClient 模拟成功/失败。
+
 配置优先级
 - TenantDeployConfig（实例覆盖） → application 配置 → 默认值。
 - Facade 不直接持有外部 DTO；通过工厂转换为内部模型，保护内聚与演进。
@@ -77,11 +89,66 @@ DeploymentTaskFacade facade = new DeploymentTaskFacadeImpl(chain, stateManager, 
 遗留清理
 - 旧的 ExecutionUnit/TaskOrchestrator/TenantTaskExecutor/ServiceNotificationStage 已移除，主线已完全切换到 Plan/Task/Stage 新架构（见提交记录）。
 
-常用命令
-```bash
-# 运行测试
-mvn -q -DskipTests=false test
+## 工厂扩展点（HC-03 / SC-05）
+- StageFactory：根据 TenantDeployConfig 生成 FIFO 阶段（默认组合：ConfigUpdate -> Broadcast -> HealthCheck）。
+- TaskWorkerFactory：集中创建 TaskExecutor 并注入 HeartbeatScheduler，方便替换或增加装配逻辑（如指标/限流等）。
 
-# 运行单个测试类（示例）
+## 指标与可观测性（OB）
+- 抽象：MetricsRegistry（默认 Noop）。
+- 事件：
+  - TaskExecutor 会在开始/终止路径累加计数：task_active、task_completed、task_failed、task_paused、task_cancelled。
+  - HeartbeatScheduler 周期上报 Gauge：heartbeat_lag（= totalStages - completed，非负）。
+- 对接 Micrometer（可选）：
+  - 依赖：pom.xml 已加入 io.micrometer:micrometer-core。
+  - 适配器：MicrometerMetricsRegistry（一次注册、多次更新 Gauge）。
+  - 在 Spring 环境中可通过注入 MeterRegistry 构建 DefaultTaskWorkerFactory(new MicrometerMetricsRegistry(meterRegistry)) 完成替换。
+- 示例（手工装配）
+```java
+MeterRegistry reg = new SimpleMeterRegistry();
+TaskWorkerFactory wf = new DefaultTaskWorkerFactory(new MicrometerMetricsRegistry(reg));
+```
+
+## 事件示例（EV-05）
+以下为部分关键事件的示例字段（实际以事件对象为准）：
+- TaskStartedEvent
+```json
+{"taskId":"t1","totalStages":3,"sequenceId":12}
+```
+- TaskProgressEvent / Heartbeat
+```json
+{"taskId":"t1","currentStage":"switch-service","completedStages":1,"totalStages":3,"sequenceId":13}
+```
+- TaskStageCompletedEvent
+```json
+{"taskId":"t1","stageName":"switch-service","stageResult":{"stageName":"switch-service","success":true},"sequenceId":14}
+```
+- TaskStageFailedEvent
+```json
+{"taskId":"t1","stageName":"switch-service","failureInfo":{"type":"SYSTEM_ERROR","message":"timeout"},"sequenceId":15}
+```
+- TaskFailedEvent
+```json
+{"taskId":"t1","failureInfo":{"type":"SYSTEM_ERROR","message":"timeout"},"completedStages":["switch-service"],"failedStage":"health-check","sequenceId":16}
+```
+- TaskCompletedEvent
+```json
+{"taskId":"t1","durationMillis":1200,"completedStages":["switch-service"],"sequenceId":17}
+```
+- TaskRetryStartedEvent / TaskRetryCompletedEvent
+```json
+{"taskId":"t1","fromCheckpoint":true,"sequenceId":18}
+```
+- TaskRollingBackEvent / TaskRolledBackEvent
+```json
+{"taskId":"t1","reason":"manual","stagesToRollback":["switch-service"],"sequenceId":19}
+```
+- TaskCancelledEvent
+```json
+{"taskId":"t1","cancelledBy":"facade","lastStage":"broadcast-change","sequenceId":20}
+```
+
+## 常用命令
+```bash
+mvn -q -DskipTests=false test
 mvn -q -Dtest=xyz.firestige.executor.integration.FacadeE2ERefactorTest test
 ```

@@ -8,6 +8,7 @@ public enum PlanStatus {
     VALIDATING,
     READY,
     RUNNING,
+    PAUSED,
     PARTIAL_FAILED,
     COMPLETED,
     ROLLING_BACK,
@@ -15,4 +16,3 @@ public enum PlanStatus {
     FAILED,
     CANCELLED
 }
-

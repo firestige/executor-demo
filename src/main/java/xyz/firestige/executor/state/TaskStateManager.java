@@ -5,8 +5,12 @@ import xyz.firestige.executor.exception.FailureInfo;
 import xyz.firestige.executor.state.event.*;
 import xyz.firestige.executor.domain.state.TaskStateMachine;
 import xyz.firestige.executor.domain.state.ctx.TaskTransitionContext;
+import xyz.firestige.executor.domain.task.TaskAggregate;
+import xyz.firestige.executor.domain.task.TaskRuntimeContext;
+import xyz.firestige.executor.domain.task.TenantDeployConfigSnapshot;
 
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -21,7 +25,7 @@ public class TaskStateManager {
      * 任务状态机映射
      * Key: taskId, Value: TaskStateMachine
      */
-    private final Map<String, xyz.firestige.executor.domain.state.TaskStateMachine> stateMachines = new ConcurrentHashMap<>();
+    private final Map<String, TaskStateMachine> stateMachines = new ConcurrentHashMap<>();
 
     /**
      * Spring 事件发布器
@@ -29,6 +33,12 @@ public class TaskStateManager {
     private ApplicationEventPublisher eventPublisher;
 
     private final Map<String, Long> sequences = new ConcurrentHashMap<>();
+    // 新增：保存聚合与运行上下文及总阶段数
+    private final Map<String, TaskAggregate> aggregates = new ConcurrentHashMap<>();
+    private final Map<String, TaskRuntimeContext> runtimeContexts = new ConcurrentHashMap<>();
+    private final Map<String, Integer> totalStagesMap = new ConcurrentHashMap<>();
+    private final Map<String, java.util.List<String>> stageNamesMap = new ConcurrentHashMap<>();
+    private xyz.firestige.executor.service.health.RollbackHealthVerifier rollbackHealthVerifier = new xyz.firestige.executor.service.health.AlwaysTrueRollbackHealthVerifier();
 
     public TaskStateManager() {
     }
@@ -41,16 +51,28 @@ public class TaskStateManager {
      * 初始化任务状态
      */
     public void initializeTask(String taskId, TaskStatus initialStatus) {
-        TaskStateMachine sm = new TaskStateMachine(initialStatus);
-        // 注册 Guards 与 Actions（简化版本）
+        stateMachines.put(taskId, new TaskStateMachine(initialStatus));
+        sequences.put(taskId, 0L);
+    }
+
+    /**
+     * 注册聚合并配置 Guards/Actions（在聚合可用后）
+     */
+    public void registerTaskAggregate(String taskId, TaskAggregate aggregate, TaskRuntimeContext runtimeCtx, int totalStages) {
+        aggregates.put(taskId, aggregate);
+        runtimeContexts.put(taskId, runtimeCtx);
+        totalStagesMap.put(taskId, totalStages);
+        TaskStateMachine sm = stateMachines.get(taskId);
+        if (sm == null) return; // ensure initializeTask called first
+        // Guards
         sm.registerGuard(TaskStatus.FAILED, TaskStatus.RUNNING, ctx -> ctx.getAggregate().getRetryCount() < (ctx.getAggregate().getMaxRetry() != null ? ctx.getAggregate().getMaxRetry() : 3));
         sm.registerGuard(TaskStatus.RUNNING, TaskStatus.PAUSED, ctx -> ctx.getContext() != null && ctx.getContext().isPauseRequested());
+        sm.registerGuard(TaskStatus.PAUSED, TaskStatus.RUNNING, ctx -> ctx.getContext() != null && !ctx.getContext().isPauseRequested());
         sm.registerGuard(TaskStatus.RUNNING, TaskStatus.COMPLETED, ctx -> ctx.getAggregate().getCurrentStageIndex() >= ctx.getTotalStages());
+        // Actions
         sm.registerAction(TaskStatus.PENDING, TaskStatus.RUNNING, ctx -> ctx.getAggregate().setStartedAt(java.time.LocalDateTime.now()));
         sm.registerAction(TaskStatus.RUNNING, TaskStatus.COMPLETED, ctx -> ctx.getAggregate().setEndedAt(java.time.LocalDateTime.now()));
         sm.registerAction(TaskStatus.RUNNING, TaskStatus.FAILED, ctx -> ctx.getAggregate().setEndedAt(java.time.LocalDateTime.now()));
-        stateMachines.put(taskId, sm);
-        sequences.put(taskId, 0L);
     }
 
     /**
@@ -77,15 +99,70 @@ public class TaskStateManager {
             initializeTask(taskId, newStatus);
             return;
         }
+        TaskAggregate agg = aggregates.get(taskId);
+        TaskRuntimeContext rctx = runtimeContexts.get(taskId);
+        Integer totalStages = totalStagesMap.get(taskId);
+        if (agg == null || totalStages == null) {
+            // 尚未注册聚合，跳过迁移以避免 NPE；后续注册后会再调用
+            return;
+        }
+        TaskTransitionContext txCtx = new TaskTransitionContext(agg, rctx, totalStages);
         TaskStatus old = sm.getCurrent();
-        // 构造迁移上下文（task 聚合后续由调用方传入，这里暂仅 totalStages=0）
-        TaskTransitionContext txCtx = new TaskTransitionContext(null, null, 0);
         TaskStatus after = sm.transitionTo(newStatus, txCtx);
         boolean transitioned = after != null && after != old && after == newStatus;
-        if (transitioned && eventPublisher != null) {
-            // 根据新状态创建并发布对应的事件
-            TaskStatusEvent event = createEventForStatus(taskId, newStatus, failureInfo, message);
-            if (event != null) eventPublisher.publishEvent(event);
+        if (transitioned) {
+            applyActionsOnTransition(taskId, old, newStatus);
+            if (eventPublisher != null) {
+                // 根据新状态创建并发布对应的事件
+                TaskStatusEvent event = createEventForStatus(taskId, newStatus, failureInfo, message);
+                if (event != null) eventPublisher.publishEvent(event);
+            }
+        }
+    }
+
+    public void registerStageNames(String taskId, java.util.List<String> stageNames) {
+        if (stageNames != null) stageNamesMap.put(taskId, new ArrayList<>(stageNames));
+    }
+
+    public void setRollbackHealthVerifier(xyz.firestige.executor.service.health.RollbackHealthVerifier v) {
+        if (v != null) this.rollbackHealthVerifier = v;
+    }
+
+    private void applyActionsOnTransition(String taskId, TaskStatus from, TaskStatus to) {
+        TaskAggregate agg = aggregates.get(taskId);
+        if (agg == null) return;
+        // keep aggregate status in sync with state machine
+        agg.setStatus(to);
+        if (from == TaskStatus.PENDING && to == TaskStatus.RUNNING) {
+            if (agg.getStartedAt() == null) agg.setStartedAt(java.time.LocalDateTime.now());
+        }
+        if (from == TaskStatus.RUNNING && (to == TaskStatus.COMPLETED || to == TaskStatus.FAILED)) {
+            agg.setEndedAt(java.time.LocalDateTime.now());
+            if (agg.getStartedAt() != null && agg.getEndedAt() != null) {
+                long ms = Duration.between(agg.getStartedAt(), agg.getEndedAt()).toMillis();
+                agg.setDurationMillis(ms);
+            }
+        }
+        if (from == TaskStatus.ROLLING_BACK && (to == TaskStatus.ROLLED_BACK || to == TaskStatus.ROLLBACK_FAILED)) {
+            agg.setEndedAt(java.time.LocalDateTime.now());
+            if (agg.getStartedAt() != null && agg.getEndedAt() != null) {
+                long ms = Duration.between(agg.getStartedAt(), agg.getEndedAt()).toMillis();
+                agg.setDurationMillis(ms);
+            }
+            if (to == TaskStatus.ROLLED_BACK) {
+                // 恢复上一版可用配置
+                TenantDeployConfigSnapshot snap = agg.getPrevConfigSnapshot();
+                if (snap != null) {
+                    agg.setDeployUnitId(snap.getDeployUnitId());
+                    agg.setDeployUnitVersion(snap.getDeployUnitVersion());
+                    agg.setDeployUnitName(snap.getDeployUnitName());
+                    // RB-02：仅在健康确认成功时更新 lastKnownGoodVersion
+                    TaskRuntimeContext ctx = runtimeContexts.get(taskId);
+                    if (rollbackHealthVerifier == null || rollbackHealthVerifier.verify(agg, ctx)) {
+                        agg.setLastKnownGoodVersion(snap.getDeployUnitVersion());
+                    }
+                }
+            }
         }
     }
 
@@ -93,14 +170,14 @@ public class TaskStateManager {
      * 获取任务当前状态
      */
     public TaskStatus getState(String taskId) {
-        xyz.firestige.executor.domain.state.TaskStateMachine sm = stateMachines.get(taskId);
+        TaskStateMachine sm = stateMachines.get(taskId);
         return sm != null ? sm.getCurrent() : null;
     }
 
     /**
      * 获取状态机
      */
-    public xyz.firestige.executor.domain.state.TaskStateMachine getStateMachine(String taskId) {
+    public TaskStateMachine getStateMachine(String taskId) {
         return stateMachines.get(taskId);
     }
 
@@ -109,6 +186,9 @@ public class TaskStateManager {
      */
     public void removeTask(String taskId) {
         stateMachines.remove(taskId);
+        aggregates.remove(taskId);
+        runtimeContexts.remove(taskId);
+        totalStagesMap.remove(taskId);
     }
 
     /**
@@ -257,6 +337,13 @@ public class TaskStateManager {
     public void publishTaskRolledBackEvent(String taskId, List<String> rolledBackStages) {
         if (eventPublisher != null) {
             TaskRolledBackEvent event = new TaskRolledBackEvent(taskId, rolledBackStages);
+            TaskAggregate agg = aggregates.get(taskId);
+            if (agg != null && agg.getPrevConfigSnapshot() != null) {
+                TenantDeployConfigSnapshot snap = agg.getPrevConfigSnapshot();
+                event.setPrevDeployUnitId(snap.getDeployUnitId());
+                event.setPrevDeployUnitVersion(snap.getDeployUnitVersion());
+                event.setPrevDeployUnitName(snap.getDeployUnitName());
+            }
             event.setSequenceId(nextSeq(taskId));
             eventPublisher.publishEvent(event);
         }
@@ -268,8 +355,63 @@ public class TaskStateManager {
     public void publishTaskCancelledEvent(String taskId) {
         if (eventPublisher != null) {
             TaskCancelledEvent event = new TaskCancelledEvent(taskId);
+            TaskAggregate agg = aggregates.get(taskId);
+            if (agg != null) {
+                event.setCancelledBy("system");
+                int idx = agg.getCurrentStageIndex() - 1;
+                String last = null;
+                java.util.List<String> names = stageNamesMap.get(taskId);
+                if (names != null && idx >= 0 && idx < names.size()) {
+                    last = names.get(idx);
+                }
+                event.setLastStage(last);
+            }
             event.setSequenceId(nextSeq(taskId));
             eventPublisher.publishEvent(event);
+        }
+    }
+
+    /**
+     * 发布任务取消事件
+     */
+    public void publishTaskCancelledEvent(String taskId, String cancelledBy) {
+        if (eventPublisher != null) {
+            TaskCancelledEvent event = new TaskCancelledEvent(taskId);
+            TaskAggregate agg = aggregates.get(taskId);
+            event.setCancelledBy(cancelledBy);
+            if (agg != null) {
+                int idx = agg.getCurrentStageIndex() - 1;
+                String last = null;
+                java.util.List<String> names = stageNamesMap.get(taskId);
+                if (names != null && idx >= 0 && idx < names.size()) {
+                    last = names.get(idx);
+                }
+                event.setLastStage(last);
+            }
+            event.setSequenceId(nextSeq(taskId));
+            eventPublisher.publishEvent(event);
+        }
+    }
+
+    /**
+     * 发布任务重试开始事件
+     */
+    public void publishTaskRetryStartedEvent(String taskId, boolean fromCheckpoint) {
+        if (eventPublisher != null) {
+            TaskRetryStartedEvent ev = new TaskRetryStartedEvent(taskId, fromCheckpoint);
+            ev.setSequenceId(nextSeq(taskId));
+            eventPublisher.publishEvent(ev);
+        }
+    }
+
+    /**
+     * 发布任务重试完成事件
+     */
+    public void publishTaskRetryCompletedEvent(String taskId, boolean fromCheckpoint) {
+        if (eventPublisher != null) {
+            TaskRetryCompletedEvent ev = new TaskRetryCompletedEvent(taskId, fromCheckpoint);
+            ev.setSequenceId(nextSeq(taskId));
+            eventPublisher.publishEvent(ev);
         }
     }
 
@@ -342,5 +484,10 @@ public class TaskStateManager {
     // helper
     private long nextSeq(String taskId) {
         return sequences.compute(taskId, (k,v) -> v == null ? 1L : v + 1L);
+    }
+
+    public String getTenantId(String taskId) {
+        TaskAggregate agg = aggregates.get(taskId);
+        return agg != null ? agg.getTenantId() : null;
     }
 }

@@ -23,6 +23,10 @@ public interface TaskEventSink {
     default void publishTaskRollingBack(String planId, String taskId, java.util.List<String> stagesToRollback, long sequenceId) { publishTaskRollingBack(planId, taskId, sequenceId); }
     default void publishTaskStageRollingBack(String planId, String taskId, String stageName, long sequenceId) {}
     default void publishTaskStageRollbackFailed(String planId, String taskId, String stageName, String reason, long sequenceId) {}
+    default void publishTaskStageRolledBack(String planId, String taskId, String stageName, long sequenceId) {}
     default void publishTaskRolledBack(String planId, String taskId, long sequenceId) {}
     default void publishTaskRolledBack(String planId, String taskId, java.util.List<String> rolledBackStages, long sequenceId) { publishTaskRolledBack(planId, taskId, sequenceId); }
+    default void publishTaskRetryStarted(String planId, String taskId, boolean fromCheckpoint) {}
+    default void publishTaskRetryCompleted(String planId, String taskId, boolean fromCheckpoint) {}
+    default void publishTaskRollbackFailed(String planId, String taskId, java.util.List<String> partiallyRolledBackStages, String reason, long sequenceId) {}
 }

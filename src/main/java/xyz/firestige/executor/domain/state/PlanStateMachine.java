@@ -25,7 +25,8 @@ public class PlanStateMachine {
         rules.put(PlanStatus.CREATED, EnumSet.of(PlanStatus.VALIDATING));
         rules.put(PlanStatus.VALIDATING, EnumSet.of(PlanStatus.READY, PlanStatus.FAILED));
         rules.put(PlanStatus.READY, EnumSet.of(PlanStatus.RUNNING, PlanStatus.CANCELLED));
-        rules.put(PlanStatus.RUNNING, EnumSet.of(PlanStatus.PARTIAL_FAILED, PlanStatus.COMPLETED, PlanStatus.ROLLING_BACK));
+        rules.put(PlanStatus.RUNNING, EnumSet.of(PlanStatus.PAUSED, PlanStatus.PARTIAL_FAILED, PlanStatus.COMPLETED, PlanStatus.ROLLING_BACK));
+        rules.put(PlanStatus.PAUSED, EnumSet.of(PlanStatus.RUNNING, PlanStatus.CANCELLED));
         rules.put(PlanStatus.PARTIAL_FAILED, EnumSet.of(PlanStatus.RUNNING, PlanStatus.ROLLING_BACK, PlanStatus.FAILED));
         rules.put(PlanStatus.ROLLING_BACK, EnumSet.of(PlanStatus.ROLLED_BACK, PlanStatus.FAILED));
         rules.put(PlanStatus.COMPLETED, EnumSet.of(PlanStatus.ROLLING_BACK));

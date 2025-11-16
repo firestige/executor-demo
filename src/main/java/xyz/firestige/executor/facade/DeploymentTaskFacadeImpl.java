@@ -5,9 +5,7 @@ import org.slf4j.LoggerFactory;
 import xyz.firestige.dto.deploy.TenantDeployConfig;
 import xyz.firestige.executor.exception.ErrorType;
 import xyz.firestige.executor.exception.FailureInfo;
-import xyz.firestige.executor.exception.TaskNotFoundException;
 import xyz.firestige.executor.factory.PlanFactory;
-import xyz.firestige.executor.orchestration.ExecutionMode;
 import xyz.firestige.executor.orchestration.PlanOrchestrator;
 import xyz.firestige.executor.orchestration.TaskScheduler;
 import xyz.firestige.executor.state.TaskStateManager;
@@ -20,7 +18,7 @@ import xyz.firestige.executor.checkpoint.CheckpointService;
 import xyz.firestige.executor.checkpoint.InMemoryCheckpointStore;
 import xyz.firestige.executor.domain.plan.PlanAggregate;
 import xyz.firestige.executor.domain.task.TaskAggregate;
-import xyz.firestige.executor.domain.task.TaskContext;
+import xyz.firestige.executor.domain.task.TaskRuntimeContext;
 import xyz.firestige.executor.config.ExecutorProperties;
 import xyz.firestige.executor.validation.ValidationChain;
 import xyz.firestige.executor.validation.ValidationSummary;
@@ -29,8 +27,17 @@ import xyz.firestige.executor.domain.stage.CompositeServiceStage;
 import xyz.firestige.executor.domain.stage.StageStep;
 import xyz.firestige.executor.domain.stage.steps.HealthCheckStep;
 import xyz.firestige.executor.domain.stage.steps.NotificationStep;
+import xyz.firestige.executor.domain.stage.steps.ConfigUpdateStep;
+import xyz.firestige.executor.domain.stage.steps.BroadcastStep;
 import xyz.firestige.executor.service.health.HealthCheckClient;
 import xyz.firestige.executor.service.health.MockHealthCheckClient;
+import xyz.firestige.executor.domain.state.PlanStateMachine;
+import xyz.firestige.executor.domain.plan.PlanStatus;
+import xyz.firestige.executor.domain.plan.PlanContext;
+import xyz.firestige.executor.domain.stage.StageFactory;
+import xyz.firestige.executor.domain.stage.DefaultStageFactory;
+import xyz.firestige.executor.execution.TaskWorkerFactory;
+import xyz.firestige.executor.execution.DefaultTaskWorkerFactory;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -63,12 +70,18 @@ public class DeploymentTaskFacadeImpl implements DeploymentTaskFacade {
     // 内部注册表
     private final Map<String, PlanAggregate> planRegistry = new HashMap<>();
     private final Map<String, TaskAggregate> taskRegistry = new HashMap<>();
-    private final Map<String, TaskContext> contextRegistry = new HashMap<>();
+    private final Map<String, TaskRuntimeContext> contextRegistry = new HashMap<>();
     private final Map<String, List<TaskStage>> stageRegistry = new HashMap<>();
     private final Map<String, TaskExecutor> executorRegistry = new HashMap<>();
+    private final Map<String, PlanStateMachine> planSmRegistry = new HashMap<>();
+
+    private final StageFactory stageFactory = new DefaultStageFactory();
+    private final TaskWorkerFactory workerFactory = new DefaultTaskWorkerFactory();
 
     private TaskStage buildStageForTask(TaskAggregate task, TenantDeployConfig cfg) {
-        StageStep notify = new NotificationStep("notify-service");
+        // deprecated: use factory (kept for backward compatibility while tests migrate)
+        StageStep configUpdate = new ConfigUpdateStep("config-update", cfg.getDeployUnitVersion());
+        StageStep broadcast = new BroadcastStep("broadcast-change");
         StageStep health = new HealthCheckStep(
                 "health-check",
                 cfg.getNetworkEndpoints() != null ? cfg.getNetworkEndpoints() : List.of(),
@@ -77,7 +90,7 @@ public class DeploymentTaskFacadeImpl implements DeploymentTaskFacade {
                 healthCheckClient,
                 executorProperties
         );
-        return new CompositeServiceStage("switch-service", List.of(notify, health));
+        return new CompositeServiceStage("switch-service", List.of(configUpdate, broadcast, health));
     }
 
     @Override
@@ -107,10 +120,14 @@ public class DeploymentTaskFacadeImpl implements DeploymentTaskFacade {
 
             // 构建 Plan 聚合与内部 Task 模型
             PlanAggregate plan = planFactory.createPlan(planId, configs);
+            // 初始化 Plan 状态机（SM-06）
+            PlanStateMachine psm = new PlanStateMachine(PlanStatus.READY);
+            planSmRegistry.put(planId, psm);
+            plan.setStatus(PlanStatus.READY);
             for (int i=0;i<configs.size();i++) {
                 TenantDeployConfig cfg = configs.get(i);
                 TaskAggregate t = plan.getTasks().get(i);
-                List<TaskStage> stages = List.of(buildStageForTask(t, cfg));
+                List<TaskStage> stages = stageFactory.buildStages(t, cfg, executorProperties, healthCheckClient);
                 stageRegistry.put(t.getTaskId(), stages);
             }
             stateManager.initializeTask(planId, TaskStatus.PENDING);
@@ -120,14 +137,25 @@ public class DeploymentTaskFacadeImpl implements DeploymentTaskFacade {
             for (TaskAggregate t : plan.getTasks()) {
                 taskIds.add(t.getTaskId());
                 stateManager.initializeTask(t.getTaskId(), TaskStatus.PENDING);
+                // 注册聚合 + 上下文占位（上下文稍后在执行时创建）暂时 totalStages=1（后续根据stage数量更新）
             }
+            // 注册任务与上下文并启动执行
             planOrchestrator.submitPlan(plan, task -> (taskIdParam) -> {
-                TaskContext ctx = new TaskContext(planId, task.getTaskId(), task.getTenantId(), new xyz.firestige.executor.execution.pipeline.PipelineContext(task.getTaskId(), null));
-                contextRegistry.put(task.getTaskId(), ctx);
+                // 计划进入 RUNNING（状态机迁移）
+                PlanStateMachine sm = planSmRegistry.get(planId);
+                if (sm != null) sm.transitionTo(PlanStatus.RUNNING, new PlanContext(planId));
+                plan.setStatus(PlanStatus.RUNNING);
+                plan.setStartedAt(java.time.LocalDateTime.now());
                 List<TaskStage> stages = stageRegistry.getOrDefault(task.getTaskId(), List.of());
-                TaskExecutor executor = new TaskExecutor(planId, task, stages, ctx, checkpointService, springSink, executorProperties.getTaskProgressIntervalSeconds());
-                HeartbeatScheduler heartbeat = new HeartbeatScheduler(planId, task.getTaskId(), stages.size(), executor::getCompletedStageCount, springSink, executorProperties.getTaskProgressIntervalSeconds());
-                executor.setHeartbeatScheduler(heartbeat);
+                // register stage names for later cancellation event enrichment
+                List<String> names = new java.util.ArrayList<>();
+                for (TaskStage s : stages) names.add(s.getName());
+                stateManager.registerStageNames(task.getTaskId(), names);
+                TaskRuntimeContext ctx = new TaskRuntimeContext(planId, task.getTaskId(), task.getTenantId(), new xyz.firestige.executor.execution.pipeline.PipelineContext(task.getTaskId(), null));
+                contextRegistry.put(task.getTaskId(), ctx);
+                stateManager.registerTaskAggregate(task.getTaskId(), task, ctx, stages.size());
+                stateManager.updateState(task.getTaskId(), TaskStatus.RUNNING); // 进入运行态
+                TaskExecutor executor = workerFactory.create(planId, task, stages, ctx, checkpointService, springSink, executorProperties.getTaskProgressIntervalSeconds(), stateManager, conflictRegistry);
                 executorRegistry.put(task.getTaskId(), executor);
                 executor.execute();
             });
@@ -153,7 +181,7 @@ public class DeploymentTaskFacadeImpl implements DeploymentTaskFacade {
     public TaskOperationResult pauseTaskByTenant(String tenantId) {
         TaskAggregate target = taskRegistry.values().stream().filter(t -> tenantId.equals(t.getTenantId())).findFirst().orElse(null);
         if (target == null) return TaskOperationResult.failure("未找到租户任务");
-        TaskContext ctx = contextRegistry.get(target.getTaskId());
+        TaskRuntimeContext ctx = contextRegistry.get(target.getTaskId());
         if (ctx != null) ctx.requestPause();
         return TaskOperationResult.success(target.getTaskId(), TaskStatus.PAUSED, "租户任务暂停请求已登记，下一 Stage 生效");
     }
@@ -164,9 +192,12 @@ public class DeploymentTaskFacadeImpl implements DeploymentTaskFacade {
         PlanAggregate plan = planRegistry.get(pid);
         if (plan == null) return TaskOperationResult.failure("计划不存在");
         plan.getTasks().forEach(t -> {
-            TaskContext c = contextRegistry.get(t.getTaskId());
+            TaskRuntimeContext c = contextRegistry.get(t.getTaskId());
             if (c != null) c.requestPause();
         });
+        PlanStateMachine sm = planSmRegistry.get(pid);
+        if (sm != null) sm.transitionTo(PlanStatus.PAUSED, new PlanContext(pid));
+        plan.setStatus(PlanStatus.PAUSED);
         return TaskOperationResult.success(pid, TaskStatus.PAUSED, "计划暂停请求已登记，下一 Stage 生效");
     }
 
@@ -174,7 +205,7 @@ public class DeploymentTaskFacadeImpl implements DeploymentTaskFacade {
     public TaskOperationResult resumeTaskByTenant(String tenantId) {
         TaskAggregate target = taskRegistry.values().stream().filter(t -> tenantId.equals(t.getTenantId())).findFirst().orElse(null);
         if (target == null) return TaskOperationResult.failure("未找到租户任务");
-        TaskContext ctx = contextRegistry.get(target.getTaskId());
+        TaskRuntimeContext ctx = contextRegistry.get(target.getTaskId());
         if (ctx != null) ctx.clearPause();
         return TaskOperationResult.success(target.getTaskId(), TaskStatus.RUNNING, "租户任务恢复请求已登记");
     }
@@ -185,9 +216,12 @@ public class DeploymentTaskFacadeImpl implements DeploymentTaskFacade {
         PlanAggregate plan = planRegistry.get(pid);
         if (plan == null) return TaskOperationResult.failure("计划不存在");
         plan.getTasks().forEach(t -> {
-            TaskContext c = contextRegistry.get(t.getTaskId());
+            TaskRuntimeContext c = contextRegistry.get(t.getTaskId());
             if (c != null) c.clearPause();
         });
+        PlanStateMachine sm = planSmRegistry.get(pid);
+        if (sm != null) sm.transitionTo(PlanStatus.RUNNING, new PlanContext(pid));
+        plan.setStatus(PlanStatus.RUNNING);
         return TaskOperationResult.success(pid, TaskStatus.RUNNING, "计划恢复请求已登记");
     }
 
@@ -198,12 +232,13 @@ public class DeploymentTaskFacadeImpl implements DeploymentTaskFacade {
         TaskExecutor exec = executorRegistry.get(target.getTaskId());
         if (exec == null) {
             List<TaskStage> stages = stageRegistry.getOrDefault(target.getTaskId(), List.of());
-            TaskContext ctx = contextRegistry.get(target.getTaskId());
-            exec = new TaskExecutor(target.getPlanId(), target, stages, ctx, checkpointService, springSink, executorProperties.getTaskProgressIntervalSeconds());
+            TaskRuntimeContext ctx = contextRegistry.get(target.getTaskId());
+            exec = workerFactory.create(target.getPlanId(), target, stages, ctx, checkpointService, springSink, executorProperties.getTaskProgressIntervalSeconds(), stateManager, conflictRegistry);
         }
         List<TaskStage> stages = stageRegistry.getOrDefault(target.getTaskId(), List.of());
         List<String> stageNames = new java.util.ArrayList<>();
         for (TaskStage s : stages) stageNames.add(s.getName());
+        stateManager.registerStageNames(target.getTaskId(), stageNames);
         springSink.publishTaskRollingBack(target.getPlanId(), target.getTaskId(), stageNames, 0);
         var res = exec.invokeRollback();
         if (target.getStatus() == TaskStatus.ROLLED_BACK) {
@@ -223,14 +258,15 @@ public class DeploymentTaskFacadeImpl implements DeploymentTaskFacade {
             List<TaskStage> stages = stageRegistry.getOrDefault(t.getTaskId(), List.of());
             List<String> stageNames = new java.util.ArrayList<>();
             for (TaskStage s : stages) stageNames.add(s.getName());
+            stateManager.registerStageNames(t.getTaskId(), stageNames);
             springSink.publishTaskRollingBack(pid, t.getTaskId(), stageNames, 0);
         });
         plan.getTasks().forEach(t -> {
             TaskExecutor exec = executorRegistry.get(t.getTaskId());
             if (exec == null) {
                 List<TaskStage> stages = stageRegistry.getOrDefault(t.getTaskId(), List.of());
-                TaskContext c = contextRegistry.get(t.getTaskId());
-                exec = new TaskExecutor(pid, t, stages, c, checkpointService, springSink, executorProperties.getTaskProgressIntervalSeconds());
+                TaskRuntimeContext c = contextRegistry.get(t.getTaskId());
+                exec = workerFactory.create(pid, t, stages, c, checkpointService, springSink, executorProperties.getTaskProgressIntervalSeconds(), stateManager, conflictRegistry);
             }
             exec.invokeRollback();
             List<TaskStage> stages = stageRegistry.getOrDefault(t.getTaskId(), List.of());
@@ -252,8 +288,8 @@ public class DeploymentTaskFacadeImpl implements DeploymentTaskFacade {
         TaskExecutor exec = executorRegistry.get(target.getTaskId());
         if (exec == null) {
             List<TaskStage> stages = stageRegistry.getOrDefault(target.getTaskId(), List.of());
-            TaskContext ctx = contextRegistry.get(target.getTaskId());
-            exec = new TaskExecutor(target.getPlanId(), target, stages, ctx, checkpointService, springSink, executorProperties.getTaskProgressIntervalSeconds());
+            TaskRuntimeContext ctx = contextRegistry.get(target.getTaskId());
+            exec = workerFactory.create(target.getPlanId(), target, stages, ctx, checkpointService, springSink, executorProperties.getTaskProgressIntervalSeconds(), stateManager, conflictRegistry);
             executorRegistry.put(target.getTaskId(), exec);
         }
         // 补偿进度事件（checkpoint retry）
@@ -275,8 +311,8 @@ public class DeploymentTaskFacadeImpl implements DeploymentTaskFacade {
             TaskExecutor exec = executorRegistry.get(t.getTaskId());
             if (exec == null) {
                 List<TaskStage> stages = stageRegistry.getOrDefault(t.getTaskId(), List.of());
-                TaskContext c = contextRegistry.get(t.getTaskId());
-                exec = new TaskExecutor(pid, t, stages, c, checkpointService, springSink, executorProperties.getTaskProgressIntervalSeconds());
+                TaskRuntimeContext c = contextRegistry.get(t.getTaskId());
+                exec = workerFactory.create(pid, t, stages, c, checkpointService, springSink, executorProperties.getTaskProgressIntervalSeconds(), stateManager, conflictRegistry);
                 executorRegistry.put(t.getTaskId(), exec);
             }
             if (fromCheckpoint) {
@@ -297,7 +333,7 @@ public class DeploymentTaskFacadeImpl implements DeploymentTaskFacade {
         int total = stageRegistry.getOrDefault(executionUnitId, List.of()).size();
         TaskExecutor exec = executorRegistry.get(executionUnitId);
         String currentStage = exec != null ? exec.getCurrentStageName() : null;
-        TaskContext ctx = contextRegistry.get(executionUnitId);
+        TaskRuntimeContext ctx = contextRegistry.get(executionUnitId);
         boolean paused = ctx != null && ctx.isPauseRequested();
         boolean cancelled = ctx != null && ctx.isCancelRequested();
         double progress = total == 0 ? 0 : (completed * 100.0 / total);
@@ -317,10 +353,10 @@ public class DeploymentTaskFacadeImpl implements DeploymentTaskFacade {
     public TaskOperationResult cancelTask(String executionUnitId) {
         TaskAggregate t = taskRegistry.get(executionUnitId);
         if (t == null) return TaskOperationResult.failure("任务不存在");
-        TaskContext ctx = contextRegistry.get(t.getTaskId());
+        TaskRuntimeContext ctx = contextRegistry.get(t.getTaskId());
         if (ctx != null) ctx.requestCancel();
-        t.setStatus(TaskStatus.CANCELLED);
-        stateManager.publishTaskCancelledEvent(t.getTaskId());
+        stateManager.updateState(t.getTaskId(), TaskStatus.CANCELLED);
+        stateManager.publishTaskCancelledEvent(t.getTaskId(), "facade");
         return TaskOperationResult.success(t.getTaskId(), TaskStatus.CANCELLED, "任务取消请求已登记");
     }
 
@@ -331,22 +367,13 @@ public class DeploymentTaskFacadeImpl implements DeploymentTaskFacade {
         return "task_" + System.currentTimeMillis() + "_" + (int)(Math.random() * 1000);
     }
 
-    // Getters and Setters
-
-    public ExecutionMode getDefaultExecutionMode() {
-        return defaultExecutionMode;
-    }
-
-    public void setDefaultExecutionMode(ExecutionMode defaultExecutionMode) {
-        this.defaultExecutionMode = defaultExecutionMode;
-    }
 
     public DeploymentTaskFacadeImpl(ValidationChain validationChain, TaskStateManager stateManager) {
         this.validationChain = validationChain;
         this.stateManager = stateManager;
         this.executorProperties = new ExecutorProperties();
         this.healthCheckClient = new MockHealthCheckClient();
-        this.springSink = new SpringTaskEventSink(this.stateManager);
+        this.springSink = new SpringTaskEventSink(this.stateManager, this.conflictRegistry);
         this.planOrchestrator = new PlanOrchestrator(taskScheduler, conflictRegistry, executorProperties);
     }
     public DeploymentTaskFacadeImpl() { // convenience for tests (no legacy deps)
@@ -354,7 +381,7 @@ public class DeploymentTaskFacadeImpl implements DeploymentTaskFacade {
         this.stateManager = new TaskStateManager();
         this.executorProperties = new ExecutorProperties();
         this.healthCheckClient = new MockHealthCheckClient();
-        this.springSink = new SpringTaskEventSink(this.stateManager);
+        this.springSink = new SpringTaskEventSink(this.stateManager, this.conflictRegistry);
         this.planOrchestrator = new PlanOrchestrator(taskScheduler, conflictRegistry, executorProperties);
     }
     public DeploymentTaskFacadeImpl(ValidationChain validationChain, TaskStateManager stateManager,
@@ -363,7 +390,7 @@ public class DeploymentTaskFacadeImpl implements DeploymentTaskFacade {
         this.stateManager = stateManager;
         this.executorProperties = executorProperties != null ? executorProperties : new ExecutorProperties();
         this.healthCheckClient = healthCheckClient != null ? healthCheckClient : new MockHealthCheckClient();
-        this.springSink = new SpringTaskEventSink(this.stateManager);
+        this.springSink = new SpringTaskEventSink(this.stateManager, this.conflictRegistry);
         this.planOrchestrator = new PlanOrchestrator(taskScheduler, conflictRegistry, this.executorProperties);
     }
 }

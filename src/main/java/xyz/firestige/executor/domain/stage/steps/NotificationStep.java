@@ -1,7 +1,7 @@
 package xyz.firestige.executor.domain.stage.steps;
 
 import xyz.firestige.executor.domain.stage.StageStep;
-import xyz.firestige.executor.domain.task.TaskContext;
+import xyz.firestige.executor.domain.task.TaskRuntimeContext;
 
 /**
  * 通知步骤占位：未来对接实际 ServiceNotification 行为。
@@ -19,13 +19,7 @@ public class NotificationStep implements StageStep {
     }
 
     @Override
-    public void execute(TaskContext ctx) throws Exception {
-        // 未来：向外部服务发布新路由或配置；此处记录占位
-    }
-
-    @Override
-    public void rollback(TaskContext ctx) throws Exception {
-        // 未来：发布回滚动作；此处占位
+    public void execute(TaskRuntimeContext ctx) throws Exception {
+        // 占位通知逻辑
     }
 }
-

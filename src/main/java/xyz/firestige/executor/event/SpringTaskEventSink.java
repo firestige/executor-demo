@@ -3,6 +3,9 @@ package xyz.firestige.executor.event;
 import xyz.firestige.executor.state.TaskStateManager;
 import xyz.firestige.executor.exception.FailureInfo;
 import xyz.firestige.executor.execution.StageResult;
+import xyz.firestige.executor.state.event.TaskRetryCompletedEvent;
+import xyz.firestige.executor.state.event.TaskRetryStartedEvent;
+import xyz.firestige.executor.support.conflict.ConflictRegistry;
 
 import java.time.Duration;
 import java.util.List;
@@ -13,9 +16,22 @@ import java.util.List;
 public class SpringTaskEventSink implements TaskEventSink {
 
     private final TaskStateManager stateManager;
+    private final ConflictRegistry conflicts; // optional for fallback release
 
     public SpringTaskEventSink(TaskStateManager stateManager) {
         this.stateManager = stateManager;
+        this.conflicts = null;
+    }
+
+    public SpringTaskEventSink(TaskStateManager stateManager, ConflictRegistry conflicts) {
+        this.stateManager = stateManager;
+        this.conflicts = conflicts;
+    }
+
+    private void releaseIfTerminal(String taskId) {
+        if (conflicts == null) return;
+        String tenantId = stateManager.getTenantId(taskId);
+        if (tenantId != null) conflicts.release(tenantId);
     }
 
     @Override
@@ -67,6 +83,7 @@ public class SpringTaskEventSink implements TaskEventSink {
     @Override
     public void publishTaskCompleted(String planId, String taskId, Duration duration, List<String> completedStages, long sequenceIdIgnored) {
         stateManager.publishTaskCompletedEvent(taskId, duration, completedStages);
+        releaseIfTerminal(taskId);
     }
 
     @Override
@@ -74,6 +91,7 @@ public class SpringTaskEventSink implements TaskEventSink {
         FailureInfo fi = new FailureInfo();
         fi.setErrorMessage(reason);
         stateManager.publishTaskFailedEvent(taskId, fi, null, null);
+        releaseIfTerminal(taskId);
     }
 
     @Override
@@ -101,15 +119,33 @@ public class SpringTaskEventSink implements TaskEventSink {
     @Override
     public void publishTaskRolledBack(String planId, String taskId, long sequenceIdIgnored) {
         stateManager.publishTaskRolledBackEvent(taskId, null);
+        releaseIfTerminal(taskId);
     }
 
     @Override
     public void publishTaskRolledBack(String planId, String taskId, java.util.List<String> rolledBackStages, long sequenceIdIgnored) {
         stateManager.publishTaskRolledBackEvent(taskId, rolledBackStages);
+        releaseIfTerminal(taskId);
     }
 
     @Override
     public void publishTaskCancelled(String planId, String taskId, long sequenceIdIgnored) {
         stateManager.publishTaskCancelledEvent(taskId);
+        releaseIfTerminal(taskId);
+    }
+
+    @Override
+    public void publishTaskRetryStarted(String planId, String taskId, boolean fromCheckpoint) {
+        stateManager.publishTaskRetryStartedEvent(taskId, fromCheckpoint);
+    }
+
+    @Override
+    public void publishTaskRetryCompleted(String planId, String taskId, boolean fromCheckpoint) {
+        stateManager.publishTaskRetryCompletedEvent(taskId, fromCheckpoint);
+    }
+
+    @Override
+    public void publishTaskRollbackFailed(String planId, String taskId, List<String> partiallyRolledBackStages, String reason, long sequenceIdIgnored) {
+        stateManager.publishTaskRollbackFailedEvent(taskId, xyz.firestige.executor.exception.FailureInfo.of(xyz.firestige.executor.exception.ErrorType.SYSTEM_ERROR, reason), partiallyRolledBackStages);
     }
 }

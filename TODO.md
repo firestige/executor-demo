@@ -12,160 +12,106 @@
 - 配置优先级：TenantDeployConfig > application 配置 > 默认值。
 - 胶水层：PlanFactory 深拷贝外部 DTO 为内部聚合，内部不直接引用外部对象。
 - Checkpoint：存储可插拔（当前 InMemory，后续 Redis/DB）。
+- 不同 Plan 之间无依赖，不需要跨 Plan 协作编排或依赖处理。
 
 ## 1. 已完成历史（归档）
 - **Phase 0**：初始化与分支建立
 - **Phase 1**：领域聚合与运行时上下文
-Phase 2：初版 TaskStateMachine（Guard/Action 接口骨架）
-Phase 3：ConflictRegistry 与 TaskScheduler 骨架
-Phase 4：Stage/Step 模型 + HealthCheckStep
-Phase 5：Checkpoint 抽象与内存实现
-Phase 6：TaskExecutor 接线 + 心跳 + MDC + 基础回滚/重试
-Phase 7：Facade 接入新架构（创建/暂停/恢复/重试/回滚/查询）
-Phase 8：旧体系清理（ExecutionUnit / TaskOrchestrator 等删除）
-Phase 9：初步文档更新（Architecture Prompt / README）
+- **Phase 2**：初版 TaskStateMachine（Guard/Action 接口骨架）
+- **Phase 3**：ConflictRegistry 与 TaskScheduler 骨架
+- **Phase 4**：Stage/Step 模型 + HealthCheckStep
+- **Phase 5**：Checkpoint 抽象与内存实现
+- **Phase 6**：TaskExecutor 接线 + 心跳 + MDC + 基础回滚/重试
+- **Phase 7**：Facade 接入新架构（创建/暂停/恢复/重试/回滚/查询）
+- **Phase 8**：旧体系清理（ExecutionUnit / TaskOrchestrator 等删除）
+- **Phase 9**：初步文档更新（Architecture Prompt / README）
+- **Phase 10**：状态与事件接线（SM-04/05/07，EV-01/02/04，TC-05）
+  - 进入 RUNNING/终态写 startedAt/endedAt/durationMillis
+  - cancel/retry 改为状态机迁移
+  - 重试事件（Started/Completed）+ 每阶段回滚事件 + 聚合回滚失败事件
+  - 心跳调度器支持重试（可重复启动）
+  - 新单测：Guard/Retry/回滚阶段/持续时间
+- **Phase 11**：回滚快照与取消事件增强 + 计划状态机接线
+  - RB-01/RB-03 快照恢复与事件携带
+  - RB-02 健康确认门控 lastKnownGoodVersion（VersionRollbackHealthVerifier + 单测）
+  - EV-03 取消事件 enriched (cancelledBy + lastStage)
+  - SM-06 计划状态机 READY→RUNNING→PAUSED/RUNNING + PAUSED 状态引入
+- **Phase 12**：Checkpoint/释放兜底/重试差异 — 已完成
+  - CP-03（完成）、CP-04（完成：自动配置 + 客户端隔离，可通过属性切换 memory/redis）、CP-05（完成：Pause→Resume 测试通过，checkpoint 连续）
+  - SC-02（完成：执行路径释放 + 事件兜底释放）、C-02（完成）
+- **Phase 13**：健康检查与工厂抽象 — 已完成
+  - HC-01（ExecutorProperties 支持 healthCheckPath / healthCheckVersionKey）
+  - HC-03（StageFactory 抽象与接线）
+  - SC-05（TaskWorkerFactory 抽象与接线）
 
-> 以上阶段已完成，不再重新规划；回溯请参考对应提交或标签。
+> 截至当前 Phase 13 全部完成。
 
 ## 2. 待办目录（编号可追踪）
-（状态机）
-SM-01 FAILED→RUNNING Guard（retryCount < maxRetry）
-SM-02 RUNNING→PAUSED Guard（pauseRequested = true）
-SM-03 RUNNING→COMPLETED Guard（currentStageIndex == totalStages）
-SM-04 RUNNING 进入 Action：记录 startedAt
-SM-05 COMPLETED / FAILED / ROLLED_BACK / ROLLBACK_FAILED Action：记录 endedAt + durationMillis
-SM-06 PlanStateMachine 基本迁移（PENDING→RUNNING→PAUSED/COMPLETED/FAILED）
-SM-07 替换 retry / cancel 直接 task.setStatus 为 stateManager.updateState
+### 2.1. 状态机
+- **SM-01** FAILED→RUNNING Guard（retryCount < maxRetry） — DONE
+- **SM-02** RUNNING→PAUSED Guard（pauseRequested = true） — DONE
+- **SM-03** RUNNING→COMPLETED Guard（currentStageIndex == totalStages） — DONE
+- **SM-04** RUNNING 进入 Action：记录 startedAt — DONE
+- **SM-05** COMPLETED / FAILED / ROLLED_BACK / ROLLBACK_FAILED Action：记录 endedAt + durationMillis — DONE
+- **SM-06** PlanStateMachine 基本迁移（READY→RUNNING→PAUSED/ RUNNING） — DONE
+- **SM-07** 替换 retry / cancel 直接 task.setStatus 为 stateManager.updateState — DONE
 
-（事件）
-EV-01 RetryStarted / RetryCompleted（包含 fromCheckpoint 标志）
-EV-02 每阶段回滚事件（StageRollingBack / StageRolledBack / StageRollbackFailed）
-EV-03 Cancel 事件增强（cancelledBy + lastStage）
-EV-04 sequenceId 连续性测试（无跳号/回退）
-EV-05 README 中关键事件示例
+### 2.2. 事件
+- **EV-01** RetryStarted / RetryCompleted（包含 fromCheckpoint 标志） — DONE
+- **EV-02** 每阶段回滚事件（StageRollingBack / StageRolledBack / StageRollbackFailed） — DONE
+- **EV-03** Cancel 事件增强（cancelledBy + lastStage） — DONE（通过注册 stage 名称解析 lastStage）
+- **EV-04** sequenceId 连续性测试（无跳号/回退） — DONE（已有通用与重试覆盖）
+- **EV-05** README 中关键事件示例章节 — DONE（README.md 已提供事件 payload 示例）
 
-（回滚/快照）
-RB-01 回滚成功恢复 prevConfigSnapshot（deployUnitId/version/name）
-RB-02 回滚健康确认后更新 lastKnownGoodVersion
-RB-03 在 RolledBack 事件中发布快照恢复详情
+### 2.3. 回滚/快照
+- **RB-01** 回滚成功恢复 prevConfigSnapshot（deployUnitId/version/name） — DONE
+- **RB-02** 回滚健康确认后更新 lastKnownGoodVersion — DONE（VersionRollbackHealthVerifier 已实现并有成功/失败单测）
+- **RB-03** 在 RolledBack 事件中发布快照恢复详情 — DONE
 
-（Checkpoint）
-CP-01 每个成功 Stage 后保存 checkpoint
-CP-02 终态/回滚后统一清理 checkpoint
-CP-03 批量恢复 API（loadMultiple）
-CP-04 RedisCheckpointStore 占位 + SPI 选择（memory|redis|db）
-CP-05 Pause→Resume 正确性测试（checkpoint 连续性）
+### 2.4. Checkpoint
+- **CP-01** 每个成功 Stage 后保存 checkpoint — DONE
+- **CP-02** 终态/回滚后统一清理 checkpoint — DONE
+- **CP-03** 批量恢复 API（loadMultiple） — DONE（CheckpointService.loadMultiple）
+- **CP-04** RedisCheckpointStore 占位 + SPI 选择（memory|redis|db） — DONE（自动配置 + 客户端隔离，可通过属性切换 memory/redis）
+- **CP-05** Pause→Resume 正确性测试（checkpoint 连续性） — DONE（Pause→Resume 测试通过，checkpoint 连续）
 
-（健康检查）
-HC-01 ExecutorProperties 支持 versionKey / path 可配置
-HC-02 部分实例失败用例（部分端点滞后导致 Stage 失败）
-HC-03 StageFactory 抽象（声明式组合步骤）
+### 2.5. 健康检查
+- **HC-01** ExecutorProperties 支持 versionKey / path 可配置 — DONE
+- **HC-02** 部分实例失败用例（部分端点滞后导致 Stage 失败） — DONE
+- **HC-03** StageFactory 抽象（声明式组合步骤） — DONE
 
-（并发/调度）
-SC-01 PlanOrchestrator 支持 plan 级 pause/resume/rollback 路由
-SC-02 任务结束各路径释放 ConflictRegistry 锁（成功/失败/取消/回滚）
-SC-03 FIFO 测试（maxConcurrency=1）保证启动顺序
-SC-04 并发启动测试（maxConcurrency>1）正确性
-SC-05 TaskWorkerFactory 抽象（封装 TaskExecutor 创建）
+### 2.6. 并发/调度
+- **SC-01** PlanOrchestrator 支持 plan 级 pause/resume/rollback 路由 — DONE
+- **SC-02** 任务结束各路径释放 ConflictRegistry 锁（成功/失败/取消/回滚） — DONE（执行路径释放 + 事件兜底释放）
+- **SC-03** FIFO 测试（maxConcurrency=1）保证启动顺序 — DONE
+- **SC-04** 并发启动测试（maxConcurrency>1）正确性 — DONE
+- **SC-05** TaskWorkerFactory 抽象（封装 TaskExecutor 创建） — DONE
 
-（测试覆盖）
-TC-01 长耗时 Step 心跳测试（≥2 次心跳）
-TC-02 fromCheckpoint 与 fresh 重试差异（不重复已完成 Stage）
-TC-03 执行后 MDC 清理（线程局部检查）
-TC-04 回滚失败路径（某 Stage rollback 抛异常）触发 RollbackFailed
-TC-05 durationMillis 字段正确性测试
+### 2.7. 测试覆盖
+- **C-01** 长耗时 Step 心跳测试（≥2 次心跳） — DONE（HeartbeatSchedulerTest）
+- **C-02** fromCheckpoint 与 fresh 重试差异（不重复已完成 Stage） — DONE（RetryFromCheckpointTest）
+- **C-03** 执行后 MDC 清理（线程局部检查） — DONE（MdcCleanupTest / MdcCleanupCancelFailTest）
+- **C-04** 回滚失败路径（某 Stage rollback 抛异常）触发 RollbackFailed — DONE
+- **C-05** durationMillis 字段正确性测试 — DONE
+- **C-06** RollbackHealthVerifier 成功/失败分支测试 — DONE
 
-（可观测性/指标）
-OB-01 Micrometer 计数器（task_active / task_completed / task_failed / rollback_count）
-OB-02 heartbeat_lag Gauge
-OB-03 结构化日志 + MDC 稳定性测试
+### 2.8. 可观测性/指标
+- **OB-01** Micrometer 计数器（task_active / task_completed / task_failed / rollback_count） — DONE（MetricsRegistry 适配 + 可选自动配置示例）
+- **OB-02** heartbeat_lag Gauge — DONE（HeartbeatScheduler + MetricsRegistry#setGauge）
+- **OB-03** 结构化日志 + MDC 稳定性测试 — DONE（StructuredMdcLoggingTest + 失败/取消路径覆盖）
 
-（文档/治理）
-DG-01 最终架构文档扩展点矩阵
-DG-02 迁移指南（旧 → 新）最终版
-DG-03 README 事件 payload 示例章节
-DG-04 Glossary 扩展（policies / instrumentation）
+### 2.9. 文档/治理
+- **DG-01** 最终架构文档扩展点矩阵 — DONE（ARCHITECTURE_PROMPT.md 已更新）
+- **DG-02** 迁移指南（旧 → 新）最终版 — DONE（MIGRATION_GUIDE.md）
+- **DG-03** README 事件 payload 示例章节 — DONE（README.md 事件示例）
+- **DG-04** Glossary 扩展（policies / instrumentation） — DONE（GLOSSARY.md）
 
 ## 3. 阶段路线图（待办编号映射）
-Phase 10（状态机 & 核心事件）
-包含：SM-01..05, SM-07, EV-01, EV-02, EV-04, TC-05
-验收：
-- Guard / Action 单测全部通过
-- RetryStarted / RetryCompleted & 每阶段回滚事件产出
-- retry/cancel 不再直接修改状态
-- durationMillis 写入并测试校验
+- Phase 15（已完成）：OB-01..03、C-03
+- Phase 16（已完成）：DG-01..04、EV-05
 
-Phase 11（回滚快照 & 取消增强）
-包含：RB-01..03, EV-03, SM-06, TC-04
-验收：快照恢复事件详情正确；取消事件包含附加字段；PlanStateMachine 基本迁移通过
+## 4. 当前工作集（Phase 16）
+- （空）
 
-Phase 12（Checkpoint SPI & 批量恢复）
-包含：CP-01..05, SC-02, TC-02
-验收：批量 API 可用；Redis 占位可选择；暂停→恢复 checkpoint 连续
-
-Phase 13（健康检查配置 & StageFactory）
-包含：HC-01..03, SC-05
-验收：versionKey/path 配置生效；StageFactory 生成声明式组合
-
-Phase 14（并发与调度稳健性）
-包含：SC-01, SC-03, SC-04, TC-01
-验收：FIFO 与并发测试通过；路由 pause/resume/rollback 生效
-
-Phase 15（可观测性与指标）
-包含：OB-01..03, TC-03
-验收：指标按预期暴露；MDC 清理与结构化日志测试通过
-
-Phase 16（文档终稿）
-包含：DG-01..04, EV-05
-验收：README / Architecture Prompt 最终版；迁移指南审核通过
-
-## 4. 执行模式（各 Phase 通用步骤）
-1. 制定实现清单（引用待办编号）
-2. 垂直切片交付（Guard + Action + 事件 + 测试一起）避免半成品
-3. 每完成关键逻辑运行 `mvn -q -DskipTests=false test`
-4. 在待办条目后标记状态：DONE / IN-PROGRESS / BLOCKED
-5. 验收通过打标签：`refactor-phase10-ok` 等
-6. 准备回滚说明（按逻辑单元分提交）
-
-## 5. 当前工作集（Phase 10 草案）
-[ ] SM-01 FAILED→RUNNING Guard
-[ ] SM-02 RUNNING→PAUSED Guard
-[ ] SM-03 RUNNING→COMPLETED Guard
-[ ] SM-04 RUNNING 进入写 startedAt
-[ ] SM-05 终态写 endedAt + durationMillis
-[ ] SM-07 替换 retry / cancel 直接赋值
-[ ] EV-01 RetryStarted / RetryCompleted 事件
-[ ] EV-02 每阶段回滚事件
-[ ] EV-04 sequenceId 连续性测试
-[ ] TC-05 durationMillis 单测
-
-## 6. 风险与缓解
-- 状态机扩展导致不一致：单独为每个 Guard/Action 增量单测
-- 事件序列缺口：早期实现 EV-04 保证连续性
-- 回滚并发请求：租户冲突锁 + 单任务内单线程执行回滚
-
-## 7. 回滚策略模板
-若 Phase 验收失败：
-```bash
-# 回退到上一个成功标签
-git checkout feature/plan-task-stage-refactor
-git reset --hard refactor-phase{N-1}-ok
-```
-或回滚部分提交：
-```bash
-git revert <commit_sha_1> <commit_sha_2>
-```
-
-## 8. 状态更新约定
-在待办 ID 后追加：
-- SM-01 DONE
-- EV-02 IN-PROGRESS
-- RB-01 BLOCKED（等待健康确认机制）
-
-## 9. 范围外（暂不评估）
-- 多 Plan 依赖编排
-- 调度优先级 / 抢占
-- 自适应健康检查间隔（动态退避）
-
-## 10. 下一步
-待你审核通过后，启动 Phase 10：先实现 SM-01..03 Guard + SM-04..05 Action + SM-07 状态替换，再补 EV-01/EV-02 与测试。
+## 5. 说明
+- 冲突锁释放：仅终止态（COMPLETED/FAILED/CANCELLED/ROLLED_BACK/ROLLBACK_FAILED）释放；执行路径释放 + 事件兜底释放双层保障；回滚中（ROLLING_BACK）与暂停（PAUSED）不释放。

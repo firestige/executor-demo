@@ -2,7 +2,8 @@ package xyz.firestige.executor.domain.stage;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import xyz.firestige.executor.domain.task.TaskContext;
+import xyz.firestige.executor.domain.task.TaskRuntimeContext;
+import xyz.firestige.executor.domain.stage.rollback.RollbackStrategy;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -18,20 +19,25 @@ public class CompositeServiceStage implements TaskStage {
 
     private final String name;
     private final List<StageStep> steps = new ArrayList<>();
+    private final RollbackStrategy rollbackStrategy; // 新增回滚策略
 
     public CompositeServiceStage(String name, List<StageStep> steps) {
+        this(name, steps, null);
+    }
+    public CompositeServiceStage(String name, List<StageStep> steps, RollbackStrategy rollbackStrategy) {
         this.name = Objects.requireNonNull(name);
         if (steps != null) this.steps.addAll(steps);
+        this.rollbackStrategy = rollbackStrategy;
     }
 
     @Override
     public String getName() { return name; }
 
     @Override
-    public boolean canSkip(TaskContext ctx) { return false; }
+    public boolean canSkip(TaskRuntimeContext ctx) { return false; }
 
     @Override
-    public StageExecutionResult execute(TaskContext ctx) {
+    public StageExecutionResult execute(TaskRuntimeContext ctx) {
         StageExecutionResult result = StageExecutionResult.start(name);
         for (StageStep step : steps) {
             var stepRes = StepExecutionResult.start(step.getStepName());
@@ -53,20 +59,13 @@ public class CompositeServiceStage implements TaskStage {
     }
 
     @Override
-    public void rollback(TaskContext ctx) {
-        // 逆序回滚
-        List<StageStep> copy = new ArrayList<>(steps);
-        Collections.reverse(copy);
-        for (StageStep step : copy) {
-            try {
-                step.rollback(ctx);
-            } catch (Exception ex) {
-                log.warn("Rollback step failed: stage={}, step={}, err={}", name, step.getStepName(), ex.getMessage(), ex);
-            }
-        }
+    public void rollback(TaskRuntimeContext ctx) {
+        // Stage 不直接执行策略（由 TaskExecutor 驱动），这里只做占位日志。
+        log.info("Stage rollback placeholder (strategy invoked by executor if present): stage={}", name);
     }
+
+    public RollbackStrategy getRollbackStrategy() { return rollbackStrategy; }
 
     @Override
     public List<StageStep> getSteps() { return new ArrayList<>(steps); }
 }
-

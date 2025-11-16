@@ -49,5 +49,8 @@ public class PlanOrchestrator {
             scheduler.schedule(t.getTaskId(), maxConc, workerFactory.create(t));
         }
     }
-}
 
+    public void releaseTenantLock(String tenantId) {
+        if (tenantId != null) conflicts.release(tenantId);
+    }
+}

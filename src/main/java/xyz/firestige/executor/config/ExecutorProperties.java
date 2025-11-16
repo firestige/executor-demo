@@ -10,6 +10,8 @@ public class ExecutorProperties {
     private int healthCheckIntervalSeconds = 3;
     private int healthCheckMaxAttempts = 10;
     private int taskProgressIntervalSeconds = 10;
+    private String healthCheckPath = "/health"; // 新增：健康检查路径（可覆盖）
+    private String healthCheckVersionKey = "version"; // 新增：健康检查版本键（可覆盖）
 
     public int getMaxConcurrency() { return maxConcurrency; }
     public void setMaxConcurrency(int maxConcurrency) { this.maxConcurrency = maxConcurrency; }
@@ -25,5 +27,10 @@ public class ExecutorProperties {
 
     public int getTaskProgressIntervalSeconds() { return taskProgressIntervalSeconds; }
     public void setTaskProgressIntervalSeconds(int v) { this.taskProgressIntervalSeconds = v; }
-}
 
+    public String getHealthCheckPath() { return healthCheckPath; }
+    public void setHealthCheckPath(String healthCheckPath) { this.healthCheckPath = healthCheckPath; }
+
+    public String getHealthCheckVersionKey() { return healthCheckVersionKey; }
+    public void setHealthCheckVersionKey(String healthCheckVersionKey) { this.healthCheckVersionKey = healthCheckVersionKey; }
+}

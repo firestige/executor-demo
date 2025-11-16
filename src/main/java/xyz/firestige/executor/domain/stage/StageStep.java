@@ -1,13 +1,11 @@
 package xyz.firestige.executor.domain.stage;
 
-import xyz.firestige.executor.domain.task.TaskContext;
+import xyz.firestige.executor.domain.task.TaskRuntimeContext;
 
 /**
- * Stage 内部的单个步骤定义。
+ * Stage 内部的单个步骤定义（不再包含 rollback）。
  */
 public interface StageStep {
     String getStepName();
-    void execute(TaskContext ctx) throws Exception;
-    void rollback(TaskContext ctx) throws Exception;
+    void execute(TaskRuntimeContext ctx) throws Exception;
 }
-

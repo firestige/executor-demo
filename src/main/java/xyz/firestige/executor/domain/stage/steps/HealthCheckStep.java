@@ -5,7 +5,7 @@ import org.slf4j.LoggerFactory;
 import xyz.firestige.entity.deploy.NetworkEndpoint;
 import xyz.firestige.executor.config.ExecutorProperties;
 import xyz.firestige.executor.domain.stage.StageStep;
-import xyz.firestige.executor.domain.task.TaskContext;
+import xyz.firestige.executor.domain.task.TaskRuntimeContext;
 import xyz.firestige.executor.service.health.HealthCheckClient;
 
 import java.util.List;
@@ -35,7 +35,7 @@ public class HealthCheckStep implements StageStep {
         this.stepName = Objects.requireNonNull(stepName);
         this.endpoints = Objects.requireNonNull(endpoints);
         this.expectedVersion = Objects.requireNonNull(expectedVersion);
-        this.versionKey = versionKey == null ? "version" : versionKey;
+        this.versionKey = (versionKey != null && !versionKey.isEmpty()) ? versionKey : props.getHealthCheckVersionKey();
         this.client = Objects.requireNonNull(client);
         this.props = Objects.requireNonNull(props);
     }
@@ -46,7 +46,7 @@ public class HealthCheckStep implements StageStep {
     }
 
     @Override
-    public void execute(TaskContext ctx) throws Exception {
+    public void execute(TaskRuntimeContext ctx) throws Exception {
         int interval = props.getHealthCheckIntervalSeconds();
         int maxAttempts = props.getHealthCheckMaxAttempts();
 
@@ -72,11 +72,6 @@ public class HealthCheckStep implements StageStep {
         throw new IllegalStateException("HealthCheck failed after max attempts");
     }
 
-    @Override
-    public void rollback(TaskContext ctx) {
-        // 健康检查无回滚动作
-    }
-
     private String endpointToUrl(NetworkEndpoint ep) {
         // 优先使用 value 作为完整 URL
         String value = ep.getValue();
@@ -89,6 +84,13 @@ public class HealthCheckStep implements StageStep {
         if (host == null || host.isEmpty()) {
             host = "localhost";
         }
-        return "http://" + host + "/health";
+        String path = props.getHealthCheckPath();
+        if (path == null || path.isEmpty()) {
+            path = "/health";
+        }
+        if (!path.startsWith("/")) {
+            path = "/" + path;
+        }
+        return "http://" + host + path;
     }
 }

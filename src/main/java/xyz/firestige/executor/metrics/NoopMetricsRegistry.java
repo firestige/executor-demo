@@ -1,0 +1,7 @@
+package xyz.firestige.executor.metrics;
+
+public class NoopMetricsRegistry implements MetricsRegistry {
+    @Override public void incrementCounter(String name) {}
+    @Override public void setGauge(String name, double value) {}
+}
+
