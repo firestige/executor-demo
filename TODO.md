@@ -253,3 +253,127 @@ Checkpoint
 - 指标上报与可观测性埋点（Micrometer）
 - 事件幂等增强（加入 epoch/启动时间戳）
 - 优雅停机与“在途任务”策略
+
+---
+
+## Remaining Backlog (未完成待办梳理)
+> 以下为尚未完成或部分完成的任务，已按主题重新分解，供后续迭代：
+
+### 1. 状态机与语义强化 (State Machine Enhancements)
+- Implement TransitionGuard: FAILED→RUNNING 需满足 retryCount < maxRetry 且非 rolling_back
+- Implement TransitionGuard: RUNNING→PAUSED 仅在 pauseRequested=true
+- Implement TransitionAction: RUNNING 设置 startTime, COMPLETED/FAILED 计算 duration & failureInfo 注入
+- Add PlanStateMachine transitions (e.g., PENDING→RUNNING, RUNNING→PAUSED, RUNNING→COMPLETED/FAILED)
+
+### 2. 编排与并发控制 (Orchestrator & Concurrency)
+- Plan-level pause/resume/rollback 通过 PlanOrchestrator 路由（当前直接遍历 tasks）
+- 调度完成回调：释放 ConflictRegistry 租户锁并 FIFO 队列推进
+- Introduce TaskWorkerFactory 封装 TaskExecutor 构建逻辑
+- End-to-end 测试：maxConcurrency=1 时 FIFO 顺序保证；>1 时并发正确性
+
+### 3. Stage/Step 工厂化与配置 (Stage Factory & Config)
+- ServiceNotificationStrategy → CompositeServiceStage 的通用映射工厂（替换硬编码 buildStageForTask）
+- ExecutorProperties 增加 healthCheckVersionKey / healthCheckPath 配置项
+- HealthCheckStep 使用上述配置项而非硬编码 "version" / 默认 path
+- 单测：部分实例失败场景（非全部成功）导致 Stage 失败
+
+### 4. Checkpoint 能力扩展 (Checkpoint & Persistence)
+- 在每个 Stage 结束自动保存 checkpoint（核实现状，不足则补）
+- 成功/失败/回滚后集中清理 checkpoint（统一方法 + 单测）
+- Batch 恢复接口：loadMultiple(List<taskId>) 提升批量恢复效率
+- 可插拔持久化实现（Redis/DB）与 SPI（占位实现 + 配置切换）
+- 单测：暂停恢复后继续正确接续；回滚后 checkpoint 清理验证
+
+### 5. 事件模型增强 (Event Model)
+- Per-stage rollback events: publishTaskStageRollingBack / publishTaskStageRollbackFailed / publishTaskStageRolledBack
+- RetryStarted / RetryCompleted 事件（含 fromCheckpoint 标志）
+- Cancel 事件 enrichment：增加 cancelledBy（system/manual）+ lastStage
+- ProgressDetail 事件：统一使用 completedStages/totalStages（核实序列）
+- 序列号一致性测试：事件 sequenceId 严格递增，无跳号/回退
+
+### 6. 测试覆盖补强 (Testing Coverage)
+- 并发与 FIFO 行为测试（含冲突租户第二任务等待）
+- 心跳频率测试：模拟长 Stage 确认 HeartbeatScheduler 独立运行
+- Checkpoint 保存/恢复/清理全路径测试
+- 回滚失败路径：模拟某个 Stage rollback 抛异常 → 全局失败事件
+- MDC 清理：验证执行后线程上下文无残留（使用 ThreadLocal 检查）
+- Retry from scratch vs fromCheckpoint 差异测试（事件补偿、已完成 Stage 不重复执行）
+
+### 7. 持久化与扩展 (Persistence & Extensibility)
+- RedisCheckpointStore 占位实现（内存接口复制 + 注释待实现）
+- DBCheckpointStore 设计草稿（暂不实现细节）
+- SPI 选择机制：properties 中 checkpoint.storeType=memory|redis|db
+
+### 8. 可观测性与指标 (Observability)
+- Micrometer 指标：task_active、task_completed、task_failed、rollback_count、heartbeat_lag
+- 日志 MDC 字段稳定性测试（planId/taskId/tenantId/stageName）
+
+### 9. 文档与治理 (Docs & Governance)
+- README 补充：事件列表与示例 payload
+- ARCHITECTURE_PROMPT 增加“扩展策略/新增 Step 流程”小节
+- 升级说明：从旧架构迁移步骤（已删除旧类，补迁移指引）
+
+## Phase 10 — 迭代计划（第一批执行）
+> 聚焦最小可行增强：状态机守卫 + 事件完善 + 基础测试补强
+
+### 10.1 目标
+在不破坏现有通过测试的前提下，补齐核心领域约束与关键事件，为后续性能与持久化扩展奠定基础。
+
+### 10.2 待办列表 (Actionable Tasks)
+1. Implement TransitionGuard & TransitionAction（FAILED→RUNNING、RUNNING→PAUSED、RUNNING/COMPLETED/FAILED Actions）
+2. Add RetryStarted / RetryCompleted events（含 fromCheckpoint 字段）并接入 Facade 重试逻辑
+3. Add per-stage rollback events（遍历阶段调用 publishTaskStageRollingBack / publishTaskStageRolledBack / publishTaskStageRollbackFailed）
+4. HeartbeatScheduler 独立线程池验证（单测：模拟长耗时 Step）
+5. 并发与 FIFO 单测：maxConcurrency=1 + 冲突租户 second task 排队
+6. Checkpoint 保存/清理核实：补单测（暂停→恢复→完成；回滚后清理）
+7. 序列号递增一致性测试（抓取事件序列）
+8. README 补充事件示例（Started/StageSucceeded/RetryStarted/RolledBack）
+
+### 10.3 验收标准
+- 新增事件（RetryStarted/RetryCompleted、StageRollingBack）出现于测试日志并通过断言
+- 状态机非法转换（例如 PAUSED→COMPLETED 不直接跳）触发 Guard 拦截测试
+- FIFO 测试中第二任务在前一任务完成前不进入 RUNNING
+- 心跳在长耗时 Step 期间仍按间隔触发（>=2 次）
+- 回滚后 checkpoint 全部清理（查询接口无残留 checkpoint 信息）
+
+### 10.4 回退策略
+- 引入状态机文件时单独提交；若失败可 git revert 该提交
+- 事件模型扩展独立提交；出现消费者兼容问题可单独回滚
+
+## Phase 11+ 展望（后续批次）
+- HealthCheck 可配置化（versionKey/path）
+- RedisCheckpointStore & SPI 切换
+- Metrics + MDC 自动化测试
+- Batch 恢复与性能压测
+
+## 状态同步
+- “文档补充：查询字段含义、重试策略、回滚语义” 已在 README 与 ARCHITECTURE_PROMPT 完成，标记为 ✅（原 TODO 未勾选）
+- “回滚事件补充阶段级明细” 部分完成（总事件含阶段列表），需补 per-stage 事件 → 保持为进行中
+
+---
+
+## 新增待办（本次交互补充）
+### 状态机与行为一致性增强
+- [ ] Guard/Action 单测：
+  - FAILED→RUNNING 重试上限拦截（retryCount == maxRetry 禁止迁移）
+  - RUNNING→COMPLETED 仅在 currentStageIndex == totalStages 时允许
+  - RUNNING→PAUSED 在 pauseRequested=true 时允许，其他拒绝
+  - 验证非法迁移保持原状态（no-op）并不发布事件
+- [ ] 回滚时恢复 prevConfigSnapshot：
+  - PreviousConfigRollbackStrategy 在成功回滚后重置 deployUnitVersion/deployUnitId/deployUnitName 到快照值
+  - 设置 lastKnownGoodVersion=快照版本，并发布 TaskStageRolledBack/TaskRolledBack 事件
+- [ ] 用状态机替换 retry/cancel 的直接赋值：
+  - retry(fromCheckpoint=false) 将 PENDING→RUNNING 通过 stateManager.updateState 而非 task.setStatus
+  - cancelTask 使用 stateManager.updateState(taskId, CANCELLED) 替代直接赋值
+  - 单测覆盖：取消后不再允许 RUNNING→COMPLETED
+- [ ] 记录任务持续时间字段：
+  - TaskAggregate 增加 durationMillis 字段（COMPLETED/FAILED/RolledBack 设置）
+  - Action 在 COMPLETED/FAILED/ROLLED_BACK/ROLLBACK_FAILED 时写入 durationMillis = endedAt-startedAt
+  - 查询接口 TaskStatusInfo 输出 durationMillis（若存在）
+
+### 后续执行顺序建议
+1. 增加 TaskAggregate.durationMillis 字段及状态机 Action 设置逻辑
+2. 更新 PreviousConfigRollbackStrategy 以恢复快照并设置 lastKnownGoodVersion
+3. 改造 cancel & retry 流程调用 stateManager.updateState
+4. 编写 Guard/Action 单测（分文件：RetryGuardTest, PauseGuardTest, CompletionGuardTest）
+5. 扩展查询 DTO 输出 durationMillis 与 lastKnownGoodVersion
