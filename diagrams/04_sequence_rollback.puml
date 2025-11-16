@@ -1,0 +1,137 @@
+@startuml 回滚任务时序图
+!theme plain
+autonumber
+
+actor "运维人员" as Operator
+participant "DeploymentTaskFacade" as Facade
+participant "TaskAggregate" as Task
+participant "TaskStateManager" as StateManager
+participant "RollbackStrategy" as Strategy
+participant "RollbackHealthVerifier" as Verifier
+participant "HealthCheckClient" as HealthClient
+participant "TaskEventSink" as EventSink
+participant "CheckpointService" as Checkpoint
+participant "ConflictRegistry" as Conflict
+
+Operator -> Facade: rollbackTaskByPlan(planId)
+activate Facade
+
+Facade -> Facade: 查找 Plan 下的所有任务
+
+loop 每个 Task
+    Facade -> Task: getStatus()
+    alt 任务状态允许回滚
+        Facade -> StateManager: updateState(taskId, ROLLING_BACK)
+        activate StateManager
+        StateManager -> StateManager: 状态转换到 ROLLING_BACK
+        StateManager -> EventSink: publishRollingBack
+        activate EventSink
+        EventSink -> EventSink: 发布 TaskRollingBackEvent
+        EventSink --> StateManager: published
+        deactivate EventSink
+        StateManager --> Facade: state updated
+        deactivate StateManager
+
+        Facade -> Strategy: rollback(task, context)
+        activate Strategy
+
+        Strategy -> Task: getPrevConfigSnapshot()
+        Task --> Strategy: TenantDeployConfigSnapshot
+
+        note right
+          重发上一次已知良好配置
+          (prevDeployUnitId, prevVersion)
+        end note
+
+        loop 每个 Stage (逆序)
+            Strategy -> Strategy: rollbackStage(stage)
+            Strategy -> EventSink: publishStageRollingBack
+
+            alt Stage 回滚成功
+                Strategy -> EventSink: publishStageRolledBack
+            else Stage 回滚失败
+                Strategy -> EventSink: publishStageRollbackFailed
+                Strategy -> StateManager: updateState(taskId, ROLLBACK_FAILED)
+                Strategy --> Facade: RollbackResult(failed)
+            end
+        end
+
+        Strategy --> Facade: RollbackResult(success)
+        deactivate Strategy
+
+        ' 恢复快照到聚合
+        Facade -> Task: setDeployUnitId(prevId)
+        Facade -> Task: setDeployUnitVersion(prevVersion)
+        Facade -> Task: setDeployUnitName(prevName)
+
+        ' 健康确认
+        Facade -> Verifier: verify(task, context)
+        activate Verifier
+
+        alt 使用 VersionRollbackHealthVerifier
+            Verifier -> Task: getNetworkEndpoints()
+            loop 每个端点
+                Verifier -> HealthClient: get(healthCheckUrl)
+                activate HealthClient
+                HealthClient --> Verifier: {"version": "prevVersion"}
+                deactivate HealthClient
+            end
+
+            alt 所有端点版本匹配
+                Verifier -> Task: setLastKnownGoodVersion(prevVersion)
+                Verifier --> Facade: true (verified)
+            else 版本不匹配
+                Verifier --> Facade: false (verification failed)
+            end
+        else 使用 AlwaysTrueRollbackHealthVerifier
+            Verifier --> Facade: true (always pass)
+        end
+        deactivate Verifier
+
+        alt 健康确认成功
+            Facade -> StateManager: updateState(taskId, ROLLED_BACK)
+            activate StateManager
+            StateManager -> StateManager: 状态转换到 ROLLED_BACK
+            StateManager -> StateManager: 记录 endedAt 和 durationMillis
+            StateManager -> EventSink: publishRolledBack
+            activate EventSink
+            EventSink -> EventSink: 发布 TaskRolledBackEvent
+            note right
+              事件包含快照字段：
+              - prevDeployUnitId
+              - prevDeployUnitVersion
+              - prevDeployUnitName
+            end note
+            EventSink --> StateManager: published
+            deactivate EventSink
+            StateManager --> Facade: state updated
+            deactivate StateManager
+
+            Facade -> Checkpoint: clearCheckpoint(taskId)
+            activate Checkpoint
+            Checkpoint --> Facade: cleared
+            deactivate Checkpoint
+
+        else 健康确认失败
+            Facade -> StateManager: updateState(taskId, ROLLBACK_FAILED)
+            activate StateManager
+            StateManager -> EventSink: publishRollbackFailed
+            StateManager --> Facade: state updated
+            deactivate StateManager
+        end
+
+        Facade -> Conflict: release(tenantId)
+        activate Conflict
+        Conflict --> Facade: released
+        deactivate Conflict
+
+    else 任务状态不允许回滚
+        Facade -> Facade: 跳过该任务
+    end
+end
+
+Facade --> Operator: TaskOperationResult(summary)
+deactivate Facade
+
+@enduml
+

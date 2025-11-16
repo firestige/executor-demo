@@ -1,0 +1,118 @@
+@startuml 创建切换任务时序图
+!theme plain
+autonumber
+
+actor "运维人员" as Operator
+participant "DeploymentTaskFacade" as Facade
+participant "PlanFactory" as Factory
+participant "ValidationChain" as Validator
+participant "PlanOrchestrator" as Orchestrator
+participant "TaskScheduler" as Scheduler
+participant "ConflictRegistry" as Conflict
+participant "TaskExecutor" as Executor
+participant "TaskStateManager" as StateManager
+participant "CheckpointService" as Checkpoint
+participant "TaskEventSink" as EventSink
+
+Operator -> Facade: createSwitchTask(configs)
+activate Facade
+
+Facade -> Factory: createPlan(configs)
+activate Factory
+Factory -> Factory: 深拷贝 DTO 为聚合
+Factory -> Factory: 创建 PlanAggregate
+Factory -> Factory: 为每个租户创建 TaskAggregate
+Factory --> Facade: PlanAggregate
+deactivate Factory
+
+Facade -> Validator: validate(plan)
+activate Validator
+Validator -> Validator: 校验租户配置
+Validator -> Validator: 校验部署单元
+alt 校验失败
+    Validator --> Facade: ValidationException
+    Facade --> Operator: TaskCreationResult(failed)
+end
+Validator --> Facade: validation passed
+deactivate Validator
+
+Facade -> StateManager: initializeTask(taskId, CREATED)
+activate StateManager
+StateManager -> StateManager: 创建 TaskStateMachine
+StateManager --> Facade: initialized
+deactivate StateManager
+
+Facade -> Orchestrator: submitPlan(plan, workerFactory)
+activate Orchestrator
+
+loop 每个 Task
+    Orchestrator -> Conflict: register(tenantId, taskId)
+    activate Conflict
+
+    alt 租户已有运行任务
+        Conflict --> Orchestrator: false (conflict)
+        Orchestrator -> Orchestrator: 记录警告，跳过
+    else 注册成功
+        Conflict --> Orchestrator: true
+        deactivate Conflict
+
+        Orchestrator -> Scheduler: schedule(taskId, maxConcurrency, worker)
+        activate Scheduler
+
+        alt 当前运行数 < maxConcurrency
+            Scheduler -> Scheduler: 标记为运行中
+            Scheduler -> Executor: execute()
+            activate Executor
+
+            Executor -> StateManager: updateState(taskId, RUNNING)
+            activate StateManager
+            StateManager -> StateManager: 状态转换 PENDING -> RUNNING
+            StateManager -> EventSink: publishTaskStarted
+            activate EventSink
+            EventSink -> EventSink: 发布 TaskStartedEvent
+            EventSink --> StateManager: published
+            deactivate EventSink
+            StateManager --> Executor: state updated
+            deactivate StateManager
+
+            loop 每个 Stage
+                Executor -> Executor: execute(stage)
+                Executor -> EventSink: publishStageStarted
+                Executor -> Executor: 执行 Steps
+
+                alt Stage 成功
+                    Executor -> Checkpoint: saveCheckpoint(task, stageIndex)
+                    activate Checkpoint
+                    Checkpoint --> Executor: saved
+                    deactivate Checkpoint
+                    Executor -> EventSink: publishStageCompleted
+                else Stage 失败
+                    Executor -> EventSink: publishStageFailed
+                    Executor -> StateManager: updateState(taskId, FAILED)
+                    Executor -> Conflict: release(tenantId)
+                    Executor --> Scheduler: TaskExecutionResult(failed)
+                end
+            end
+
+            Executor -> StateManager: updateState(taskId, COMPLETED)
+            Executor -> Checkpoint: clearCheckpoint(taskId)
+            Executor -> Conflict: release(tenantId)
+            Executor --> Scheduler: TaskExecutionResult(success)
+            deactivate Executor
+
+        else 并发已满
+            Scheduler -> Scheduler: 加入等待队列
+            Scheduler --> Orchestrator: queued
+        end
+        deactivate Scheduler
+    end
+end
+
+Orchestrator --> Facade: submitted
+deactivate Orchestrator
+
+Facade --> Operator: TaskCreationResult(success, planId, taskIds)
+deactivate Facade
+
+@enduml
+

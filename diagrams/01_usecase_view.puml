@@ -1,0 +1,105 @@
+@startuml 用例视图
+!theme plain
+skinparam packageStyle rectangle
+
+left to right direction
+
+actor "运维人员" as Operator
+actor "系统管理员" as Admin
+actor "监控系统" as Monitor
+
+rectangle "Executor System" {
+  usecase "创建切换任务" as UC1
+  usecase "暂停任务" as UC2
+  usecase "恢复任务" as UC3
+  usecase "取消任务" as UC4
+  usecase "重试任务" as UC5
+  usecase "回滚任务" as UC6
+  usecase "查询任务状态" as UC7
+  usecase "批量租户切换" as UC8
+
+  package "内部机制" {
+    usecase "租户冲突检测" as UC_CONFLICT
+    usecase "并发控制" as UC_CONCURRENCY
+    usecase "状态机管理" as UC_STATE
+    usecase "Checkpoint保存恢复" as UC_CHECKPOINT
+    usecase "健康检查验证" as UC_HEALTH
+    usecase "心跳监控" as UC_HEARTBEAT
+    usecase "事件发布" as UC_EVENT
+    usecase "MDC日志上下文" as UC_MDC
+  }
+}
+
+' 运维人员用例
+Operator --> UC1
+Operator --> UC2
+Operator --> UC3
+Operator --> UC4
+Operator --> UC5
+Operator --> UC6
+Operator --> UC7
+
+' 系统管理员用例
+Admin --> UC8
+
+' 监控系统用例
+Monitor --> UC7
+Monitor --> UC_HEARTBEAT
+Monitor --> UC_EVENT
+
+' 用例之间的关系
+UC1 ..> UC_CONFLICT : <<include>>
+UC1 ..> UC_STATE : <<include>>
+UC1 ..> UC_CONCURRENCY : <<include>>
+
+UC2 ..> UC_CHECKPOINT : <<include>>
+UC2 ..> UC_STATE : <<include>>
+
+UC3 ..> UC_CHECKPOINT : <<include>>
+UC3 ..> UC_STATE : <<include>>
+
+UC5 ..> UC_CHECKPOINT : <<include>>
+UC5 ..> UC_STATE : <<include>>
+
+UC6 ..> UC_STATE : <<include>>
+UC6 ..> UC_HEALTH : <<include>>
+
+UC8 ..> UC1 : <<extend>>
+UC8 ..> UC_CONCURRENCY : <<include>>
+UC8 ..> UC_CONFLICT : <<include>>
+
+UC1 ..> UC_HEALTH : <<include>>
+UC1 ..> UC_HEARTBEAT : <<include>>
+UC1 ..> UC_EVENT : <<include>>
+UC1 ..> UC_MDC : <<include>>
+
+note right of UC_CONFLICT
+  **租户冲突检测机制**
+  - 同一租户不能有并发任务
+  - 通过 ConflictRegistry 维护
+  - 任务结束时释放锁
+end note
+
+note right of UC_CONCURRENCY
+  **并发控制机制**
+  - Plan 级 maxConcurrency
+  - 超出阈值进入等待队列
+  - FIFO 调度策略
+end note
+
+note right of UC_CHECKPOINT
+  **Checkpoint 机制**
+  - 每个 Stage 完成后保存
+  - 支持从断点恢复
+  - 可插拔存储（Memory/Redis）
+end note
+
+note right of UC_STATE
+  **状态机管理**
+  - 严格的状态转换规则
+  - Guard 条件检查
+  - Action 副作用执行
+end note
+
+@enduml
+

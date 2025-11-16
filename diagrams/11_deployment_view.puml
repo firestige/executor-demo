@@ -1,0 +1,97 @@
+@startuml 部署视图
+!theme plain
+
+node "应用服务器" {
+  component "Executor Application" as App {
+    [Facade Layer]
+    [Orchestration Layer]
+    [Domain Layer]
+    [Execution Layer]
+  }
+
+  component "Thread Pool" as Pool
+  component "Heartbeat Scheduler" as Heartbeat
+  component "MDC Context" as MDC
+}
+
+node "Redis Cluster" as Redis {
+  database "Checkpoint Store" as CPStore {
+    folder "namespace:executor" {
+      [task:123:checkpoint]
+      [task:456:checkpoint]
+    }
+  }
+}
+
+node "监控系统" as Monitor {
+  component "Micrometer Registry" as Metrics
+  component "Prometheus" as Prom
+  component "Grafana" as Graf
+}
+
+node "Spring Event Bus" as EventBus {
+  queue "Task Events" as Events
+}
+
+node "租户服务集群" as TenantCluster {
+  node "Tenant A Instances" {
+    [Instance 1]
+    [Instance 2]
+    [Instance N]
+  }
+
+  component "Health Check Endpoint" as Health {
+    [/health API]
+  }
+}
+
+' 依赖关系
+App --> Pool : 异步任务调度
+App --> Heartbeat : 每10秒心跳
+App --> MDC : 日志上下文
+App --> Redis : Checkpoint 存储\n(可选，默认内存)
+App --> EventBus : 发布状态事件
+App --> Monitor : 指标上报\n(可选)
+App --> TenantCluster : 健康检查\n配置推送
+
+EventBus --> Monitor : 事件订阅
+
+Monitor --> Prom : 指标采集
+Prom --> Graf : 可视化
+
+note right of App
+  **核心配置**
+  - maxConcurrency: 并发阈值
+  - healthCheckIntervalSeconds: 3
+  - healthCheckMaxAttempts: 10
+  - progressIntervalSeconds: 10
+  - checkpoint.store-type: memory|redis
+end note
+
+note right of Redis
+  **Redis 配置**
+  - 命名空间隔离
+  - TTL 过期策略
+  - 支持批量加载
+  - 可切换为内存模式
+end note
+
+note right of Monitor
+  **监控指标**
+  - task_active: 活跃任务数
+  - task_completed: 完成计数
+  - task_failed: 失败计数
+  - rollback_count: 回滚计数
+  - heartbeat_lag: 心跳延迟
+end note
+
+note right of TenantCluster
+  **租户集群**
+  - 多实例部署
+  - 统一健康检查接口
+  - 版本信息上报
+  - 蓝绿环境隔离
+end note
+
+@enduml
+

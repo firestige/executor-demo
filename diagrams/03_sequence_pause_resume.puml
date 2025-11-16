@@ -1,0 +1,121 @@
+@startuml 暂停恢复任务时序图
+!theme plain
+autonumber
+
+actor "运维人员" as Operator
+participant "DeploymentTaskFacade" as Facade
+participant "TaskAggregate" as Task
+participant "TaskRuntimeContext" as Context
+participant "TaskExecutor" as Executor
+participant "TaskStateManager" as StateManager
+participant "CheckpointService" as Checkpoint
+participant "TaskEventSink" as EventSink
+participant "ConflictRegistry" as Conflict
+
+== 暂停流程 ==
+
+Operator -> Facade: pauseTaskByTenant(tenantId)
+activate Facade
+
+Facade -> Facade: 查找租户的任务
+Facade -> Task: getTenantId()
+Facade -> Context: setPauseRequested(true)
+activate Context
+Context --> Facade: pause flag set
+deactivate Context
+
+note right
+  暂停是协作式的，
+  仅在 Stage 边界响应
+end note
+
+Facade --> Operator: TaskOperationResult(accepted)
+deactivate Facade
+
+... 等待当前 Stage 完成 ...
+
+Executor -> Context: isPauseRequested()
+activate Executor
+Context --> Executor: true
+
+Executor -> Checkpoint: saveCheckpoint(task, currentStageIndex)
+activate Checkpoint
+Checkpoint --> Executor: saved
+deactivate Checkpoint
+
+Executor -> StateManager: updateState(taskId, PAUSED)
+activate StateManager
+StateManager -> StateManager: 检查 Guard: pauseRequested=true
+StateManager -> StateManager: 状态转换 RUNNING -> PAUSED
+StateManager -> EventSink: publishTaskPaused
+activate EventSink
+EventSink -> EventSink: 发布 TaskPausedEvent(sequenceId)
+EventSink --> StateManager: published
+deactivate EventSink
+StateManager --> Executor: state updated
+deactivate StateManager
+
+Executor -> Executor: 清理 MDC
+Executor --> Executor: 停止执行
+deactivate Executor
+
+== 恢复流程 ==
+
+Operator -> Facade: resumeTaskByTenant(tenantId)
+activate Facade
+
+Facade -> Facade: 查找租户的任务
+Facade -> Context: setPauseRequested(false)
+activate Context
+Context --> Facade: pause flag cleared
+deactivate Context
+
+Facade -> StateManager: updateState(taskId, RESUMING)
+activate StateManager
+StateManager -> StateManager: 状态转换 PAUSED -> RESUMING
+StateManager -> EventSink: publishTaskResuming
+StateManager --> Facade: state updated
+deactivate StateManager
+
+Facade -> Executor: execute() (重新提交)
+activate Executor
+
+Executor -> Checkpoint: loadCheckpoint(task)
+activate Checkpoint
+Checkpoint --> Executor: TaskCheckpoint(lastCompletedStageIndex)
+deactivate Checkpoint
+
+Executor -> StateManager: updateState(taskId, RUNNING)
+activate StateManager
+StateManager -> StateManager: 状态转换 RESUMING -> RUNNING
+StateManager -> EventSink: publishTaskResumed
+activate EventSink
+EventSink -> EventSink: 发布 TaskResumedEvent(sequenceId)
+EventSink --> StateManager: published
+deactivate EventSink
+StateManager --> Executor: state updated
+deactivate StateManager
+
+Executor -> EventSink: publishProgress (补偿事件)
+note right
+  发布补偿性进度事件，
+  保证事件序列连续性
+end note
+
+loop 从 checkpoint 继续执行
+    Executor -> Executor: 跳过已完成的 Stage
+    Executor -> Executor: 执行剩余 Stage
+    Executor -> Checkpoint: saveCheckpoint(每个 Stage 完成后)
+end
+
+Executor -> StateManager: updateState(taskId, COMPLETED)
+Executor -> Checkpoint: clearCheckpoint(taskId)
+Executor -> Conflict: release(tenantId)
+Executor --> Facade: TaskExecutionResult(success)
+deactivate Executor
+
+Facade --> Operator: TaskOperationResult(success)
+deactivate Facade
+
+@enduml
+
