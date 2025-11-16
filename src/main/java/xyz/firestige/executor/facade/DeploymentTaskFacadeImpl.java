@@ -13,7 +13,6 @@ import xyz.firestige.executor.state.TaskStatus;
 import xyz.firestige.executor.support.conflict.ConflictRegistry;
 import xyz.firestige.executor.event.SpringTaskEventSink;
 import xyz.firestige.executor.execution.TaskExecutor;
-import xyz.firestige.executor.execution.HeartbeatScheduler;
 import xyz.firestige.executor.checkpoint.CheckpointService;
 import xyz.firestige.executor.checkpoint.InMemoryCheckpointStore;
 import xyz.firestige.executor.domain.plan.PlanAggregate;
@@ -26,7 +25,6 @@ import xyz.firestige.executor.domain.stage.TaskStage;
 import xyz.firestige.executor.domain.stage.CompositeServiceStage;
 import xyz.firestige.executor.domain.stage.StageStep;
 import xyz.firestige.executor.domain.stage.steps.HealthCheckStep;
-import xyz.firestige.executor.domain.stage.steps.NotificationStep;
 import xyz.firestige.executor.domain.stage.steps.ConfigUpdateStep;
 import xyz.firestige.executor.domain.stage.steps.BroadcastStep;
 import xyz.firestige.executor.service.health.HealthCheckClient;
@@ -235,10 +233,7 @@ public class DeploymentTaskFacadeImpl implements DeploymentTaskFacade {
             TaskRuntimeContext ctx = contextRegistry.get(target.getTaskId());
             exec = workerFactory.create(target.getPlanId(), target, stages, ctx, checkpointService, springSink, executorProperties.getTaskProgressIntervalSeconds(), stateManager, conflictRegistry);
         }
-        List<TaskStage> stages = stageRegistry.getOrDefault(target.getTaskId(), List.of());
-        List<String> stageNames = new java.util.ArrayList<>();
-        for (TaskStage s : stages) stageNames.add(s.getName());
-        stateManager.registerStageNames(target.getTaskId(), stageNames);
+        List<String> stageNames = getAndRegStageNames(target);
         springSink.publishTaskRollingBack(target.getPlanId(), target.getTaskId(), stageNames, 0);
         var res = exec.invokeRollback();
         if (target.getStatus() == TaskStatus.ROLLED_BACK) {
@@ -249,16 +244,22 @@ public class DeploymentTaskFacadeImpl implements DeploymentTaskFacade {
         return TaskOperationResult.success(target.getTaskId(), target.getStatus(), "租户任务回滚结束: " + res.getFinalStatus());
     }
 
+    private List<String> getAndRegStageNames(TaskAggregate target) {
+        List<String> stageNames = stageRegistry.getOrDefault(target.getTaskId(), List.of())
+                .stream()
+                .map(TaskStage::getName)
+                .toList();
+        stateManager.registerStageNames(target.getTaskId(), stageNames);
+        return stageNames;
+    }
+
     @Override
     public TaskOperationResult rollbackTaskByPlan(Long planId) {
         String pid = String.valueOf(planId);
         PlanAggregate plan = planRegistry.get(pid);
         if (plan == null) return TaskOperationResult.failure("计划不存在");
         plan.getTasks().forEach(t -> {
-            List<TaskStage> stages = stageRegistry.getOrDefault(t.getTaskId(), List.of());
-            List<String> stageNames = new java.util.ArrayList<>();
-            for (TaskStage s : stages) stageNames.add(s.getName());
-            stateManager.registerStageNames(t.getTaskId(), stageNames);
+            List<String> stageNames = getAndRegStageNames(t);
             springSink.publishTaskRollingBack(pid, t.getTaskId(), stageNames, 0);
         });
         plan.getTasks().forEach(t -> {
@@ -358,6 +359,13 @@ public class DeploymentTaskFacadeImpl implements DeploymentTaskFacade {
         stateManager.updateState(t.getTaskId(), TaskStatus.CANCELLED);
         stateManager.publishTaskCancelledEvent(t.getTaskId(), "facade");
         return TaskOperationResult.success(t.getTaskId(), TaskStatus.CANCELLED, "任务取消请求已登记");
+    }
+
+    @Override
+    public TaskOperationResult cancelTaskByTenant(String tenantId) {
+        TaskAggregate t = taskRegistry.values().stream().filter(x -> tenantId.equals(x.getTenantId())).findFirst().orElse(null);
+        if (t == null) return TaskOperationResult.failure("未找到租户任务");
+        return cancelTask(t.getTaskId());
     }
 
     /**

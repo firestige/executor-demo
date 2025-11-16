@@ -107,5 +107,13 @@ public interface DeploymentTaskFacade {
      * @return 任务操作结果
      */
     TaskOperationResult cancelTask(String executionUnitId);
+
+    /**
+     * 根据租户 ID取消任务
+     *
+     * @param tenantId 租户 ID
+     * @return 任务操作结果
+     */
+    TaskOperationResult cancelTaskByTenant(String tenantId);
 }
 
