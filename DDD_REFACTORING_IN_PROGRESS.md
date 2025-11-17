@@ -124,33 +124,50 @@ PlanCreationResult createDeploymentPlan(List<TenantConfig> configs)
 
 ---
 
-### Step 2.2.5: 更新 Facade 和配置 ⏳
+### Step 2.2.5: 更新 Facade 和配置 ✅
 **目标**: 系统使用新架构
 
 **Facade 更新**:
-```java
-// 原：依赖 PlanApplicationService
-// 新：依赖 DeploymentApplicationService
-```
+- DeploymentTaskFacade 现在注入 DeploymentApplicationService
+- 仍然使用旧的 PlanApplicationService 和 TaskApplicationService（保持兼容）
 
 **Spring 配置**:
-- 注册 Repository Beans
-- 注册 DomainService Beans
-- 注册 ApplicationService Bean
-- 更新 Facade 依赖
+- ✅ 注册 PlanRepository Bean (InMemoryPlanRepository)
+- ✅ 注册 TaskRepository Bean (InMemoryTaskRepository)
+- ✅ 注册 PlanDomainService Bean
+- ✅ 注册 TaskDomainService Bean
+- ✅ 注册 DeploymentApplicationService Bean
+- ✅ 保留旧 Bean（标记 @Deprecated）
 
-**预期成果**: Facade使用新架构，系统可运行
+**预期成果**: Facade使用新架构，系统可运行 ✅ (已提交)
 
 ---
 
-### Step 2.2.6: 删除旧的 ApplicationService
-**目标**: 清理旧代码
+### Step 2.2.6: 删除旧的 ApplicationService ⚠️ 延后
+**原计划**:
+- 删除 application/PlanApplicationService.java
+- 删除 application/TaskApplicationService.java
 
-**删除**:
-- application/PlanApplicationService.java
-- application/TaskApplicationService.java
+**实际状态**:
+- ⚠️ **暂不删除** - Facade 和测试仍在使用
+- ✅ 已标记为 @Deprecated
+- 📝 等待后续完全迁移到新架构后再删除
 
-**预期成果**: 架构清晰，旧代码完全移除
+**决策**: 保持旧代码以确保系统稳定运行
+
+---
+
+## ✅ Phase 2.2 完成总结
+
+**所有核心步骤已完成**:
+- ✅ Step 2.2.1: 创建 PlanDomainService 骨架
+- ✅ Step 2.2.2: 创建 TaskDomainService 骨架  
+- ✅ Step 2.2.3: 重构领域服务使用 Repository
+- ✅ Step 2.2.4: 创建 DeploymentApplicationService
+- ✅ Step 2.2.5: 更新 Spring 配置
+- ⚠️ Step 2.2.6: 删除旧代码（延后，保持兼容）
+
+**架构状态**: ✅ 新架构已就绪，与旧架构共存
 
 ---
 
