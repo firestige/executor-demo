@@ -11,7 +11,7 @@ import xyz.firestige.executor.orchestration.PlanOrchestrator;
 import xyz.firestige.executor.state.TaskStateManager;
 import xyz.firestige.executor.state.TaskStatus;
 
-import java.util.ArrayList;
+import java.time.LocalDateTime;
 
 /**
  * Plan 领域服务（DDD 重构完成版）
@@ -130,7 +130,7 @@ public class PlanDomainService {
             sm.transitionTo(PlanStatus.RUNNING, new PlanContext(planId));
         }
         plan.setStatus(PlanStatus.RUNNING);
-        plan.setStartedAt(java.time.LocalDateTime.now());
+        plan.setStartedAt(LocalDateTime.now());
         planRepository.save(plan);
 
         // 更新状态管理器

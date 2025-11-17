@@ -149,11 +149,14 @@ public class ExecutorConfiguration {
     public DeploymentApplicationService deploymentApplicationService(
             PlanDomainService planDomainService,
             TaskDomainService taskDomainService,
-            ValidationChain validationChain) {
+            ValidationChain validationChain,
+            HealthCheckClient healthCheckClient) {
         return new DeploymentApplicationService(
                 planDomainService,
                 taskDomainService,
-                validationChain
+                validationChain,
+                new DefaultStageFactory(),
+                healthCheckClient
         );
     }
 

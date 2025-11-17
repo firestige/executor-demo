@@ -1,8 +1,4 @@
-<<<<<<<< HEAD:src/main/java/xyz/firestige/executor/application/dto/TaskOperationResult.java
-package xyz.firestige.executor.application.dto;
-========
 package xyz.firestige.executor.domain.task;
->>>>>>>> feature/new-arch-purge:src/main/java/xyz/firestige/executor/domain/task/TaskOperationResult.java
 
 import xyz.firestige.executor.exception.FailureInfo;
 import xyz.firestige.executor.state.TaskStatus;

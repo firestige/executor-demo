@@ -2,6 +2,7 @@ package xyz.firestige.executor.domain.task;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import xyz.firestige.dto.deploy.TenantDeployConfig;
 import xyz.firestige.executor.domain.task.TaskOperationResult;
 import xyz.firestige.executor.checkpoint.CheckpointService;
 import xyz.firestige.executor.config.ExecutorProperties;
@@ -22,7 +23,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Task 领域服务 (DDD 重构)
+ * Task 领域服务 (DDD 重构完成版)
  *
  * 职责（重新定义）：
  * 1. Task 聚合的创建和管理
@@ -30,7 +31,7 @@ import java.util.Map;
  * 3. Task 执行管理
  * 4. 只关注 Task 单聚合的业务逻辑
  *
- * @since DDD 重构 Phase 2.2.2
+ * @since DDD 重构 Phase 2.2 - 完成版
  */
 public class TaskDomainService {
 
@@ -60,6 +61,62 @@ public class TaskDomainService {
         this.checkpointService = checkpointService;
         this.eventSink = eventSink;
         this.conflictRegistry = conflictRegistry;
+    }
+
+    /**
+     * 创建 Task 聚合（领域服务职责）
+     *
+     * @param planId Plan ID
+     * @param config 租户部署配置
+     * @return Task 聚合
+     */
+    public TaskAggregate createTask(String planId, TenantDeployConfig config) {
+        logger.info("[TaskDomainService] 创建 Task: planId={}, tenantId={}", planId, config.getTenantId());
+
+        // 生成 Task ID
+        String taskId = generateTaskId(planId, config.getTenantId());
+
+        // 创建 Task 聚合
+        TaskAggregate task = new TaskAggregate(taskId, config.getTenantId(), planId);
+        task.setStatus(TaskStatus.PENDING);
+
+        // 初始化状态
+        stateManager.initializeTask(taskId, TaskStatus.PENDING);
+
+        // 保存到仓储
+        taskRepository.save(task);
+
+        logger.info("[TaskDomainService] Task 创建成功: {}", taskId);
+        return task;
+    }
+
+    /**
+     * 构建 Task 的 Stages（需要配置信息）
+     *
+     * @param task Task 聚合
+     * @param config 租户部署配置
+     * @param stageFactory Stage 工厂
+     * @param healthCheckClient 健康检查客户端
+     * @return Stage 列表
+     */
+    public List<TaskStage> buildTaskStages(
+            TaskAggregate task,
+            TenantDeployConfig config,
+            xyz.firestige.executor.domain.stage.StageFactory stageFactory,
+            xyz.firestige.executor.service.health.HealthCheckClient healthCheckClient) {
+        logger.debug("[TaskDomainService] 构建 Task Stages: {}", task.getTaskId());
+
+        List<TaskStage> stages = stageFactory.buildStages(task, config, executorProperties, healthCheckClient);
+
+        // 保存到仓储
+        taskRepository.saveStages(task.getTaskId(), stages);
+
+        // 注册 Stage 名称
+        List<String> stageNames = stages.stream().map(TaskStage::getName).toList();
+        stateManager.registerStageNames(task.getTaskId(), stageNames);
+
+        logger.debug("[TaskDomainService] Task Stages 构建完成: {}, stage数量: {}", task.getTaskId(), stages.size());
+        return stages;
     }
 
     /**
@@ -357,6 +414,13 @@ public class TaskDomainService {
     }
 
     // ========== 辅助方法 ==========
+
+    /**
+     * 生成 Task ID
+     */
+    private String generateTaskId(String planId, String tenantId) {
+        return planId + "_task_" + tenantId + "_" + System.currentTimeMillis();
+    }
 
     /**
      * 根据租户 ID 查找任务
