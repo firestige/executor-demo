@@ -1,11 +1,44 @@
 @startuml 组件图
 !theme plain
 
-package "Facade Layer" {
+package "Facade Layer" <<Rectangle>> {
   component [DeploymentTaskFacade] as Facade
-  component [DeploymentTaskFacadeImpl] as FacadeImpl
+  note right of Facade
+    **RF-01 重构**
+    - DTO转换 (外部→内部)
+    - 参数校验
+    - 异常转换
+    - 返回 void (操作)
+  end note
 
-  Facade <|.. FacadeImpl
+  package "Facade Exceptions" {
+    component [TaskCreationException]
+    component [TaskOperationException]
+    component [TaskNotFoundException]
+    component [PlanNotFoundException]
+  }
+}
+
+package "Application Service Layer" <<Rectangle>> {
+  component [PlanApplicationService] as PlanAppService
+  component [TaskApplicationService] as TaskAppService
+
+  note right of PlanAppService
+    **RF-01 新增**
+    - 业务编排
+    - 状态管理
+    - 返回 Result DTOs
+    - 管理内部注册表
+  end note
+
+  package "Application DTOs" {
+    component [PlanCreationResult]
+    component [PlanInfo] <<Value Object>>
+    component [TaskInfo] <<Value Object>>
+    component [PlanOperationResult]
+    component [TaskOperationResult]
+    component [TenantConfig] <<Internal DTO>>
+  }
 }
 
 package "Orchestration Layer" {
@@ -42,7 +75,21 @@ package "Domain Layer" {
 package "Execution Layer" {
   component [TaskExecutor] as Executor
   component [TaskWorkerFactory] as WorkerFactory
+  component [DefaultTaskWorkerFactory] as DefaultFactory
   component [HeartbeatScheduler] as Heartbeat
+
+  component [TaskWorkerCreationContext] as WorkerContext
+
+  note right of WorkerContext
+    **RF-02 新增**
+    - 参数对象模式
+    - Builder 模式
+    - 9参数 → 1参数
+  end note
+
+  WorkerFactory <|.. DefaultFactory
+  DefaultFactory --> WorkerContext : uses
+  DefaultFactory --> Executor : creates
 }
 
 package "Infrastructure Layer" {
@@ -99,13 +146,32 @@ package "Factory" {
   component [PlanFactory] as PlanFactory
 }
 
-' Facade 依赖关系
-FacadeImpl --> Validator
-FacadeImpl --> StateManager
-FacadeImpl --> Props
-FacadeImpl --> HealthClient
-FacadeImpl --> Orchestrator
-FacadeImpl --> PlanFactory
+' Facade 依赖关系 (RF-01)
+Facade --> PlanAppService : delegates
+Facade --> TaskAppService : delegates
+Facade ..> TaskCreationException : throws
+Facade ..> TaskOperationException : throws
+Facade ..> TaskNotFoundException : throws
+Facade ..> PlanNotFoundException : throws
+
+' Application Service 依赖关系 (RF-01)
+PlanAppService --> PlanCreationResult : returns
+PlanAppService --> PlanOperationResult : returns
+PlanAppService --> Orchestrator : uses
+PlanAppService --> StateManager : uses
+PlanAppService --> WorkerFactory : uses
+PlanAppService --> CPService : uses
+PlanAppService --> EventSink : uses
+PlanAppService --> Conflict : uses
+
+TaskAppService --> TaskOperationResult : returns
+TaskAppService --> StateManager : uses
+TaskAppService --> WorkerFactory : uses
+TaskAppService --> CPService : uses
+TaskAppService --> EventSink : uses
+
+PlanCreationResult --> PlanInfo : contains
+PlanInfo --> TaskInfo : contains list
 
 ' Orchestration 依赖关系
 Orchestrator --> Scheduler

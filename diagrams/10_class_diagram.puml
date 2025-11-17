@@ -2,6 +2,163 @@
 !theme plain
 skinparam linetype ortho
 
+package "Application Service Layer (RF-01)" {
+  class PlanApplicationService {
+    - Map<String, PlanAggregate> planRegistry
+    - Map<String, TaskAggregate> taskRegistry
+    - Map<String, TaskRuntimeContext> contextRegistry
+    - Map<String, List<TaskStage>> stageRegistry
+    - Map<String, TaskExecutor> executorRegistry
+    + createSwitchTask(List<TenantDeployConfig>): PlanCreationResult
+    + pausePlan(Long): PlanOperationResult
+    + resumePlan(Long): PlanOperationResult
+    + rollbackPlan(Long): PlanOperationResult
+    + retryPlan(Long, boolean): PlanOperationResult
+  }
+
+  class TaskApplicationService {
+    + pauseTaskByTenant(String): TaskOperationResult
+    + resumeTaskByTenant(String): TaskOperationResult
+    + cancelTaskByTenant(String): TaskOperationResult
+    + rollbackTaskByTenant(String): TaskOperationResult
+    + retryTaskByTenant(String, boolean): TaskOperationResult
+    + cancelTask(String): TaskOperationResult
+    + queryTaskStatus(String): TaskStatusInfo
+    + queryTaskStatusByTenant(String): TaskStatusInfo
+  }
+}
+
+package "Application DTOs (RF-01)" {
+  class PlanCreationResult {
+    - boolean success
+    - PlanInfo planInfo
+    - ValidationSummary validationSummary
+    - FailureInfo failureInfo
+    - String message
+    + {static} success(PlanInfo): PlanCreationResult
+    + {static} validationFailure(ValidationSummary): PlanCreationResult
+    + {static} failure(FailureInfo, String): PlanCreationResult
+  }
+
+  class PlanInfo <<Value Object>> {
+    - final String planId
+    - final int maxConcurrency
+    - final PlanStatus status
+    - final List<TaskInfo> tasks
+    - final LocalDateTime createdAt
+    + {static} from(PlanAggregate): PlanInfo
+  }
+
+  class TaskInfo <<Value Object>> {
+    - final String taskId
+    - final String tenantId
+    - final String configVersion
+    - final TaskStatus status
+    + {static} from(TaskAggregate): TaskInfo
+  }
+
+  class PlanOperationResult {
+    - boolean success
+    - String planId
+    - PlanStatus status
+    - FailureInfo failureInfo
+    - String message
+    + {static} success(String, PlanStatus, String): PlanOperationResult
+    + {static} failure(String, FailureInfo, String): PlanOperationResult
+  }
+
+  class TaskOperationResult {
+    - boolean success
+    - String taskId
+    - TaskStatus status
+    - FailureInfo failureInfo
+    - String message
+    + {static} success(String, TaskStatus, String): TaskOperationResult
+    + {static} failure(String, FailureInfo, String): TaskOperationResult
+  }
+
+  class TenantConfig <<Internal DTO>> {
+    - DeployUnitIdentifier identifier
+    - MediaRoutingConfig mediaRouting
+    - List<String> networkEndpoints
+    - List<String> healthCheckEndpoints
+    - Long previousConfigVersion
+  }
+
+  PlanCreationResult --> PlanInfo
+  PlanInfo --> TaskInfo : contains list
+}
+
+package "Facade Layer (RF-01)" {
+  class DeploymentTaskFacade {
+    - PlanApplicationService planApplicationService
+    - TaskApplicationService taskApplicationService
+    + createSwitchTask(List<TenantDeployConfig>): void
+    + pauseTaskByTenant(String): void
+    + pauseTaskByPlan(Long): void
+    + resumeTaskByTenant(String): void
+    + resumeTaskByPlan(Long): void
+    + rollbackTaskByTenant(String): void
+    + rollbackTaskByPlan(Long): void
+    + retryTaskByTenant(String, boolean): void
+    + retryTaskByPlan(Long, boolean): void
+    + queryTaskStatus(String): TaskStatusInfo
+    + cancelTask(String): void
+    + cancelTaskByTenant(String): void
+  }
+
+  class TaskCreationException
+  class TaskOperationException
+  class TaskNotFoundException
+  class PlanNotFoundException
+
+  DeploymentTaskFacade --> PlanApplicationService
+  DeploymentTaskFacade --> TaskApplicationService
+}
+
+package "Execution Layer (RF-02)" {
+  class TaskWorkerCreationContext <<Parameter Object>> {
+    - final String planId
+    - final TaskAggregate task
+    - final List<TaskStage> stages
+    - final TaskRuntimeContext runtimeContext
+    - final CheckpointService checkpointService
+    - final TaskEventSink eventSink
+    - final TaskStateManager stateManager
+    - final int progressIntervalSeconds
+    - final ConflictRegistry conflictRegistry
+    + {static} builder(): Builder
+    + getters()
+  }
+
+  class "TaskWorkerCreationContext.Builder" as Builder {
+    + planId(String): Builder
+    + task(TaskAggregate): Builder
+    + stages(List<TaskStage>): Builder
+    + runtimeContext(TaskRuntimeContext): Builder
+    + checkpointService(CheckpointService): Builder
+    + eventSink(TaskEventSink): Builder
+    + stateManager(TaskStateManager): Builder
+    + progressIntervalSeconds(int): Builder
+    + conflictRegistry(ConflictRegistry): Builder
+    + build(): TaskWorkerCreationContext
+  }
+
+  interface TaskWorkerFactory {
+    + create(TaskWorkerCreationContext): TaskExecutor
+    + {deprecated} create(9 params...): TaskExecutor
+  }
+
+  class DefaultTaskWorkerFactory {
+    - MetricsRegistry metrics
+    + create(TaskWorkerCreationContext): TaskExecutor
+  }
+
+  TaskWorkerCreationContext +-- Builder
+  TaskWorkerFactory <|.. DefaultTaskWorkerFactory
+  DefaultTaskWorkerFactory --> TaskWorkerCreationContext : uses
+}
+
 package "Domain Model" {
   class PlanAggregate {
     - String planId

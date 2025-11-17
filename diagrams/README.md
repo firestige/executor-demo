@@ -143,8 +143,17 @@ CREATED → VALIDATING → READY → RUNNING ⇄ PAUSED
 **分层结构:**
 
 ```
-Facade Layer
-  └─ DeploymentTaskFacade (统一对外接口)
+Facade Layer (RF-01 重构)
+  ├─ DeploymentTaskFacade (异常驱动，返回 void)
+  └─ Facade Exceptions (4个异常类)
+  
+Application Service Layer (RF-01 新增)
+  ├─ PlanApplicationService (业务编排)
+  ├─ TaskApplicationService (任务操作)
+  └─ Application DTOs
+      ├─ Result DTOs (PlanCreationResult, PlanOperationResult, TaskOperationResult)
+      ├─ Value Objects (PlanInfo, TaskInfo)
+      └─ Internal DTO (TenantConfig)
   
 Orchestration Layer
   ├─ PlanOrchestrator (计划编排)
@@ -157,9 +166,10 @@ Domain Layer
   ├─ Stage (CompositeServiceStage, Steps)
   └─ Validation (ValidationChain)
   
-Execution Layer
+Execution Layer (RF-02 优化)
   ├─ TaskExecutor (执行引擎)
   ├─ TaskWorkerFactory (工厂)
+  ├─ TaskWorkerCreationContext (参数对象 + Builder)
   └─ HeartbeatScheduler (心跳)
   
 Infrastructure Layer
@@ -172,10 +182,22 @@ Infrastructure Layer
 
 **扩展点:**
 - StageFactory: 声明式组装 Stage
-- TaskWorkerFactory: 封装 TaskExecutor 创建
+- TaskWorkerFactory: 封装 TaskExecutor 创建（RF-02：参数对象模式）
 - CheckpointStore: 可插拔存储（Memory/Redis）
 - MetricsRegistry: 指标收集（Noop/Micrometer）
 - RollbackHealthVerifier: 回滚健康确认
+
+**RF-01 重构亮点:**
+- 清晰的分层架构：Facade → Application Service → Domain
+- DDD 原则：Result DTOs 明确聚合边界，值对象不可变
+- 异常驱动：Facade 层返回 void，通过异常处理错误
+- 内部 DTO：TenantConfig 解耦应用层与外部 DTO
+
+**RF-02 重构亮点:**
+- 参数简化：TaskWorkerFactory.create() 从 9 个参数减少到 1 个
+- Builder 模式：提供命名参数风格，提升可读性
+- 参数验证：7 个必需参数在构建时验证
+- 向后兼容：旧方法标记 @Deprecated
 
 ---
 
@@ -183,6 +205,17 @@ Infrastructure Layer
 **文件:** `10_class_diagram.puml`
 
 **核心类:**
+
+**Facade 层 (RF-01):**
+- `DeploymentTaskFacade`: 新 Facade（异常驱动，返回 void）
+- `TaskCreationException / TaskOperationException / TaskNotFoundException / PlanNotFoundException`: Facade 异常
+
+**Application Service 层 (RF-01):**
+- `PlanApplicationService`: Plan 业务编排服务
+- `TaskApplicationService`: Task 操作服务
+- `PlanCreationResult / PlanOperationResult / TaskOperationResult`: Result DTOs
+- `PlanInfo / TaskInfo`: 值对象（不可变）
+- `TenantConfig`: 内部 DTO（解耦外部 DTO）
 
 **领域模型:**
 - `PlanAggregate`: 计划聚合，包含多个 Task
@@ -203,8 +236,11 @@ Infrastructure Layer
 - `StageStep`: Step 接口
 - `ConfigUpdateStep / BroadcastStep / HealthCheckStep`: 具体 Step
 
-**执行层:**
+**执行层 (RF-02 优化):**
 - `TaskExecutor`: 任务执行引擎
+- `TaskWorkerFactory`: 工厂接口
+- `DefaultTaskWorkerFactory`: 默认工厂实现
+- `TaskWorkerCreationContext`: 参数对象（Builder 模式，9参数→1参数）
 - `HeartbeatScheduler`: 心跳调度器
 - `TaskRuntimeContext`: 运行时上下文（MDC、暂停标志）
 
@@ -334,6 +370,20 @@ plantuml -tsvg diagrams/*.puml
 
 ## 📝 更新历史
 
+- **2025-11-17 (RF-02):** 更新执行层
+  - 组件图：新增 TaskWorkerCreationContext（参数对象 + Builder）
+  - 类图：新增 TaskWorkerFactory 参数简化设计
+  - README：更新核心类列表和设计亮点
+  
+- **2025-11-17 (RF-01):** 重大架构重构
+  - 组件图：新增 Application Service Layer（PlanApplicationService, TaskApplicationService）
+  - 组件图：更新 Facade Layer（异常驱动设计）
+  - 组件图：新增 Application DTOs（Result DTOs, Value Objects, Internal DTO）
+  - 类图：新增完整的 Application Service 和 DTO 类
+  - 类图：新增 Facade 层异常类
+  - README：更新分层结构和核心类说明
+  - README：新增 RF-01 和 RF-02 重构亮点说明
+  
 - **2025-11-16:** 初始版本，完整 4+1 视图
   - 用例图（包含内部机制）
   - 时序图（创建、暂停/恢复、回滚、重试）
