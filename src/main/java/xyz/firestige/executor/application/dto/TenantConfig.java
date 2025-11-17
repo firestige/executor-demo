@@ -2,6 +2,8 @@ package xyz.firestige.executor.application.dto;
 
 import xyz.firestige.entity.deploy.NetworkEndpoint;
 
+import javax.validation.Valid;
+import javax.validation.constraints.NotNull;
 import java.util.List;
 
 /**
@@ -12,7 +14,11 @@ import java.util.List;
 public class TenantConfig {
 
     // 核心标识（使用 record 组合）
+    @NotNull(message = "部署单元不能为空")
+    @Valid
     private DeployUnitIdentifier deployUnit;
+
+    @NotNull(message = "租户ID不能为空")
     private String tenantId;
 
     // HTTP 网关路由信息

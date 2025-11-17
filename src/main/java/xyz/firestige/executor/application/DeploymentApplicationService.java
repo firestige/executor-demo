@@ -65,10 +65,16 @@ public class DeploymentApplicationService {
                     configs != null ? configs.size() : 0);
 
         try {
-            // 注意：业务校验已在 Facade 层完成（使用 ValidationChain）
-            // 应用层不再重复校验，直接执行业务逻辑
+            // Step 1: 业务规则校验（应用层职责）
+            // 注意：字段格式校验已在 Facade 层完成（使用 Spring Validator）
+            ValidationSummary businessValidation = businessValidator.validate(configs);
+            if (businessValidation.hasErrors()) {
+                logger.warn("[DeploymentApplicationService] 业务规则校验失败，无效配置数: {}",
+                           businessValidation.getInvalidCount());
+                return PlanCreationResult.validationFailure(businessValidation);
+            }
 
-            // Step 1: 读取 Plan ID
+            // Step 2: 读取 Plan ID
             String planId = configs.stream()
                     .map(TenantConfig::getPlanId)
                     .findFirst()

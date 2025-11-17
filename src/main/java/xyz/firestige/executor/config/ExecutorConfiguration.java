@@ -147,10 +147,12 @@ public class ExecutorConfiguration {
     public DeploymentApplicationService deploymentApplicationService(
             PlanDomainService planDomainService,
             TaskDomainService taskDomainService,
+            xyz.firestige.executor.application.validation.BusinessValidator businessValidator,
             HealthCheckClient healthCheckClient) {
         return new DeploymentApplicationService(
                 planDomainService,
                 taskDomainService,
+                businessValidator,
                 new DefaultStageFactory(),
                 healthCheckClient
         );
@@ -161,8 +163,8 @@ public class ExecutorConfiguration {
     @Bean
     public DeploymentTaskFacade deploymentTaskFacade(
             DeploymentApplicationService deploymentApplicationService,
-            ValidationChain validationChain) {
-        return new DeploymentTaskFacade(deploymentApplicationService, validationChain);
+            javax.validation.Validator validator) {  // Spring 自动提供的 Validator
+        return new DeploymentTaskFacade(deploymentApplicationService, validator);
     }
 }
 

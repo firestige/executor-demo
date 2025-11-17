@@ -208,15 +208,4 @@ public class DeploymentTaskFacade {
             throw new TaskOperationException(operation + "失败: " + message, failureInfo);
         }
     }
-
-    private String formatValidationErrors(ValidationSummary summary) {
-        List<ValidationError> errors = summary.getAllErrors();
-        if (errors.isEmpty()) {
-            return "未知校验错误";
-        }
-        return errors.stream()
-                .limit(5)
-                .map(e -> String.format("[%s] %s", e.getField(), e.getMessage()))
-                .collect(Collectors.joining("; "));
-    }
 }
