@@ -15,7 +15,9 @@
 - 不同 Plan 之间无依赖，不需要跨 Plan 协作编排或依赖处理。
 
 ## 1. 已完成历史（归档）
-> Phase 0-16 已完成并归档到 develop.log，包括：
+
+### Phase 0-16 — ✅ 完成并归档
+> 已归档到 develop.log，包括：
 > - 核心架构建立（领域模型、状态机、调度器）
 > - Stage/Step 执行模型与健康检查
 > - Checkpoint 持久化（InMemory + Redis）
@@ -24,11 +26,49 @@
 > - 可观测性（Metrics + MDC）
 > - 完整文档体系（架构设计、迁移指南、4+1 视图）
 
-## 2. 当前待办（Phase 17 & 18）
+### Phase 17 — ✅ 完成 (2024-11-17)
+**主题**: DDD 彻底重构 + 二层校验架构
 
-### 2.1. 架构重构（Phase 17）
+#### RF-01: Facade 业务逻辑剥离 — ✅ DONE
+- ✅ 创建 Result DTO 体系
+- ✅ 创建内部 DTO (TenantConfig)
+- ✅ 实现 PlanApplicationService 和 TaskApplicationService
+- ✅ 重构 DeploymentTaskFacade
 
-#### RF-01: Facade 业务逻辑剥离 — ✅ DONE (2025-11-17)
+#### RF-02: TaskWorkerFactory 参数简化 — ✅ DONE
+- ✅ 引入 TaskWorkerCreationContext（Builder 模式）
+- ✅ 参数从 9 个简化为 1 个
+
+#### RF-03: DDD 彻底重构 — ✅ DONE
+- ✅ 删除旧 ApplicationService（PlanApplicationService, TaskApplicationService）
+- ✅ 创建 PlanDomainService（依赖减少 45%）
+- ✅ 创建 TaskDomainService（7 个依赖，纯领域逻辑）
+- ✅ 创建 DeploymentApplicationService（跨聚合协调）
+- ✅ 创建 TenantConfigConverter 防腐层
+- ✅ Facade 层完全迁移
+
+#### RF-04: 二层校验架构 — ✅ DONE
+- ✅ 添加 Jakarta Validation 依赖
+- ✅ TenantConfig 添加 @NotNull/@NotBlank 注解
+- ✅ 创建 BusinessValidator（业务规则校验）
+- ✅ Facade 先转换后校验（校验 TenantConfig）
+- ✅ ExecutorConfiguration 添加 Validator Bean
+- ✅ 完整的二层校验流程
+
+**成果**:
+- ✅ 分层清晰：Facade → Application → Domain → Infrastructure
+- ✅ 防腐层：TenantConfigConverter 隔离外部依赖
+- ✅ 校验分层：格式校验（Facade）+ 业务规则校验（Application）
+- ✅ 依赖简化：PlanDomainService 依赖减少 45%
+- ✅ 内部 DTO 一致：TenantConfig 贯穿应用层和领域层
+
+**文档**:
+- `DDD_REFACTORING_PHASE3_COMPLETE.md`
+- `VALIDATION_LAYER_COMPLETE.md`
+- `BEAN_CONFIGURATION_FIX.md`
+- `DDD_REFACTORING_AND_VALIDATION_COMPLETE.md`（综合报告）
+
+## 2. 当前待办（Phase 18）
 - **问题**：DeploymentTaskFacadeImpl.createSwitchTask 方法包含大量业务逻辑
 - **目标**：Facade 作为防腐层，仅负责数据结构转换和协调调用
 - **方案**：
