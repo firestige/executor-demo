@@ -1,0 +1,10 @@
+refactor(ddd): Phase 2.1 - Update all DTO import paths
+Updated import statements to reflect new DTO locations:
+- PlanInfo, PlanCreationResult, PlanOperationResult from domain/plan/
+- TaskInfo, TaskOperationResult from domain/task/
+Files updated:
+- DeploymentTaskFacade.java
+- PlanApplicationService.java
+- TaskApplicationService.java
+- DeploymentTaskFacadeTest.java
+No compilation errors, only warnings for unused methods.
