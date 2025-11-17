@@ -12,6 +12,11 @@ public enum ErrorType {
     VALIDATION_ERROR("校验错误"),
 
     /**
+     * 冲突错误（RF-12 新增）
+     */
+    CONFLICT("冲突错误"),
+
+    /**
      * 网络错误
      */
     NETWORK_ERROR("网络错误"),

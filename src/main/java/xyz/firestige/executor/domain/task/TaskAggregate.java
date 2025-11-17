@@ -2,10 +2,12 @@ package xyz.firestige.executor.domain.task;
 
 import xyz.firestige.executor.execution.StageResult;
 import xyz.firestige.executor.state.TaskStatus;
+import xyz.firestige.executor.state.event.*;
 
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 
 /**
@@ -47,11 +49,41 @@ public class TaskAggregate {
     private boolean pauseRequested;
     private String cancelledBy;
 
+    // ============================================
+    // RF-11: 领域事件收集
+    // ============================================
+    private final List<TaskStatusEvent> domainEvents = new ArrayList<>();
+
     public TaskAggregate(String taskId, String planId, String tenantId) {
         this.taskId = taskId;
         this.planId = planId;
         this.tenantId = tenantId;
         this.status = TaskStatus.CREATED;
+    }
+
+    // ============================================
+    // RF-11: 事件管理方法
+    // ============================================
+
+    /**
+     * 获取聚合产生的领域事件（不可修改）
+     */
+    public List<TaskStatusEvent> getDomainEvents() {
+        return Collections.unmodifiableList(domainEvents);
+    }
+
+    /**
+     * 清空领域事件（发布后调用）
+     */
+    public void clearDomainEvents() {
+        domainEvents.clear();
+    }
+
+    /**
+     * 添加领域事件（私有方法）
+     */
+    private void addDomainEvent(TaskStatusEvent event) {
+        this.domainEvents.add(event);
     }
 
     // ============================================
@@ -83,6 +115,10 @@ public class TaskAggregate {
         }
         this.status = TaskStatus.RUNNING;
         this.startedAt = LocalDateTime.now();
+
+        // ✅ 产生领域事件
+        TaskStartedEvent event = new TaskStartedEvent(taskId, totalStages);
+        addDomainEvent(event);
     }
 
     /**
@@ -106,6 +142,10 @@ public class TaskAggregate {
         if (pauseRequested && status == TaskStatus.RUNNING) {
             this.status = TaskStatus.PAUSED;
             this.pauseRequested = false;
+
+            // ✅ 产生领域事件
+            TaskPausedEvent event = new TaskPausedEvent();
+            addDomainEvent(event);
         }
     }
 
@@ -121,6 +161,10 @@ public class TaskAggregate {
         }
         this.status = TaskStatus.RUNNING;
         this.pauseRequested = false;
+
+        // ✅ 产生领域事件
+        TaskResumedEvent event = new TaskResumedEvent();
+        addDomainEvent(event);
     }
 
     /**
@@ -137,6 +181,11 @@ public class TaskAggregate {
         this.cancelledBy = cancelledBy;
         this.endedAt = LocalDateTime.now();
         calculateDuration();
+
+        // ✅ 产生领域事件
+        TaskCancelledEvent event = new TaskCancelledEvent(taskId);
+        event.setCancelledBy(cancelledBy);
+        addDomainEvent(event);
     }
 
     /**
@@ -166,6 +215,10 @@ public class TaskAggregate {
         this.status = TaskStatus.FAILED;
         this.endedAt = LocalDateTime.now();
         calculateDuration();
+
+        // ✅ 产生领域事件
+        TaskFailedEvent event = new TaskFailedEvent();
+        addDomainEvent(event);
     }
 
     /**
@@ -182,6 +235,10 @@ public class TaskAggregate {
         this.status = TaskStatus.COMPLETED;
         this.endedAt = LocalDateTime.now();
         calculateDuration();
+
+        // ✅ 产生领域事件
+        TaskCompletedEvent event = new TaskCompletedEvent();
+        addDomainEvent(event);
     }
 
     /**
@@ -213,6 +270,10 @@ public class TaskAggregate {
             this.currentStageIndex = 0;
             this.stageResults.clear();
         }
+
+        // ✅ 产生领域事件
+        TaskRetryStartedEvent event = new TaskRetryStartedEvent(taskId, fromCheckpoint);
+        addDomainEvent(event);
     }
 
     /**
@@ -226,6 +287,10 @@ public class TaskAggregate {
             );
         }
         this.status = TaskStatus.ROLLING_BACK;
+
+        // ✅ 产生领域事件
+        TaskRollingBackEvent event = new TaskRollingBackEvent(taskId, reason, null);
+        addDomainEvent(event);
     }
 
     /**
@@ -241,6 +306,13 @@ public class TaskAggregate {
         this.status = TaskStatus.ROLLED_BACK;
         this.endedAt = LocalDateTime.now();
         calculateDuration();
+
+        // ✅ 产生领域事件
+        TaskRolledBackEvent event = new TaskRolledBackEvent(taskId, null);
+        if (prevConfigSnapshot != null) {
+            event.setPrevDeployUnitVersion(prevConfigSnapshot.getDeployUnitVersion());
+        }
+        addDomainEvent(event);
     }
 
     /**
@@ -256,6 +328,11 @@ public class TaskAggregate {
         this.status = TaskStatus.ROLLBACK_FAILED;
         this.endedAt = LocalDateTime.now();
         calculateDuration();
+
+        // ✅ 产生领域事件
+        TaskRollbackFailedEvent event = new TaskRollbackFailedEvent();
+        event.setMessage("回滚失败: " + reason);
+        addDomainEvent(event);
     }
 
     /**

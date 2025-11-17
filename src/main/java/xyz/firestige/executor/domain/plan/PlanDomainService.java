@@ -98,10 +98,8 @@ public class PlanDomainService {
     public void addTaskToPlan(String planId, String taskId) {
         logger.debug("[PlanDomainService] 添加 Task 到 Plan: {} -> {}", planId, taskId);
 
-        PlanAggregate plan = planRepository.get(planId);
-        if (plan == null) {
-            throw new IllegalArgumentException("Plan 不存在: " + planId);
-        }
+        PlanAggregate plan = planRepository.findById(planId)
+                .orElseThrow(() -> new IllegalArgumentException("Plan 不存在: " + planId));
 
         // ✅ 调用聚合的业务方法（传递 ID）
         plan.addTask(taskId);
@@ -119,10 +117,8 @@ public class PlanDomainService {
     public void markPlanAsReady(String planId) {
         logger.info("[PlanDomainService] 标记 Plan 为 READY: {}", planId);
 
-        PlanAggregate plan = planRepository.get(planId);
-        if (plan == null) {
-            throw new IllegalArgumentException("Plan 不存在: " + planId);
-        }
+        PlanAggregate plan = planRepository.findById(planId)
+                .orElseThrow(() -> new IllegalArgumentException("Plan 不存在: " + planId));
 
         // ✅ 调用聚合的业务方法
         plan.markAsReady();
@@ -146,10 +142,8 @@ public class PlanDomainService {
     public void startPlan(String planId) {
         logger.info("[PlanDomainService] 启动 Plan 执行: {}", planId);
 
-        PlanAggregate plan = planRepository.get(planId);
-        if (plan == null) {
-            throw new IllegalArgumentException("Plan 不存在: " + planId);
-        }
+        PlanAggregate plan = planRepository.findById(planId)
+                .orElseThrow(() -> new IllegalArgumentException("Plan 不存在: " + planId));
 
         // ✅ 调用聚合的业务方法（不变式保护在聚合内部）
         plan.start();
@@ -178,10 +172,8 @@ public class PlanDomainService {
     public void pausePlanExecution(String planId) {
         logger.info("[PlanDomainService] 暂停 Plan 执行: {}", planId);
 
-        PlanAggregate plan = planRepository.get(planId);
-        if (plan == null) {
-            throw new IllegalArgumentException("Plan 不存在: " + planId);
-        }
+        PlanAggregate plan = planRepository.findById(planId)
+                .orElseThrow(() -> new IllegalArgumentException("Plan 不存在: " + planId));
 
         // ✅ 调用聚合的业务方法（不变式保护在聚合内部）
         plan.pause();
@@ -206,10 +198,8 @@ public class PlanDomainService {
     public void resumePlanExecution(String planId) {
         logger.info("[PlanDomainService] 恢复 Plan 执行: {}", planId);
 
-        PlanAggregate plan = planRepository.get(planId);
-        if (plan == null) {
-            throw new IllegalArgumentException("Plan 不存在: " + planId);
-        }
+        PlanAggregate plan = planRepository.findById(planId)
+                .orElseThrow(() -> new IllegalArgumentException("Plan 不存在: " + planId));
 
         // ✅ 调用聚合的业务方法（不变式保护在聚合内部）
         plan.resume();
@@ -232,11 +222,9 @@ public class PlanDomainService {
      * @return PlanInfo
      */
     public PlanInfo getPlanInfo(String planId) {
-        PlanAggregate plan = planRepository.get(planId);
-        if (plan == null) {
-            return null;
-        }
-        return PlanInfo.from(plan);
+        return planRepository.findById(planId)
+                .map(PlanInfo::from)
+                .orElse(null);
     }
 
     /**
@@ -246,7 +234,7 @@ public class PlanDomainService {
      * @return Plan 聚合
      */
     public PlanAggregate getPlan(String planId) {
-        return planRepository.get(planId);
+        return planRepository.findById(planId).orElse(null);
     }
 
     /**

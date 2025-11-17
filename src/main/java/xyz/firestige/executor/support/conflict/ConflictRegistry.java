@@ -33,6 +33,11 @@ public class ConflictRegistry {
         return running.containsKey(tenantId);
     }
 
+    /** 检查租户是否存在冲突（RF-12 新增） */
+    public boolean hasConflict(String tenantId) {
+        return running.containsKey(tenantId);
+    }
+
     /** 返回当前租户对应的任务ID，若无则 null */
     public String getRunningTaskId(String tenantId) {
         Entry e = running.get(tenantId);

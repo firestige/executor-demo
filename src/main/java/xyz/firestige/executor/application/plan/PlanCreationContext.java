@@ -50,6 +50,15 @@ public class PlanCreationContext {
         return planInfo;
     }
 
+    /**
+     * 获取 Plan ID（RF-12 新增）
+     *
+     * @return Plan ID，如果创建失败则返回 null
+     */
+    public String getPlanId() {
+        return planInfo != null ? planInfo.getPlanId() : null;
+    }
+
     public ValidationSummary getValidationSummary() {
         return validationSummary;
     }

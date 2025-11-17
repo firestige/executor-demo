@@ -179,11 +179,15 @@ public class ExecutorConfiguration {
     public DeploymentApplicationService deploymentApplicationService(
             xyz.firestige.executor.application.plan.DeploymentPlanCreator deploymentPlanCreator,
             PlanDomainService planDomainService,
-            TaskDomainService taskDomainService) {
+            TaskDomainService taskDomainService,
+            xyz.firestige.executor.orchestration.strategy.PlanSchedulingStrategy planSchedulingStrategy,
+            xyz.firestige.executor.support.conflict.ConflictRegistry conflictRegistry) {
         return new DeploymentApplicationService(
                 deploymentPlanCreator,
                 planDomainService,
-                taskDomainService
+                taskDomainService,
+                planSchedulingStrategy,
+                conflictRegistry
         );
     }
 

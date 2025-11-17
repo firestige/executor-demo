@@ -150,6 +150,17 @@ public class TaskStateManager {
         if (v != null) this.rollbackHealthVerifier = v;
     }
 
+    /**
+     * 获取下一个序列号（RF-11）
+     * 用于事件的 sequenceId，保证单调递增
+     *
+     * @param taskId Task ID
+     * @return 下一个序列号
+     */
+    public long nextSequenceId(String taskId) {
+        return sequences.compute(taskId, (k, v) -> (v == null ? 0L : v) + 1);
+    }
+
     private void applyActionsOnTransition(String taskId, TaskStatus from, TaskStatus to) {
         TaskAggregate agg = aggregates.get(taskId);
         if (agg == null) return;
