@@ -1,0 +1,270 @@
+@startuml 核心类图 - DDD 重构完成版
+!theme plain
+skinparam linetype ortho
+
+' ============================================
+' Facade Layer (防腐层)
+' ============================================
+package "Facade Layer" <<Rectangle>> {
+  class DeploymentTaskFacade {
+    - DeploymentApplicationService deploymentApplicationService
+    - Validator validator
+    + createSwitchTask(List<TenantDeployConfig>): void
+    + pauseTaskByTenant(String): void
+    + pauseTaskByPlan(Long): void
+    + resumeTaskByTenant(String): void
+    + resumeTaskByPlan(Long): void
+    + rollbackTaskByTenant(String): void
+    + retryTaskByTenant(String, boolean): void
+    + queryTaskStatus(String): TaskStatusInfo
+    + queryTaskStatusByTenant(String): TaskStatusInfo
+    + cancelTaskByTenant(String): void
+  }
+
+  class TenantConfigConverter <<Utility>> {
+    + {static} fromExternal(List<TenantDeployConfig>): List<TenantConfig>
+    + {static} convert(TenantDeployConfig): TenantConfig
+  }
+
+  note right of DeploymentTaskFacade
+    职责:
+    1. 参数校验
+    2. DTO 转换（调用 TenantConfigConverter）
+    3. 格式校验（Jakarta Validator）
+    4. 调用应用服务
+    5. 异常转换（Result → Exception）
+  end note
+}
+
+' ============================================
+' Application Layer (应用服务层)
+' ============================================
+package "Application Layer" <<Rectangle>> {
+  class DeploymentApplicationService {
+    - PlanDomainService planDomainService
+    - TaskDomainService taskDomainService
+    - BusinessValidator businessValidator
+    - StageFactory stageFactory
+    - HealthCheckClient healthCheckClient
+    + createDeploymentPlan(List<TenantConfig>): PlanCreationResult
+    + pausePlan(Long): PlanOperationResult
+    + resumePlan(Long): PlanOperationResult
+    + pauseTaskByTenant(String): TaskOperationResult
+    + resumeTaskByTenant(String): TaskOperationResult
+    + rollbackTaskByTenant(String): TaskOperationResult
+    + retryTaskByTenant(String, boolean): TaskOperationResult
+    + cancelTaskByTenant(String): TaskOperationResult
+    + queryTaskStatus(String): TaskStatusInfo
+    + queryTaskStatusByTenant(String): TaskStatusInfo
+  }
+
+  class BusinessValidator <<Component>> {
+    + validate(List<TenantConfig>): ValidationSummary
+    - checkDuplicateTenantIds(): List<ValidationError>
+    - validateSingleConfig(): List<ValidationError>
+  }
+
+  note right of DeploymentApplicationService
+    职责:
+    1. 业务规则校验（BusinessValidator）
+    2. 跨聚合协调（Plan + Task）
+    3. 业务流程编排
+    4. 事务边界控制
+  end note
+}
+
+' ============================================
+' Domain Layer (领域服务层)
+' ============================================
+package "Domain Layer" <<Rectangle>> {
+  class PlanDomainService {
+    - PlanRepository planRepository
+    - TaskStateManager stateManager
+    - PlanFactory planFactory
+    - PlanOrchestrator orchestrator
+    - SpringTaskEventSink eventSink
+    - ExecutorProperties properties
+    + createPlan(String, int): PlanAggregate
+    + addTaskToPlan(String, TaskAggregate): void
+    + startPlan(String): void
+    + pausePlanExecution(String): void
+    + resumePlanExecution(String): void
+    + getPlanInfo(String): PlanInfo
+  }
+
+  class TaskDomainService {
+    - TaskRepository taskRepository
+    - TaskStateManager stateManager
+    - TaskWorkerFactory workerFactory
+    - ExecutorProperties properties
+    - CheckpointService checkpointService
+    - SpringTaskEventSink eventSink
+    - ConflictRegistry conflictRegistry
+    + createTask(String, TenantConfig): TaskAggregate
+    + buildTaskStages(TaskAggregate, TenantConfig, ...): List<TaskStage>
+    + pauseTaskByTenant(String): TaskOperationResult
+    + resumeTaskByTenant(String): TaskOperationResult
+    + rollbackTaskByTenant(String): TaskOperationResult
+    + retryTaskByTenant(String, boolean): TaskOperationResult
+    + cancelTaskByTenant(String): TaskOperationResult
+    + queryTaskStatus(String): TaskStatusInfo
+    + queryTaskStatusByTenant(String): TaskStatusInfo
+  }
+
+  note right of PlanDomainService
+    职责: 纯 Plan 聚合的领域逻辑
+    依赖: 6 个（减少 45%）
+  end note
+
+  note right of TaskDomainService
+    职责: 纯 Task 聚合的领域逻辑
+    依赖: 7 个
+  end note
+}
+
+' ============================================
+' Application DTOs
+' ============================================
+package "Application DTOs" <<Rectangle>> {
+  class TenantConfig <<Internal DTO>> {
+    - DeployUnitIdentifier deployUnit
+    - String tenantId
+    - List<NetworkEndpoint> networkEndpoints
+    - List<String> healthCheckEndpoints
+    - String nacosNameSpace
+    - Boolean defaultFlag
+    - Long planId
+    - MediaRoutingConfig mediaRoutingConfig
+  }
+
+  class DeployUnitIdentifier <<Record>> {
+    - Long id
+    - Long version
+    - String name
+  }
+
+  class PlanCreationResult {
+    - boolean success
+    - PlanInfo planInfo
+    - ValidationSummary validationSummary
+    - FailureInfo failureInfo
+    - String message
+    + {static} success(PlanInfo): PlanCreationResult
+    + {static} validationFailure(ValidationSummary): PlanCreationResult
+    + {static} failure(FailureInfo, String): PlanCreationResult
+  }
+
+  class PlanInfo <<Value Object>> {
+    - String planId
+    - int maxConcurrency
+    - PlanStatus status
+    - List<TaskInfo> tasks
+    - LocalDateTime createdAt
+  }
+
+  class TaskOperationResult {
+    - boolean success
+    - String taskId
+    - TaskStatus status
+    - FailureInfo failureInfo
+    - String message
+  }
+
+  class PlanOperationResult {
+    - boolean success
+    - String planId
+    - PlanStatus status
+    - FailureInfo failureInfo
+    - String message
+  }
+
+  ' Jakarta Validation 注解
+  note bottom of TenantConfig
+    @NotNull(message = "部署单元不能为空")
+    @Valid
+    private DeployUnitIdentifier deployUnit;
+
+    @NotBlank(message = "租户ID不能为空或空白")
+    private String tenantId;
+  end note
+
+  note bottom of DeployUnitIdentifier
+    public record DeployUnitIdentifier(
+        @NotNull Long id,
+        @NotNull Long version,
+        String name
+    )
+  end note
+
+  TenantConfig --> DeployUnitIdentifier
+  PlanCreationResult --> PlanInfo
+}
+
+' ============================================
+' Validation Layer
+' ============================================
+package "Validation" <<Rectangle>> {
+  class Validator <<Jakarta>> {
+    + validate(Object): Set<ConstraintViolation>
+  }
+
+  class ValidationSummary {
+    - List<ValidationError> allErrors
+    - Map<TenantDeployConfig, List<ValidationError>> invalidConfigs
+    + hasErrors(): boolean
+    + addInvalidConfig(config, errors): void
+  }
+
+  class ValidationError {
+    - String field
+    - Object value
+    - String message
+  }
+
+  ValidationSummary --> ValidationError
+}
+
+' ============================================
+' Dependencies (依赖关系)
+' ============================================
+DeploymentTaskFacade --> DeploymentApplicationService : calls
+DeploymentTaskFacade --> Validator : validates with
+DeploymentTaskFacade ..> TenantConfigConverter : uses
+DeploymentTaskFacade --> TenantConfig : uses
+
+DeploymentApplicationService --> PlanDomainService : delegates
+DeploymentApplicationService --> TaskDomainService : delegates
+DeploymentApplicationService --> BusinessValidator : validates with
+DeploymentApplicationService --> TenantConfig : uses
+
+BusinessValidator --> ValidationSummary : returns
+BusinessValidator --> TenantConfig : validates
+
+PlanDomainService --> PlanInfo : returns
+TaskDomainService --> TaskOperationResult : returns
+TaskDomainService --> TenantConfig : uses
+
+TenantConfigConverter --> TenantConfig : creates
+
+' ============================================
+' Legend
+' ============================================
+legend right
+  **DDD 重构完成版 (2024-11-17)**
+
+  **架构分层**:
+  - Facade: 防腐层 + 格式校验
+  - Application: 业务编排 + 业务规则校验
+  - Domain: 纯领域逻辑
+
+  **校验分层**:
+  - Facade: Jakarta Validator（格式校验）
+  - Application: BusinessValidator（业务规则校验）
+
+  **DTO 隔离**:
+  - 外部: TenantDeployConfig（仅 Facade 层）
+  - 内部: TenantConfig（应用层 + 领域层）
+endlegend
+
+@enduml
+
