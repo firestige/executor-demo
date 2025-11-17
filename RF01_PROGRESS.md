@@ -63,7 +63,11 @@
 
 **完成时间**: 2025-11-17  
 **提交 ID**: rf01-phase2-internal-dto (tag)  
-**备注**: TenantConfig 创建完成，与外部 DTO 解耦，保护应用层接口稳定性
+**备注**: 
+- TenantConfig 创建完成，与外部 DTO 解耦
+- 使用 record 优化设计：DeployUnitIdentifier（核心标识）、MediaRoutingConfig（媒体路由配对）
+- 明确字段语义：networkEndpoints（HTTP网关路由）、healthCheckEndpoints（由Facade装配）
+- previousConfigVersion 用于回滚时创建新版本保证幂等性
 
 ---
 
