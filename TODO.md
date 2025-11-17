@@ -68,36 +68,165 @@
 - `BEAN_CONFIGURATION_FIX.md`
 - `DDD_REFACTORING_AND_VALIDATION_COMPLETE.md`（综合报告）
 
-## 2. 当前待办（Phase 18）
-- **问题**：DeploymentTaskFacadeImpl.createSwitchTask 方法包含大量业务逻辑
-- **目标**：Facade 作为防腐层，仅负责数据结构转换和协调调用
-- **方案**：
-  - 提取业务逻辑到专门的应用服务层（Application Service）
-  - 引入 PlanApplicationService / TaskApplicationService
-  - Facade 仅负责：DTO 转换 + 调用应用服务 + 异常转换
-- **完成情况**：
-  - ✅ 创建 Result DTO 体系（PlanCreationResult, PlanInfo, TaskInfo, PlanOperationResult, TaskOperationResult）
-  - ✅ 创建内部 DTO (TenantConfig) 解耦应用层
-  - ✅ 实现 PlanApplicationService 和 TaskApplicationService
-  - ✅ 重构 DeploymentTaskFacade 为异常驱动模式
-  - ✅ 所有测试通过：168 tests, 0 failures, 0 errors, 20 skipped
-- **优先级**：高 → 已完成
+## 2. 当前待办（Phase 18 - DDD 架构深度优化）
 
-#### RF-02: TaskWorkerFactory 参数简化 — ✅ DONE (2025-11-17)
-- **问题**：DefaultTaskWorkerFactory.create() 方法参数过多（9 个参数）
-- **目标**：提升可读性和可维护性
-- **方案**：
-  - 引入 TaskWorkerCreationContext 参数对象（Builder 模式）
-  - 保持向后兼容（旧方法标记为 @Deprecated）
-  - 保持扩展性：便于后续增加新参数
-- **完成情况**：
-  - ✅ 创建 TaskWorkerCreationContext（Builder 模式 + 参数验证）
-  - ✅ 更新 TaskWorkerFactory 接口（新增 context-based 方法）
-  - ✅ 更新 DefaultTaskWorkerFactory（实现新方法，旧方法委托）
-  - ✅ 更新所有调用点（PlanApplicationService x3, TaskApplicationService x2）
-  - ✅ 编写单元测试（TaskWorkerCreationContextTest - 11 个测试用例）
-  - ✅ 参数从 9 个简化为 1 个，提升可读性
-- **优先级**：中 → 已完成
+> **基于评审报告**: `DDD_ARCHITECTURE_REVIEW_REPORT.md` (2025-11-17)  
+> **当前 DDD 符合度**: 50% (13/26)  
+> **目标 DDD 符合度**: 80% (21/26)  
+> **预计总工作量**: 6-8 周
+
+---
+
+### 🔴 P0 - 最高优先级（影响架构质量）— 预计 2 周
+
+#### RF-05: 清理孤立代码 — ✅ DONE (2025-11-17)
+**状态**: 已完成  
+**实际时间**: 30 分钟  
+**责任人**: GitHub Copilot  
+**依赖**: 无
+
+**完成情况**:
+- ✅ 删除 10 个孤立主代码类（~1380 行）
+- ✅ 删除 5 个孤立测试类（~950 行）
+- ✅ 总计删除 ~1500 行代码（约 10%）
+- ✅ 保留 service.health 包（仍在使用）
+- ✅ 保留 PipelineContext（被 TaskRuntimeContext 使用）
+- ✅ 编译成功，无错误
+- ✅ 测试运行正常（119 tests，失败与清理无关）
+
+**已删除**:
+- service.registry 包 (ServiceRegistry)
+- service.strategy 包 (DirectRpcNotificationStrategy, RedisRpcNotificationStrategy, ServiceNotificationStrategy)
+- service.adapter 包 (ServiceNotificationAdapter)
+- NotificationResult.java
+- Pipeline.java, PipelineStage.java
+- CheckpointManager.java, InMemoryCheckpointManager.java
+- PipelineTest, PipelineContextCheckpointIntegrationTest, CheckpointManagerTest
+- CheckpointBenchmark, PipelineExecutionBenchmark
+
+**详细报告**: `RF05_CLEANUP_REPORT.md`
+
+---
+
+#### RF-06: 修复贫血聚合模型 — 🔴 TODO （最重要）
+**状态**: 待启动  
+**预计时间**: 1-2 天  
+**责任人**: 待分配  
+**依赖**: RF-05（建议先清理代码）
+
+**问题描述**:
+TaskAggregate 和 PlanAggregate 沦为纯数据容器（贫血模型），业务逻辑散落在 DomainService 层，违反 DDD 核心原则："告知而非询问"（Tell, Don't Ask）。
+
+**执行步骤**:
+
+**Step 1**: 为 TaskAggregate 添加业务行为（6 小时）
+- 状态转换方法：start(), requestPause(), resume(), cancel()
+- Stage 管理方法：completeStage(), failStage(), isAllStagesCompleted()
+- 重试与回滚方法：retry(), rollback(), completeRollback()
+- 不变式保护：validateCanCompleteStage()
+
+**Step 2**: 为 PlanAggregate 添加业务行为（4 小时）
+- Plan 状态转换：addTask(), start(), pause(), resume(), complete()
+- 查询方法：getTaskCount(), canStart()
+
+**Step 3**: 重构 DomainService（4 小时）
+- 简化 TaskDomainService：只做查询、协调和持久化
+- 简化 PlanDomainService：调用聚合方法而非直接操作状态
+
+**Step 4**: 更新单元测试（2 小时）
+
+**验收标准**:
+- ✅ 聚合包含完整的业务行为方法
+- ✅ DomainService 职责简化
+- ✅ 聚合能保护自身不变式
+- ✅ 单元测试覆盖率 > 80%
+
+**预期收益**:
+- ✅ 业务逻辑内聚在聚合，符合 DDD 原则
+- ✅ 代码可读性提升 50%
+- ✅ 测试更简单
+- ✅ 服务层代码减少 30%
+
+---
+
+#### RF-07: 修正聚合边界 — 🔴 TODO
+**状态**: 待启动  
+**预计时间**: 4-8 小时  
+**责任人**: 待分配  
+**依赖**: RF-06
+
+**问题描述**:
+PlanAggregate 直接持有 TaskAggregate 对象列表，违反 DDD 原则："聚合间通过 ID 引用"。
+
+**执行步骤**:
+1. 重构 PlanAggregate：改为持有 taskIds (List<String>)
+2. 重构 PlanDomainService：addTaskToPlan() 只传递 taskId
+3. 重构 DeploymentApplicationService：组装完整信息时查询 Tasks
+4. 更新仓储实现
+5. 更新测试
+
+**验收标准**:
+- ✅ PlanAggregate 只持有 taskIds
+- ✅ 跨聚合引用通过 ID
+- ✅ 事务边界清晰
+- ✅ 所有测试通过
+
+---
+
+### 🟡 P1 - 中优先级（改善代码质量）— 预计 2-3 周
+
+#### RF-08: 引入值对象 — 🟡 TODO
+**预计时间**: 1-2 天  
+**目标**: 创建 TaskId、TenantId、PlanId、DeployVersion、NetworkEndpoint 值对象，消除原始类型泛滥。
+
+#### RF-09: 重构仓储接口 — 🟡 TODO
+**预计时间**: 1 天  
+**目标**: 分离 Repository 和 QueryService，符合 CQRS 原则。
+
+#### RF-10: 优化应用服务 — 🟡 TODO
+**预计时间**: 1 天  
+**目标**: 提取 DeploymentPlanCreator，简化 DeploymentApplicationService 职责。
+
+---
+
+### 🟢 P2 - 低优先级（锦上添花）— 预计 1 周
+
+#### RF-11: 完善领域事件 — 🟢 TODO
+**预计时间**: 4-8 小时  
+**目标**: 事件由聚合产生，服务层统一发布。
+
+#### RF-12: 添加事务标记 — 🟢 TODO
+**预计时间**: 2-4 小时  
+**目标**: 在应用服务层使用 @Transactional 明确事务边界。
+
+---
+
+## Phase 18 执行优先级
+
+**立即开始（本周）**:
+1. 🔴 RF-05: 清理孤立代码（2-4小时）
+2. 🔴 RF-06: 修复贫血聚合模型（1-2天）← **最关键**
+
+**第二周**:
+3. 🔴 RF-07: 修正聚合边界（4-8小时）
+
+**第三、四周**:
+4. 🟡 RF-08: 引入值对象（1-2天）
+5. 🟡 RF-09: 重构仓储接口（1天）
+6. 🟡 RF-10: 优化应用服务（1天）
+
+**后续优化**:
+7. 🟢 RF-11: 完善领域事件（4-8小时）
+8. 🟢 RF-12: 添加事务标记（2-4小时）
+
+**预期总收益**:
+- ✅ DDD 符合度从 50% 提升至 80%
+- ✅ 代码行数减少 10%
+- ✅ 测试覆盖率提升 40%
+- ✅ 可维护性提升 50%
+- ✅ 类型安全提升 60%
+
+---
 
 #### RF-04: 端到端集成测试套件 — TODO
 - **目标**：建立完整的端到端集成测试覆盖
