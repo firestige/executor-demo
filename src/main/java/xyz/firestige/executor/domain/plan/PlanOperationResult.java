@@ -1,25 +1,22 @@
-package xyz.firestige.executor.application.dto;
+package xyz.firestige.executor.domain.plan;
 
+import xyz.firestige.executor.domain.plan.PlanStatus;
 import xyz.firestige.executor.exception.FailureInfo;
-import xyz.firestige.executor.state.TaskStatus;
 
 /**
- * Task 操作结果
- * 用于单个 Task 级别的操作（暂停、恢复、回滚、重试、取消）
- * 明确区分 Task 聚合的操作结果
- *
- * 注意：这是重构后的版本，与 facade 包下的旧版本不同
- * 旧版本（facade/TaskOperationResult）将在 Phase 5 删除
+ * Plan 操作结果
+ * 用于 Plan 级别的操作（暂停、恢复、回滚、重试）
+ * 明确区分 Plan 聚合的操作结果
  */
-public class TaskOperationResult {
+public class PlanOperationResult {
 
     private boolean success;
-    private String taskId;
-    private TaskStatus status;
+    private String planId;
+    private PlanStatus status;
     private FailureInfo failureInfo;
     private String message;
 
-    public TaskOperationResult() {
+    public PlanOperationResult() {
     }
 
     // 静态工厂方法
@@ -27,10 +24,10 @@ public class TaskOperationResult {
     /**
      * 创建成功结果
      */
-    public static TaskOperationResult success(String taskId, TaskStatus status, String message) {
-        TaskOperationResult result = new TaskOperationResult();
+    public static PlanOperationResult success(String planId, PlanStatus status, String message) {
+        PlanOperationResult result = new PlanOperationResult();
         result.success = true;
-        result.taskId = taskId;
+        result.planId = planId;
         result.status = status;
         result.message = message;
         return result;
@@ -39,10 +36,10 @@ public class TaskOperationResult {
     /**
      * 创建失败结果
      */
-    public static TaskOperationResult failure(String taskId, FailureInfo failureInfo, String message) {
-        TaskOperationResult result = new TaskOperationResult();
+    public static PlanOperationResult failure(String planId, FailureInfo failureInfo, String message) {
+        PlanOperationResult result = new PlanOperationResult();
         result.success = false;
-        result.taskId = taskId;
+        result.planId = planId;
         result.failureInfo = failureInfo;
         result.message = message;
         return result;
@@ -51,8 +48,8 @@ public class TaskOperationResult {
     /**
      * 创建失败结果（简化版）
      */
-    public static TaskOperationResult failure(String message) {
-        TaskOperationResult result = new TaskOperationResult();
+    public static PlanOperationResult failure(String message) {
+        PlanOperationResult result = new PlanOperationResult();
         result.success = false;
         result.message = message;
         return result;
@@ -68,19 +65,19 @@ public class TaskOperationResult {
         this.success = success;
     }
 
-    public String getTaskId() {
-        return taskId;
+    public String getPlanId() {
+        return planId;
     }
 
-    public void setTaskId(String taskId) {
-        this.taskId = taskId;
+    public void setPlanId(String planId) {
+        this.planId = planId;
     }
 
-    public TaskStatus getStatus() {
+    public PlanStatus getStatus() {
         return status;
     }
 
-    public void setStatus(TaskStatus status) {
+    public void setStatus(PlanStatus status) {
         this.status = status;
     }
 
@@ -102,12 +99,13 @@ public class TaskOperationResult {
 
     @Override
     public String toString() {
-        return "TaskOperationResult{" +
+        return "PlanOperationResult{" +
                 "success=" + success +
-                ", taskId='" + taskId + '\'' +
+                ", planId='" + planId + '\'' +
                 ", status=" + status +
                 ", message='" + message + '\'' +
                 '}';
     }
 }
+
 

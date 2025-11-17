@@ -1,4 +1,4 @@
-package xyz.firestige.executor.application;
+package xyz.firestige.executor.domain.task;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -22,19 +22,22 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Task 应用服务
- * 负责单个 Task 级别的操作
+ * Task 领域服务 (DDD 重构)
  *
- * 职责：
- * 1. Task 级别的操作（暂停、恢复、回滚、重试、取消）
- * 2. Task 状态查询
- * 3. 返回 TaskOperationResult 和 TaskStatusInfo
+ * 职责（重新定义）：
+ * 1. Task 聚合的创建和管理
+ * 2. Task 状态管理
+ * 3. Task 执行管理
+ * 4. 只关注 Task 单聚合的业务逻辑
+ *
+ * @since DDD 重构 Phase 2.2.2
  */
-public class TaskApplicationService {
+public class TaskDomainService {
 
-    private static final Logger logger = LoggerFactory.getLogger(TaskApplicationService.class);
+    private static final Logger logger = LoggerFactory.getLogger(TaskDomainService.class);
 
-    // 核心依赖
+    // 核心依赖（DDD 重构后简化）
+    private final TaskRepository taskRepository;
     private final TaskStateManager stateManager;
     private final TaskWorkerFactory workerFactory;
     private final ExecutorProperties executorProperties;
@@ -42,33 +45,21 @@ public class TaskApplicationService {
     private final SpringTaskEventSink eventSink;
     private final ConflictRegistry conflictRegistry;
 
-    // 注册表引用（从 PlanApplicationService 共享）
-    private final Map<String, TaskAggregate> taskRegistry;
-    private final Map<String, TaskRuntimeContext> contextRegistry;
-    private final Map<String, List<TaskStage>> stageRegistry;
-    private final Map<String, TaskExecutor> executorRegistry;
-
-    public TaskApplicationService(
+    public TaskDomainService(
+            TaskRepository taskRepository,
             TaskStateManager stateManager,
             TaskWorkerFactory workerFactory,
             ExecutorProperties executorProperties,
             CheckpointService checkpointService,
             SpringTaskEventSink eventSink,
-            ConflictRegistry conflictRegistry,
-            Map<String, TaskAggregate> taskRegistry,
-            Map<String, TaskRuntimeContext> contextRegistry,
-            Map<String, List<TaskStage>> stageRegistry,
-            Map<String, TaskExecutor> executorRegistry) {
+            ConflictRegistry conflictRegistry) {
+        this.taskRepository = taskRepository;
         this.stateManager = stateManager;
         this.workerFactory = workerFactory;
         this.executorProperties = executorProperties;
         this.checkpointService = checkpointService;
         this.eventSink = eventSink;
         this.conflictRegistry = conflictRegistry;
-        this.taskRegistry = taskRegistry;
-        this.contextRegistry = contextRegistry;
-        this.stageRegistry = stageRegistry;
-        this.executorRegistry = executorRegistry;
     }
 
     /**
@@ -88,12 +79,12 @@ public class TaskApplicationService {
             );
         }
 
-        TaskRuntimeContext ctx = contextRegistry.get(target.getTaskId());
+        TaskRuntimeContext ctx = taskRepository.getContext(target.getTaskId());
         if (ctx != null) {
             ctx.requestPause();
         }
 
-        logger.info("[TaskApplicationService] 租户任务暂停请求已登记: {}", tenantId);
+        logger.info("[TaskDomainService] 租户任务暂停请求已登记: {}", tenantId);
         return TaskOperationResult.success(
             target.getTaskId(),
             TaskStatus.PAUSED,
@@ -107,7 +98,7 @@ public class TaskApplicationService {
      * @return TaskOperationResult
      */
     public TaskOperationResult resumeTaskByTenant(String tenantId) {
-        logger.info("[TaskApplicationService] 恢复租户任务: {}", tenantId);
+        logger.info("[TaskDomainService] 恢复租户任务: {}", tenantId);
 
         TaskAggregate target = findTaskByTenantId(tenantId);
         if (target == null) {
@@ -118,12 +109,12 @@ public class TaskApplicationService {
             );
         }
 
-        TaskRuntimeContext ctx = contextRegistry.get(target.getTaskId());
+        TaskRuntimeContext ctx = taskRepository.getContext(target.getTaskId());
         if (ctx != null) {
             ctx.clearPause();
         }
 
-        logger.info("[TaskApplicationService] 租户任务恢复请求已登记: {}", tenantId);
+        logger.info("[TaskDomainService] 租户任务恢复请求已登记: {}", tenantId);
         return TaskOperationResult.success(
             target.getTaskId(),
             TaskStatus.RUNNING,
@@ -137,7 +128,7 @@ public class TaskApplicationService {
      * @return TaskOperationResult
      */
     public TaskOperationResult rollbackTaskByTenant(String tenantId) {
-        logger.info("[TaskApplicationService] 回滚租户任务: {}", tenantId);
+        logger.info("[TaskDomainService] 回滚租户任务: {}", tenantId);
 
         TaskAggregate target = findTaskByTenantId(tenantId);
         if (target == null) {
@@ -149,10 +140,11 @@ public class TaskApplicationService {
         }
 
         // 获取或创建 Executor
-        TaskExecutor exec = executorRegistry.get(target.getTaskId());
+        TaskExecutor exec = taskRepository.getExecutor(target.getTaskId());
         if (exec == null) {
-            List<TaskStage> stages = stageRegistry.getOrDefault(target.getTaskId(), List.of());
-            TaskRuntimeContext ctx = contextRegistry.get(target.getTaskId());
+            List<TaskStage> stages = taskRepository.getStages(target.getTaskId());
+            if (stages == null) stages = List.of();
+            TaskRuntimeContext ctx = taskRepository.getContext(target.getTaskId());
             // RF-02: 使用 TaskWorkerCreationContext
             exec = workerFactory.create(
                 xyz.firestige.executor.execution.TaskWorkerCreationContext.builder()
@@ -202,7 +194,7 @@ public class TaskApplicationService {
      * @return TaskOperationResult
      */
     public TaskOperationResult retryTaskByTenant(String tenantId, boolean fromCheckpoint) {
-        logger.info("[TaskApplicationService] 重试租户任务: {}, fromCheckpoint: {}", tenantId, fromCheckpoint);
+        logger.info("[TaskDomainService] 重试租户任务: {}, fromCheckpoint: {}", tenantId, fromCheckpoint);
 
         TaskAggregate target = findTaskByTenantId(tenantId);
         if (target == null) {
@@ -214,10 +206,11 @@ public class TaskApplicationService {
         }
 
         // 获取或创建 Executor
-        TaskExecutor exec = executorRegistry.get(target.getTaskId());
+        TaskExecutor exec = taskRepository.getExecutor(target.getTaskId());
         if (exec == null) {
-            List<TaskStage> stages = stageRegistry.getOrDefault(target.getTaskId(), List.of());
-            TaskRuntimeContext ctx = contextRegistry.get(target.getTaskId());
+            List<TaskStage> stages = taskRepository.getStages(target.getTaskId());
+            if (stages == null) stages = List.of();
+            TaskRuntimeContext ctx = taskRepository.getContext(target.getTaskId());
             // RF-02: 使用 TaskWorkerCreationContext
             exec = workerFactory.create(
                 xyz.firestige.executor.execution.TaskWorkerCreationContext.builder()
@@ -232,13 +225,14 @@ public class TaskApplicationService {
                     .conflictRegistry(conflictRegistry)
                     .build()
             );
-            executorRegistry.put(target.getTaskId(), exec);
+            taskRepository.saveExecutor(target.getTaskId(), exec);
         }
 
         // 补偿进度事件（checkpoint retry）
         if (fromCheckpoint) {
             int completed = target.getCurrentStageIndex();
-            int total = stageRegistry.getOrDefault(target.getTaskId(), List.of()).size();
+            List<TaskStage> stages = taskRepository.getStages(target.getTaskId());
+            int total = (stages != null) ? stages.size() : 0;
             stateManager.publishTaskProgressEvent(target.getTaskId(), null, completed, total);
         }
 
@@ -259,24 +253,25 @@ public class TaskApplicationService {
      * @return TaskStatusInfo
      */
     public TaskStatusInfo queryTaskStatus(String executionUnitId) {
-        logger.debug("[TaskApplicationService] 查询任务状态: {}", executionUnitId);
+        logger.debug("[TaskDomainService] 查询任务状态: {}", executionUnitId);
 
-        TaskAggregate task = taskRegistry.get(executionUnitId);
+        TaskAggregate task = taskRepository.get(executionUnitId);
         if (task == null) {
             return TaskStatusInfo.failure("任务不存在: " + executionUnitId);
         }
 
         // 计算进度
         int completed = task.getCurrentStageIndex();
-        int total = stageRegistry.getOrDefault(executionUnitId, List.of()).size();
+        List<TaskStage> stages = taskRepository.getStages(executionUnitId);
+        int total = (stages != null) ? stages.size() : 0;
         double progress = total == 0 ? 0 : (completed * 100.0 / total);
 
         // 获取当前阶段
-        TaskExecutor exec = executorRegistry.get(executionUnitId);
+        TaskExecutor exec = taskRepository.getExecutor(executionUnitId);
         String currentStage = exec != null ? exec.getCurrentStageName() : null;
 
         // 获取运行时状态
-        TaskRuntimeContext ctx = contextRegistry.get(executionUnitId);
+        TaskRuntimeContext ctx = taskRepository.getContext(executionUnitId);
         boolean paused = ctx != null && ctx.isPauseRequested();
         boolean cancelled = ctx != null && ctx.isCancelRequested();
 
@@ -312,9 +307,9 @@ public class TaskApplicationService {
      * @return TaskOperationResult
      */
     public TaskOperationResult cancelTask(String executionUnitId) {
-        logger.info("[TaskApplicationService] 取消任务: {}", executionUnitId);
+        logger.info("[TaskDomainService] 取消任务: {}", executionUnitId);
 
-        TaskAggregate task = taskRegistry.get(executionUnitId);
+        TaskAggregate task = taskRepository.get(executionUnitId);
         if (task == null) {
             return TaskOperationResult.failure(
                 executionUnitId,
@@ -324,16 +319,16 @@ public class TaskApplicationService {
         }
 
         // 设置取消标志
-        TaskRuntimeContext ctx = contextRegistry.get(task.getTaskId());
+        TaskRuntimeContext ctx = taskRepository.getContext(task.getTaskId());
         if (ctx != null) {
             ctx.requestCancel();
         }
 
         // 更新状态
         stateManager.updateState(task.getTaskId(), TaskStatus.CANCELLED);
-        stateManager.publishTaskCancelledEvent(task.getTaskId(), "application-service");
+        stateManager.publishTaskCancelledEvent(task.getTaskId(), "domain-service");
 
-        logger.info("[TaskApplicationService] 任务取消请求已登记: {}", executionUnitId);
+        logger.info("[TaskDomainService] 任务取消请求已登记: {}", executionUnitId);
         return TaskOperationResult.success(
             task.getTaskId(),
             TaskStatus.CANCELLED,
@@ -367,20 +362,17 @@ public class TaskApplicationService {
      * 根据租户 ID 查找任务
      */
     private TaskAggregate findTaskByTenantId(String tenantId) {
-        return taskRegistry.values().stream()
-                .filter(task -> tenantId.equals(task.getTenantId()))
-                .findFirst()
-                .orElse(null);
+        return taskRepository.findByTenantId(tenantId);
     }
 
     /**
      * 获取并注册 Stage 名称
      */
     private List<String> getAndRegStageNames(TaskAggregate task) {
-        List<String> stageNames = stageRegistry.getOrDefault(task.getTaskId(), List.of())
-                .stream()
-                .map(TaskStage::getName)
-                .toList();
+        List<TaskStage> stages = taskRepository.getStages(task.getTaskId());
+        List<String> stageNames = (stages != null)
+            ? stages.stream().map(TaskStage::getName).toList()
+            : List.of();
         stateManager.registerStageNames(task.getTaskId(), stageNames);
         return stageNames;
     }

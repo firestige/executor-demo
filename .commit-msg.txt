@@ -1,0 +1,11 @@
+refactor(ddd): Phase 2.2.3 - Replace Maps with Repository
+Domain services now use Repository pattern instead of Maps.
+PlanDomainService:
+- planRegistry -> PlanRepository
+- planSmRegistry -> PlanRepository StateMachine methods
+- Constructor still has 11 params (first is PlanRepository)
+TaskDomainService:
+- Removed 4 Map params from constructor (10 -> 7 params)
+- All Map operations replaced with TaskRepository calls
+- 18 usages updated across all methods
+No compilation errors. Only warnings for unused methods (expected).
