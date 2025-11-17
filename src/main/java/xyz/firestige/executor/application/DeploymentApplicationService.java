@@ -104,6 +104,9 @@ public class DeploymentApplicationService {
                 logger.debug("[DeploymentApplicationService] Task 创建并关联成功: {}", task.getTaskId());
             }
 
+            // Step 3.5: 标记 Plan 为 READY（DDD 重构新增）
+            planDomainService.markPlanAsReady(planId);
+
             // Step 4: 启动 Plan 执行（委托给 PlanDomainService）
             planDomainService.startPlan(planId);
 
