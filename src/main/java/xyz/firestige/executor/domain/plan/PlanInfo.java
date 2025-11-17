@@ -1,4 +1,6 @@
-package xyz.firestige.executor.application.dto;
+package xyz.firestige.executor.domain.plan;
+
+import xyz.firestige.executor.domain.task.TaskInfo;
 
 import xyz.firestige.executor.domain.plan.PlanAggregate;
 import xyz.firestige.executor.domain.plan.PlanStatus;
@@ -81,4 +83,5 @@ public class PlanInfo {
                 '}';
     }
 }
+
 

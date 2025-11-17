@@ -1,4 +1,4 @@
-package xyz.firestige.executor.application.dto;
+package xyz.firestige.executor.domain.plan;
 
 import xyz.firestige.executor.exception.FailureInfo;
 import xyz.firestige.executor.validation.ValidationSummary;
@@ -104,4 +104,5 @@ public class PlanCreationResult {
                 '}';
     }
 }
+
 

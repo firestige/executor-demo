@@ -1,6 +1,5 @@
-package xyz.firestige.executor.application.dto;
+package xyz.firestige.executor.domain.task;
 
-import xyz.firestige.executor.domain.task.TaskAggregate;
 import xyz.firestige.executor.state.TaskStatus;
 
 /**
@@ -62,4 +61,5 @@ public class TaskInfo {
                 '}';
     }
 }
+
 
