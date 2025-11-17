@@ -1,108 +1,89 @@
 package xyz.firestige.executor.domain.task;
 
-import xyz.firestige.executor.domain.stage.TaskStage;
-import xyz.firestige.executor.execution.TaskExecutor;
-
 import java.util.List;
+import java.util.Optional;
 
 /**
- * Task Repository 接口
+ * Task Repository 接口（DDD 重构：简化方案）
  *
- * 职责：Task 聚合的持久化和查询
+ * 职责：Task 聚合根的持久化和基本查询
  *
- * 设计说明：
- * - 抽象存储实现（内存、Redis、数据库）
- * - 提供类型安全的查询方法
- * - 管理 Task 的运行时状态（Context、Executor、Stages）
+ * 设计原则：
+ * - 只管理聚合根的完整生命周期
+ * - 不暴露聚合内部细节（Stages、Context、Executor）
+ * - 保持简单实用，避免过度设计
+ * - 使用 Optional 返回值，明确表达"可能不存在"
  *
- * @since DDD 重构
+ * @since DDD 重构 Phase 18 - RF-09 简化方案
  */
 public interface TaskRepository {
 
-    // ========== Task 聚合操作 ==========
+    // ========== 命令方法 ==========
 
     /**
-     * 保存 Task
+     * 保存 Task 聚合（包含所有内部状态）
+     *
+     * @param task Task 聚合
      */
     void save(TaskAggregate task);
 
     /**
-     * 根据 Task ID 获取 Task
-     */
-    TaskAggregate get(String taskId);
-
-    /**
-     * 根据租户 ID 查找 Task
-     */
-    TaskAggregate findByTenantId(String tenantId);
-
-    /**
-     * 根据 Plan ID 获取所有 Task
-     */
-    List<TaskAggregate> findByPlanId(String planId);
-
-    /**
-     * 删除 Task
+     * 删除 Task 聚合
+     *
+     * @param taskId Task ID
      */
     void remove(String taskId);
 
-    // ========== Task 运行时状态管理 ==========
+    // ========== 查询方法 ==========
 
     /**
-     * 保存 Task 的 Stage 列表
+     * 根据 Task ID 查找 Task
+     *
+     * @param taskId Task ID
+     * @return Task 聚合，如果不存在则返回 empty
      */
-    void saveStages(String taskId, List<TaskStage> stages);
+    Optional<TaskAggregate> findById(String taskId);
 
     /**
-     * 获取 Task 的 Stage 列表
+     * 根据租户 ID 查找 Task
+     *
+     * @param tenantId 租户 ID
+     * @return Task 聚合，如果不存在则返回 empty
      */
-    List<TaskStage> getStages(String taskId);
+    Optional<TaskAggregate> findByTenantId(String tenantId);
 
     /**
-     * 保存 Task 的运行时上下文
+     * 根据 Plan ID 查找所有 Task
+     *
+     * @param planId Plan ID
+     * @return Task 列表，如果不存在则返回空列表
      */
-    void saveContext(String taskId, TaskRuntimeContext context);
+    List<TaskAggregate> findByPlanId(String planId);
+
+    // ========== 向后兼容方法（逐步淘汰）==========
 
     /**
-     * 获取 Task 的运行时上下文
+     * 根据 Task ID 获取 Task（向后兼容）
+     *
+     * @param taskId Task ID
+     * @return Task 聚合，如果不存在则返回 null
+     * @deprecated 请使用 findById(String)，返回 Optional
      */
-    TaskRuntimeContext getContext(String taskId);
+    @Deprecated
+    default TaskAggregate get(String taskId) {
+        return findById(taskId).orElse(null);
+    }
 
     /**
-     * 保存 TaskExecutor
+     * 根据租户 ID 查找 Task（向后兼容）
+     *
+     * @param tenantId 租户 ID
+     * @return Task 聚合，如果不存在则返回 null
+     * @deprecated 请使用 findByTenantId(String)，返回 Optional
      */
-    void saveExecutor(String taskId, TaskExecutor executor);
-
-    /**
-     * 获取 TaskExecutor
-     */
-    TaskExecutor getExecutor(String taskId);
-
-    // ========== 运行时控制标志 ==========
-
-    /**
-     * 请求暂停 Task
-     */
-    void requestPause(String taskId);
-
-    /**
-     * 清除暂停标志
-     */
-    void clearPause(String taskId);
-
-    /**
-     * 请求取消 Task
-     */
-    void requestCancel(String taskId);
-
-    /**
-     * 检查是否请求暂停
-     */
-    boolean isPauseRequested(String taskId);
-
-    /**
-     * 检查是否请求取消
-     */
-    boolean isCancelRequested(String taskId);
+    @Deprecated
+    default TaskAggregate findByTenantId(String tenantId) {
+        return findByTenantId(tenantId).orElse(null);
+    }
 }
 
