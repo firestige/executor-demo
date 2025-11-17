@@ -90,24 +90,24 @@ public class PlanDomainService {
 
     /**
      * 添加 Task 到 Plan（跨聚合关联，由应用层调用）
-     * DDD 重构：调用聚合的业务方法
+     * RF-07 重构：只传递 taskId，实现聚合间通过 ID 引用
      *
      * @param planId Plan ID
-     * @param taskAggregate Task 聚合（由 TaskDomainService 创建）
+     * @param taskId Task ID（而非整个 TaskAggregate）
      */
-    public void addTaskToPlan(String planId, TaskAggregate taskAggregate) {
-        logger.debug("[PlanDomainService] 添加 Task 到 Plan: {} -> {}", planId, taskAggregate.getTaskId());
+    public void addTaskToPlan(String planId, String taskId) {
+        logger.debug("[PlanDomainService] 添加 Task 到 Plan: {} -> {}", planId, taskId);
 
         PlanAggregate plan = planRepository.get(planId);
         if (plan == null) {
             throw new IllegalArgumentException("Plan 不存在: " + planId);
         }
 
-        // ✅ 调用聚合的业务方法（不变式保护在聚合内部）
-        plan.addTask(taskAggregate);
+        // ✅ 调用聚合的业务方法（传递 ID）
+        plan.addTask(taskId);
         planRepository.save(plan);
 
-        logger.debug("[PlanDomainService] Task 添加成功: {} -> {}", planId, taskAggregate.getTaskId());
+        logger.debug("[PlanDomainService] Task 添加成功: {} -> {}", planId, taskId);
     }
 
     /**

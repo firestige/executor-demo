@@ -98,8 +98,8 @@ public class DeploymentApplicationService {
                 // 构建 Task 的 Stages
                 taskDomainService.buildTaskStages(task, config, stageFactory, healthCheckClient);
 
-                // 关联 Task 到 Plan（跨聚合协调 - 应用层职责）
-                planDomainService.addTaskToPlan(planId, task);
+                // ✅ RF-07 重构：只传递 taskId（聚合间通过 ID 引用）
+                planDomainService.addTaskToPlan(planId, task.getTaskId());
 
                 logger.debug("[DeploymentApplicationService] Task 创建并关联成功: {}", task.getTaskId());
             }
