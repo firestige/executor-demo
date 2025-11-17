@@ -1,5 +1,7 @@
 package xyz.firestige.executor.facade;
 
+import jakarta.validation.ConstraintViolation;
+import jakarta.validation.Validator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -16,10 +18,9 @@ import xyz.firestige.executor.facade.exception.PlanNotFoundException;
 import xyz.firestige.executor.facade.exception.TaskCreationException;
 import xyz.firestige.executor.facade.exception.TaskNotFoundException;
 import xyz.firestige.executor.facade.exception.TaskOperationException;
-import xyz.firestige.executor.validation.ValidationError;
-import xyz.firestige.executor.validation.ValidationSummary;
 
 import java.util.List;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
@@ -44,10 +45,13 @@ public class DeploymentTaskFacade {
     private static final Logger logger = LoggerFactory.getLogger(DeploymentTaskFacade.class);
 
     private final DeploymentApplicationService deploymentApplicationService;
+    private final Validator validator;  // Jakarta Validator
 
     public DeploymentTaskFacade(
-            DeploymentApplicationService deploymentApplicationService) {
+            DeploymentApplicationService deploymentApplicationService,
+            Validator validator) {
         this.deploymentApplicationService = deploymentApplicationService;
+        this.validator = validator;
     }
 
     /**
@@ -61,19 +65,26 @@ public class DeploymentTaskFacade {
             throw new IllegalArgumentException("配置列表不能为空");
         }
 
-        // Step 2: 业务校验（使用 ValidationChain）
-        // ValidationChain 在 Facade 层完成，避免无效数据进入应用层
-        ValidationSummary validationSummary = validationChain.validateAll(configs);
-        if (validationSummary.hasErrors()) {
-            String errorDetail = formatValidationErrors(validationSummary);
-            logger.warn("[Facade] 配置校验失败: {}", errorDetail);
-            throw new IllegalArgumentException("配置校验失败: " + errorDetail);
-        }
-
-        // Step 3: DTO 转换：外部 DTO → 内部 DTO（防腐层职责）
+        // Step 2: DTO 转换：外部 DTO → 内部 DTO（防腐层职责）
         List<TenantConfig> internalConfigs = TenantConfigConverter.fromExternal(configs);
 
+        // Step 3: 字段格式校验（对转换后的 TenantConfig 使用 Spring Validator）
+        for (int i = 0; i < internalConfigs.size(); i++) {
+            TenantConfig config = internalConfigs.get(i);
+            Set<ConstraintViolation<TenantConfig>> violations = validator.validate(config);
+
+            if (!violations.isEmpty()) {
+                String errorDetail = violations.stream()
+                        .map(v -> String.format("[%s] %s", v.getPropertyPath(), v.getMessage()))
+                        .collect(Collectors.joining("; "));
+
+                logger.warn("[Facade] TenantConfig 格式校验失败 (索引 {}): {}", i, errorDetail);
+                throw new IllegalArgumentException("TenantConfig 格式校验失败: " + errorDetail);
+            }
+        }
+
         // Step 4: 调用应用服务（使用内部 DTO）
+        // 应用服务内部会执行业务规则校验（BusinessValidator）
         PlanCreationResult result = deploymentApplicationService.createDeploymentPlan(internalConfigs);
 
         // Step 5: 处理结果

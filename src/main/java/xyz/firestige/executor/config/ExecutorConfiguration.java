@@ -163,7 +163,7 @@ public class ExecutorConfiguration {
     @Bean
     public DeploymentTaskFacade deploymentTaskFacade(
             DeploymentApplicationService deploymentApplicationService,
-            javax.validation.Validator validator) {  // Spring 自动提供的 Validator
+            jakarta.validation.Validator validator) {  // Jakarta Validator
         return new DeploymentTaskFacade(deploymentApplicationService, validator);
     }
 }
