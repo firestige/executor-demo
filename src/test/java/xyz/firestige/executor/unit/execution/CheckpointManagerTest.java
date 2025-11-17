@@ -9,7 +9,14 @@ import xyz.firestige.executor.execution.checkpoint.Checkpoint;
 import xyz.firestige.executor.execution.pipeline.InMemoryCheckpointManager;
 import xyz.firestige.executor.util.TimingExtension;
 
-import static org.junit.jupiter.api.Assertions.*;
+import java.util.HashMap;
+import java.util.Map;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * CheckpointManager 单元测试
@@ -37,7 +44,7 @@ class CheckpointManagerTest {
         Checkpoint checkpoint = new Checkpoint("task1", "stage2");
 
         // 保存 Stage 数据
-        java.util.Map<String, Object> stageData = new java.util.HashMap<>();
+        Map<String, Object> stageData = new HashMap<>();
         stageData.put("key1", "value1");
         stageData.put("completedStages", 2);
         checkpoint.saveStageData("stage2", stageData);
@@ -53,7 +60,7 @@ class CheckpointManagerTest {
 
         // 验证 Stage 数据
         assertTrue(loaded.hasStageData("stage2"), "应该有 stage2 的数据");
-        java.util.Map<String, Object> loadedData = loaded.getStageData("stage2");
+        Map<String, Object> loadedData = loaded.getStageData("stage2");
         assertEquals("value1", loadedData.get("key1"));
         assertEquals(2, loadedData.get("completedStages"));
     }

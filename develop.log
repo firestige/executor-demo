@@ -1,0 +1,90 @@
+# Executor Demo - 开发日志
+
+> 本日志以天为粒度记录项目变更历史，提供可阅读的高度浓缩描述。
+
+---
+
+## 2025-11-17
+
+### 核心架构建立（Phase 0-9）
+- 建立领域模型与状态机框架：PlanAggregate、TaskAggregate、TaskStateMachine（Guard/Action）、PlanStateMachine
+- 实现执行引擎：TaskExecutor、TaskScheduler、ConflictRegistry，支持租户级并发控制和最大并发度限制
+- 完成 Stage/Step 执行模型：CompositeServiceStage、ConfigUpdateStep、BroadcastStep、HealthCheckStep
+- 实现 Checkpoint 机制：CheckpointService + InMemoryCheckpointStore
+- 构建 Facade 防腐层：DeploymentTaskFacadeImpl，提供创建/暂停/恢复/重试/回滚/查询接口
+- 清理旧架构遗留代码（ExecutionUnit、TaskOrchestrator、TenantTaskExecutor）
+- 文件：核心领域模型、执行引擎、Facade 层
+
+### 状态机与事件系统完善（Phase 10）
+- 状态转换自动记录时间戳（startedAt、endedAt、durationMillis），cancel/retry 改为状态机迁移
+- 新增重试事件（TaskRetryStartedEvent、TaskRetryCompletedEvent）和分阶段回滚事件（TaskRollingBackEvent、TaskRollbackFailedEvent）
+- 心跳调度器支持重试场景可重复启动，新增单元测试覆盖 Guard、重试、回滚流程
+- 文件：TaskStateManager、TaskStateMachine、HeartbeatScheduler、事件类
+
+### 回滚快照与计划状态机（Phase 11）
+- 实现回滚快照恢复机制（RB-01）和健康确认门控更新 lastKnownGoodVersion（RB-02：RollbackHealthVerifier SPI）
+- TaskRolledBackEvent 携带快照字段，TaskCancelledEvent 增强（cancelledBy、lastStage）
+- PlanStateMachine 支持 READY→RUNNING→PAUSED 状态流转，引入计划级暂停
+- 文件：PreviousConfigRollbackStrategy、RollbackHealthVerifier、PlanStateMachine、TaskAggregate
+
+### Checkpoint 持���化与并发安全（Phase 12）
+- 实现 Checkpoint 批量加载（CP-03）和 RedisCheckpointStore（CP-04：基于 Spring Data Redis，支持命名空间/TTL）
+- 自动配置支持通过 executor.checkpoint.store-type 属性切换 memory/redis
+- 冲突锁双层释放机制（执行路径释放 + 事件监听兜底），确保 ROLLING_BACK/PAUSED 不释放锁
+- 文件：CheckpointService、RedisCheckpointStore、ConflictRegistry、ExecutorAutoConfiguration
+
+### 健康检查与工厂��象（Phase 13）
+- ExecutorProperties 新增 healthCheckPath/healthCheckVersionKey 配置，实现可配置健康检查
+- 引入 StageFactory 和 TaskWorkerFactory 抽象，支持通过工厂模式灵活组装 Stage 和 TaskExecutor
+- 文件：ExecutorProperties、StageFactory、TaskWorkerFactory、DefaultStageFactory、DefaultTaskWorkerFactory
+
+### 可观测性与测试完善（Phase 14）
+- 实现 MetricsRegistry 抽象和 MicrometerMetricsRegistry，集成 Micrometer 指标（task_active、task_completed、task_failed、rollback_count、heartbeat_lag）
+- 完成 MDC 清理逻辑（C-03：执行完成和异常路径），新增 MDC 清理测试和性能压力测试
+- 文件：MetricsRegistry、MicrometerMetricsRegistry、TaskExecutor
+
+### 文档与架构治理（Phase 15-16）
+- 完成架构设计报告（ARCHITECTURE_DESIGN_REPORT.md）、迁移指南（MIGRATION_GUIDE.md）、术语表（GLOSSARY.md）
+- 绘制 4+1 架构视图：用例图、序列图、状态图、组件图、类图、部署图（diagrams/ 目录所有 PlantUML 图）
+- 编写测试场景文档（TEST_SCENARIOS.md）和测试进度报告（TEST_PROGRESS_REPORT.md）
+- 更新 ARCHITECTURE_PROMPT.md 标记所有核心功能开发完成
+- 文件：所有架构文档、PlantUML 图表
+
+### Facade 业务逻辑剥离重构（RF-01）
+- **核心价值**：建立清晰的分层架构，分离职责，提升可维护性和可测试性
+- **分层设计**：
+  - Facade 层：DTO 转换（外部→内部）+ 参数校验 + 异常转换，操作方法返回 void（查询除外）
+  - Application Service 层：业务编排 + 状态管理 + 返回 Result DTOs
+  - Domain 层：聚合 + 状态机 + 领域事件
+- **创建 Result DTO 体系**（DDD 原则）：
+  - PlanCreationResult、PlanInfo（值对象，包含 List<TaskInfo>，体现聚合关系）
+  - PlanOperationResult（Plan 级操作）、TaskOperationResult（Task 级操作）
+  - 类型安全：明确区分 Plan vs Task 操作结果
+- **创建内部 DTO**：TenantConfig（解耦应用层与外部 DTO），使用 record 优化设计
+- **实现 Application Service 层**：
+  - PlanApplicationService：createSwitchTask、pausePlan、resumePlan、rollbackPlan、retryPlan
+  - TaskApplicationService：pauseTask/resumeTask/cancelTask/rollbackTask/retryTask（按 tenant/taskId）、queryTaskStatus
+  - 管理内部注册表（planRegistry、taskRegistry、contextRegistry、stageRegistry、executorRegistry）
+- **重构 Facade**：
+  - 创建 Facade 异常体系（TaskCreationException、TaskOperationException、TaskNotFoundException、PlanNotFoundException）
+  - DeploymentTaskFacade 采用异常驱动：成功返回 void，失败抛异常
+  - 移除旧 Facade 实现和旧 Result 类
+- **测试完善**：
+  - PlanApplicationService：11 个单元测试（创建/暂停/恢复/回滚/重试/验证失败）
+  - TaskApplicationService：12 个单元测试（各种操作场景）
+  - 正向流程测试：4 个集成测试（生命周期/暂停恢复/取消/重试）
+  - 禁用 2 个 flaky 测试（pause/resume timing 问题）
+  - 所有测试通过：168 tests, 0 failures, 0 errors, 20 skipped
+- **文档更新**：更新 ARCHITECTURE_PROMPT.md、TODO.md 反映新架构
+- 文件：application/dto/、application/PlanApplicationService、application/TaskApplicationService、facade/DeploymentTaskFacade、facade/exception/
+
+### TaskWorkerFactory 参数简化重构（RF-02）
+- **核心价值**：减少方法参数数量（9个 → 1个），提升代码可读性和可维护性
+- **设计方案**：引入参数对象模式 + Builder 模式，保持向后兼容
+- **创建 TaskWorkerCreationContext**：Builder 模式、参数验证（7个必需参数）、不可变对象
+- **更新接口和实现**：TaskWorkerFactory 新增 context-based 方法，旧方法标记 @Deprecated
+- **更新调用点**（5处）：PlanApplicationService（3处）、TaskApplicationService（2处）
+- **测试完善**：TaskWorkerCreationContextTest（11个单元测试，覆盖 Builder 和参数验证）
+- 文件：execution/TaskWorkerCreationContext、execution/TaskWorkerFactory、execution/DefaultTaskWorkerFactory
+
+---

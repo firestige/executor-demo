@@ -33,10 +33,10 @@ public class PlanOrchestrator {
     }
 
     public void submitPlan(PlanAggregate plan, TaskWorkerFactory workerFactory) {
-        int maxConc = plan.getMaxConcurrency() != null ? plan.getMaxConcurrency() : props.getMaxConcurrency();
+        int maxConcurrency = plan.getMaxConcurrency() != null ? plan.getMaxConcurrency() : props.getMaxConcurrency();
         PlanContext ctx = new PlanContext(plan.getPlanId());
         plan.setStatus(PlanStatus.RUNNING);
-        log.info("提交计划: planId={}, maxConcurrency={}", plan.getPlanId(), maxConc);
+        log.info("提交计划: planId={}, maxConcurrency={}", plan.getPlanId(), maxConcurrency);
 
         for (TaskAggregate t : plan.getTasks()) {
             // 冲突检测
@@ -46,8 +46,11 @@ public class PlanOrchestrator {
                 continue;
             }
             // 调度（达到并发阈值则入队）
-            scheduler.schedule(t.getTaskId(), maxConc, workerFactory.create(t));
+            scheduler.schedule(t.getTaskId(), maxConcurrency, workerFactory.create(t));
         }
     }
-}
 
+    public void releaseTenantLock(String tenantId) {
+        if (tenantId != null) conflicts.release(tenantId);
+    }
+}

@@ -5,18 +5,27 @@ import org.slf4j.LoggerFactory;
 import xyz.firestige.executor.checkpoint.CheckpointService;
 import xyz.firestige.executor.domain.stage.TaskStage;
 import xyz.firestige.executor.domain.task.TaskAggregate;
-import xyz.firestige.executor.domain.task.TaskContext;
+import xyz.firestige.executor.domain.task.TaskRuntimeContext;
 import xyz.firestige.executor.event.TaskEventSink;
+import xyz.firestige.executor.metrics.MetricsRegistry;
+import xyz.firestige.executor.metrics.NoopMetricsRegistry;
+import xyz.firestige.executor.state.TaskStateManager;
 import xyz.firestige.executor.state.TaskStatus;
+import xyz.firestige.executor.support.conflict.ConflictRegistry;
 
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
+
+import xyz.firestige.executor.domain.stage.CompositeServiceStage;
+import xyz.firestige.executor.domain.stage.rollback.RollbackStrategy;
+import xyz.firestige.executor.domain.stage.steps.ConfigUpdateStep;
 
 /**
  * 新 TaskExecutor（不接线旧流程）：
- * - 注入 MDC（通过 TaskContext 提供）
+ * - 注入 MDC（通过 TaskRuntimeContext 提供）
  * - 每 10 秒发布 TaskProgressEvent（由上层注入的事件下沉处理）
  * - 在 Stage 边界使用 CheckpointService 保存/恢复检查点
  */
@@ -27,20 +36,50 @@ public class TaskExecutor {
     private final String planId;
     private final TaskAggregate task;
     private final List<TaskStage> stages;
-    private final TaskContext context;
+    private final TaskRuntimeContext context;
     private final CheckpointService checkpointService;
     private final TaskEventSink eventSink;
     private final int progressIntervalSeconds;
     private volatile HeartbeatScheduler heartbeatScheduler; // 允许后置注入
-    private final java.util.concurrent.atomic.AtomicInteger completedCounter = new java.util.concurrent.atomic.AtomicInteger();
+    private final AtomicInteger completedCounter = new AtomicInteger();
+    private final TaskStateManager stateManager; // new
+    private final ConflictRegistry conflicts; // for SC-02 release
+    private final MetricsRegistry metrics;
 
     public TaskExecutor(String planId,
                         TaskAggregate task,
                         List<TaskStage> stages,
-                        TaskContext context,
+                        TaskRuntimeContext context,
                         CheckpointService checkpointService,
                         TaskEventSink eventSink,
-                        int progressIntervalSeconds) {
+                        int progressIntervalSeconds,
+                        TaskStateManager stateManager) {
+        this(planId, task, stages, context, checkpointService, eventSink, progressIntervalSeconds, stateManager, null, new NoopMetricsRegistry());
+    }
+
+    public TaskExecutor(String planId,
+                        TaskAggregate task,
+                        List<TaskStage> stages,
+                        TaskRuntimeContext context,
+                        CheckpointService checkpointService,
+                        TaskEventSink eventSink,
+                        int progressIntervalSeconds,
+                        TaskStateManager stateManager,
+                        ConflictRegistry conflicts) {
+        this(planId, task, stages, context, checkpointService, eventSink, progressIntervalSeconds, stateManager, conflicts, new NoopMetricsRegistry());
+    }
+
+    public TaskExecutor(String planId,
+                        TaskAggregate task,
+                        List<TaskStage> stages,
+                        TaskRuntimeContext context,
+                        CheckpointService checkpointService,
+                        TaskEventSink eventSink,
+                        int progressIntervalSeconds,
+                        TaskStateManager stateManager,
+                        ConflictRegistry conflicts,
+                        MetricsRegistry metrics) {
+        // ...existing assigns...
         this.planId = planId;
         this.task = task;
         this.stages = stages != null ? stages : new ArrayList<>();
@@ -48,18 +87,9 @@ public class TaskExecutor {
         this.checkpointService = checkpointService;
         this.eventSink = eventSink;
         this.progressIntervalSeconds = progressIntervalSeconds <= 0 ? 10 : progressIntervalSeconds;
-    }
-
-    public TaskExecutor(String planId,
-                        TaskAggregate task,
-                        List<TaskStage> stages,
-                        TaskContext context,
-                        CheckpointService checkpointService,
-                        TaskEventSink eventSink,
-                        int progressIntervalSeconds,
-                        HeartbeatScheduler heartbeatScheduler) {
-        this(planId, task, stages, context, checkpointService, eventSink, progressIntervalSeconds);
-        this.heartbeatScheduler = heartbeatScheduler;
+        this.stateManager = stateManager;
+        this.conflicts = conflicts;
+        this.metrics = metrics != null ? metrics : new NoopMetricsRegistry();
     }
 
     public void setHeartbeatScheduler(HeartbeatScheduler heartbeatScheduler) {
@@ -75,9 +105,18 @@ public class TaskExecutor {
     public TaskExecutionResult execute() {
         String taskId = task.getTaskId();
         context.injectMdc(null);
+        metrics.incrementCounter("task_active");
         LocalDateTime start = LocalDateTime.now();
         eventSink.publishTaskStarted(planId, taskId, stages.size(), 0);
-        task.setStatus(TaskStatus.RUNNING);
+        if (stateManager != null) {
+            TaskStatus cur = stateManager.getState(taskId);
+            if (cur == TaskStatus.PAUSED) {
+                stateManager.updateState(taskId, TaskStatus.RESUMING);
+            }
+            stateManager.updateState(taskId, TaskStatus.RUNNING);
+        } else {
+            task.setStatus(TaskStatus.RUNNING);
+        }
 
         List<StageResult> completed = new ArrayList<>();
 
@@ -86,7 +125,7 @@ public class TaskExecutor {
         int startIndex = (cp != null) ? cp.getLastCompletedStageIndex() + 1 : 0;
         completedCounter.set(startIndex); // 已完成数量初始化
 
-        if (heartbeatScheduler != null) {
+        if (heartbeatScheduler != null && !heartbeatScheduler.isRunning()) {
             heartbeatScheduler.start();
         }
 
@@ -122,6 +161,17 @@ public class TaskExecutor {
                     eventSink.publishTaskStageSucceeded(planId, taskId, stageName, Duration.ofMillis(stageRes.getDurationMillis()), 0);
                     completedCounter.incrementAndGet();
                     task.setCurrentStageIndex(i + 1); // 更新完成 stage 索引
+
+                    // If stage contains ConfigUpdateStep, update version on aggregate
+                    s.getSteps().forEach(step -> {
+                        if (step instanceof ConfigUpdateStep) {
+                            Long v = ((ConfigUpdateStep) step).getTargetVersion();
+                            if (v != null) {
+                                task.setDeployUnitVersion(v);
+                                task.setLastKnownGoodVersion(v); // mark as good after health check succeeds in this stage
+                            }
+                        }
+                    });
                 } else {
                     StageResult old = new StageResult();
                     old.setStageName(stageName);
@@ -129,30 +179,39 @@ public class TaskExecutor {
                     completed.add(old);
                     eventSink.publishTaskStageFailed(planId, taskId, stageName, stageRes.getMessage(), 0);
                     eventSink.publishTaskFailed(planId, taskId, stageRes.getMessage(), 0);
+                    if (stateManager != null) stateManager.updateState(taskId, TaskStatus.FAILED); else task.setStatus(TaskStatus.FAILED);
                     stopHeartbeat();
+                    metrics.incrementCounter("task_failed");
+                    // SC-02: release on terminal
+                    if (conflicts != null) conflicts.release(task.getTenantId());
                     return TaskExecutionResult.fail(planId, taskId, task.getStatus(), stageRes.getMessage(), Duration.between(start, LocalDateTime.now()), completed);
                 }
 
                 // 暂停检查：仅在 Stage 边界
                 if (context.isPauseRequested()) {
-                    task.setStatus(TaskStatus.PAUSED);
+                    if (stateManager != null) stateManager.updateState(taskId, TaskStatus.PAUSED); else task.setStatus(TaskStatus.PAUSED);
                     eventSink.publishTaskPaused(planId, taskId, 0);
                     stopHeartbeat();
+                    metrics.incrementCounter("task_paused");
                     return TaskExecutionResult.ok(planId, taskId, task.getStatus(), Duration.between(start, LocalDateTime.now()), completed);
                 }
                 if (context.isCancelRequested()) {
-                    task.setStatus(TaskStatus.CANCELLED);
+                    if (stateManager != null) stateManager.updateState(taskId, TaskStatus.CANCELLED); else task.setStatus(TaskStatus.CANCELLED);
                     eventSink.publishTaskCancelled(planId, taskId, 0);
                     stopHeartbeat();
+                    metrics.incrementCounter("task_cancelled");
                     return TaskExecutionResult.ok(planId, taskId, task.getStatus(), Duration.between(start, LocalDateTime.now()), completed);
                 }
             }
 
-            task.setStatus(TaskStatus.COMPLETED);
+            if (stateManager != null) stateManager.updateState(taskId, TaskStatus.COMPLETED); else task.setStatus(TaskStatus.COMPLETED);
             Duration d = Duration.between(start, LocalDateTime.now());
             eventSink.publishTaskCompleted(planId, taskId, d, names(completed), 0);
             checkpointService.clearCheckpoint(task);
             stopHeartbeat();
+            metrics.incrementCounter("task_completed");
+            // SC-02: release on terminal
+            if (conflicts != null) conflicts.release(task.getTenantId());
             return TaskExecutionResult.ok(planId, taskId, task.getStatus(), d, completed);
         } finally {
             context.clearMdc();
@@ -171,46 +230,71 @@ public class TaskExecutor {
     public TaskExecutionResult rollback() {
         String taskId = task.getTaskId();
         eventSink.publishTaskRollingBack(planId, taskId, 0);
-        task.setStatus(TaskStatus.ROLLING_BACK);
+        if (stateManager != null) stateManager.updateState(taskId, TaskStatus.ROLLING_BACK); else task.setStatus(TaskStatus.ROLLING_BACK);
         List<StageResult> rollbackStages = new ArrayList<>();
         List<TaskStage> copy = new ArrayList<>(stages);
-        Duration start = Duration.ofMillis(System.currentTimeMillis());
         for (int i = copy.size() - 1; i >= 0; i--) {
             TaskStage s = copy.get(i);
             String name = s.getName();
             eventSink.publishTaskStageRollingBack(planId, taskId, name, 0);
+            boolean success = true;
             try {
-                s.rollback(context);
-                StageResult sr = new StageResult();
-                sr.setStageName(name);
-                sr.setSuccess(true);
-                rollbackStages.add(sr);
+                boolean invoked = false;
+                if (s instanceof CompositeServiceStage) {
+                    RollbackStrategy rs = ((CompositeServiceStage) s).getRollbackStrategy();
+                    if (rs != null) {
+                        rs.rollback(task, context);
+                        invoked = true;
+                    }
+                }
+                if (!invoked) {
+                    // 调用通用 Stage 回滚
+                    s.rollback(context);
+                }
             } catch (Exception ex) {
-                StageResult sr = new StageResult();
-                sr.setStageName(name);
-                sr.setSuccess(false);
-                rollbackStages.add(sr);
+                success = false;
                 eventSink.publishTaskStageRollbackFailed(planId, taskId, name, ex.getMessage(), 0);
             }
+            StageResult sr = new StageResult();
+            sr.setStageName(name);
+            sr.setSuccess(success);
+            rollbackStages.add(sr);
+            if (success) {
+                eventSink.publishTaskStageRolledBack(planId, taskId, name, 0);
+            }
         }
-        // 统计失败
         boolean anyFailed = rollbackStages.stream().anyMatch(r -> !r.isSuccess());
-        task.setStatus(anyFailed ? TaskStatus.ROLLBACK_FAILED : TaskStatus.ROLLED_BACK);
-        eventSink.publishTaskRolledBack(planId, taskId, 0);
+        if (stateManager != null) stateManager.updateState(taskId, anyFailed ? TaskStatus.ROLLBACK_FAILED : TaskStatus.ROLLED_BACK);
+        else task.setStatus(anyFailed ? TaskStatus.ROLLBACK_FAILED : TaskStatus.ROLLED_BACK);
+        if (anyFailed) {
+            List<String> partial = new ArrayList<>();
+            for (StageResult r : rollbackStages) if (r.isSuccess()) partial.add(r.getStageName());
+            eventSink.publishTaskRollbackFailed(planId, taskId, partial, "one or more stages failed to rollback", 0);
+        } else {
+            eventSink.publishTaskRolledBack(planId, taskId, 0);
+        }
+        // SC-02: release on terminal
+        if (conflicts != null) conflicts.release(task.getTenantId());
+        metrics.incrementCounter("rollback_count");
         return TaskExecutionResult.ok(planId, taskId, task.getStatus(), Duration.ZERO, rollbackStages);
     }
 
     public TaskExecutionResult retry(boolean fromCheckpoint) {
+        String taskId = task.getTaskId();
+        eventSink.publishTaskRetryStarted(planId, taskId, fromCheckpoint);
+        TaskExecutionResult result;
         if (fromCheckpoint) {
-            // keep checkpoint; currentStageIndex already set by previous run
-            return execute();
+            result = execute();
         } else {
-            // reset state fully
             task.setCurrentStageIndex(0);
-            task.setStatus(TaskStatus.PENDING);
+            if (stateManager != null) stateManager.updateState(taskId, TaskStatus.PENDING); else task.setStatus(TaskStatus.PENDING);
             checkpointService.clearCheckpoint(task);
-            return execute();
+            // 重试前确保心跳可重新启动
+            if (heartbeatScheduler != null) heartbeatScheduler.stop();
+            result = execute();
         }
+        eventSink.publishTaskRetryCompleted(planId, taskId, fromCheckpoint);
+        return result;
     }
 
     public TaskExecutionResult invokeRollback() {

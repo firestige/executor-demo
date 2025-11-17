@@ -7,7 +7,11 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import xyz.firestige.executor.orchestration.ExecutionMode;
 import xyz.firestige.executor.util.TimingExtension;
 
-import static org.junit.jupiter.api.Assertions.*;
+import java.util.Arrays;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * ExecutionMode 枚举测试
@@ -49,8 +53,8 @@ class ExecutionModeTest {
 
         // Then: 应该有2个模式
         assertEquals(2, modes.length);
-        assertTrue(java.util.Arrays.asList(modes).contains(ExecutionMode.CONCURRENT));
-        assertTrue(java.util.Arrays.asList(modes).contains(ExecutionMode.FIFO));
+        assertTrue(Arrays.asList(modes).contains(ExecutionMode.CONCURRENT));
+        assertTrue(Arrays.asList(modes).contains(ExecutionMode.FIFO));
     }
 }
 

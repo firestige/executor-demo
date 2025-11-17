@@ -1,0 +1,108 @@
+@startuml Plan状态机
+!theme plain
+hide empty description
+
+[*] --> CREATED : 创建计划
+
+CREATED --> VALIDATING : 开始验证
+
+VALIDATING --> FAILED : 验证失败
+VALIDATING --> READY : 验证通过
+
+READY --> RUNNING : 提交执行
+READY --> CANCELLED : 取消
+
+RUNNING --> PAUSED : 暂停\n[plan级暂停]
+RUNNING --> PARTIAL_FAILED : 部分任务失败
+RUNNING --> COMPLETED : 所有任务完成
+RUNNING --> ROLLING_BACK : 回滚请求
+
+PAUSED --> RUNNING : 恢复
+PAUSED --> CANCELLED : 取消
+
+PARTIAL_FAILED --> RUNNING : 重试失败任务
+PARTIAL_FAILED --> ROLLING_BACK : 回滚所有任务
+PARTIAL_FAILED --> FAILED : 放弃
+
+COMPLETED --> ROLLING_BACK : 回滚请求
+
+ROLLING_BACK --> ROLLED_BACK : 回滚成功
+ROLLING_BACK --> FAILED : 回滚失败
+
+ROLLED_BACK --> [*]
+FAILED --> [*]
+CANCELLED --> [*]
+
+note right of CREATED
+  **初始状态**
+  - Plan 创建时的状态
+  - 包含多个 Task
+  - 配置 maxConcurrency
+end note
+
+note right of READY
+  **就绪状态**
+  - 验证通过，等待提交
+  - 所有 Task 已初始化
+end note
+
+note right of RUNNING
+  **执行状态**
+  - 任务调度中
+  - 遵循 maxConcurrency 限制
+  - 监控任务执行状态
+  - 记录 startedAt
+end note
+
+note right of PAUSED
+  **暂停状态**
+  - Plan 级暂停
+  - 所有运行中任务暂停
+  - 可恢复或取消
+end note
+
+note right of PARTIAL_FAILED
+  **部分失败**
+  - 部分任务失败
+  - 部分任务成功/运行中
+  - 可重试失败任务
+  - 可回滚所有任务
+end note
+
+note right of COMPLETED
+  **完成状态**
+  - 所有任务成功
+  - 记录 endedAt
+  - 计算总进度
+  - 可回滚（业务需要）
+end note
+
+note left of ROLLING_BACK
+  **回滚中**
+  - 回滚所有已执行任务
+  - 按 Task 并行/串行回滚
+end note
+
+note left of ROLLED_BACK
+  **回滚完成**
+  - 所有任务已回滚
+  - 记录 endedAt
+  - 终态
+end note
+
+note left of FAILED
+  **失败**
+  - 验证失败
+  - 回滚失败
+  - 部分失败放弃
+  - 终态
+end note
+
+note left of CANCELLED
+  **已取消**
+  - 用户取消
+  - 终态
+end note
+
+@enduml
+

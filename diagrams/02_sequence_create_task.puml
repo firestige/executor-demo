@@ -1,0 +1,163 @@
+@startuml 创建切换任务时序图
+!theme plain
+autonumber
+
+actor "运维人员" as Operator
+participant "DeploymentTaskFacade" as Facade
+note right of Facade
+  **RF-01**
+  - 参数校验
+  - DTO 转换
+  - 异常转换
+end note
+
+participant "PlanApplicationService" as AppService
+note right of AppService
+  **RF-01**
+  - 业务编排
+  - 状态管理
+  - 返回 Result DTO
+end note
+
+participant "PlanFactory" as Factory
+participant "ValidationChain" as Validator
+participant "PlanOrchestrator" as Orchestrator
+participant "TaskScheduler" as Scheduler
+participant "ConflictRegistry" as Conflict
+participant "TaskWorkerFactory" as WorkerFactory
+note right of WorkerFactory
+  **RF-02**
+  - 使用 Context
+  - Builder 模式
+end note
+participant "TaskExecutor" as Executor
+participant "TaskStateManager" as StateManager
+participant "CheckpointService" as Checkpoint
+participant "TaskEventSink" as EventSink
+
+Operator -> Facade: createSwitchTask(configs)
+activate Facade
+
+Facade -> Facade: 参数校验 (null/empty)
+alt 参数无效
+    Facade --> Operator: throw IllegalArgumentException
+end
+
+Facade -> AppService: createSwitchTask(configs)
+activate AppService
+
+AppService -> Factory: createPlan(configs)
+activate Factory
+Factory -> Factory: 深拷贝 DTO 为聚合
+Factory -> Factory: 创建 PlanAggregate
+Factory -> Factory: 为每个租户创建 TaskAggregate
+Factory --> AppService: PlanAggregate
+deactivate Factory
+
+AppService -> Validator: validate(plan)
+activate Validator
+Validator -> Validator: 校验租户配置
+Validator -> Validator: 校验部署单元
+alt 校验失败
+    Validator --> AppService: ValidationSummary (with errors)
+    AppService --> Facade: PlanCreationResult.validationFailure()
+    Facade --> Operator: throw IllegalArgumentException(details)
+end
+Validator --> AppService: validation passed
+deactivate Validator
+
+AppService -> StateManager: initializeTask(taskId, CREATED)
+activate StateManager
+StateManager -> StateManager: 创建 TaskStateMachine
+StateManager --> AppService: initialized
+deactivate StateManager
+
+AppService -> Orchestrator: submitPlan(plan, workerFactory)
+activate Orchestrator
+
+loop 每个 Task
+    Orchestrator -> Conflict: register(tenantId, taskId)
+    activate Conflict
+
+    alt 租户已有运行任务
+        Conflict --> Orchestrator: false (conflict)
+        Orchestrator -> Orchestrator: 记录警告，跳过
+    else 注册成功
+        Conflict --> Orchestrator: true
+        deactivate Conflict
+
+        Orchestrator -> Scheduler: schedule(taskId, maxConcurrency, worker)
+        activate Scheduler
+
+        alt 当前运行数 < maxConcurrency
+            Scheduler -> Scheduler: 标记为运行中
+            Scheduler -> Executor: execute()
+            activate Executor
+
+            Executor -> StateManager: updateState(taskId, RUNNING)
+            activate StateManager
+            StateManager -> StateManager: 状态转换 PENDING -> RUNNING
+            StateManager -> EventSink: publishTaskStarted
+            activate EventSink
+            EventSink -> EventSink: 发布 TaskStartedEvent
+            EventSink --> StateManager: published
+            deactivate EventSink
+            StateManager --> Executor: state updated
+            deactivate StateManager
+
+            loop 每个 Stage
+                Executor -> Executor: execute(stage)
+                Executor -> EventSink: publishStageStarted
+                Executor -> Executor: 执行 Steps
+
+                alt Stage 成功
+                    Executor -> Checkpoint: saveCheckpoint(task, stageIndex)
+                    activate Checkpoint
+                    Checkpoint --> Executor: saved
+                    deactivate Checkpoint
+                    Executor -> EventSink: publishStageCompleted
+                else Stage 失败
+                    Executor -> EventSink: publishStageFailed
+                    Executor -> StateManager: updateState(taskId, FAILED)
+                    Executor -> Conflict: release(tenantId)
+                    Executor --> Scheduler: TaskExecutionResult(failed)
+                end
+            end
+
+            Executor -> StateManager: updateState(taskId, COMPLETED)
+            Executor -> Checkpoint: clearCheckpoint(taskId)
+            Executor -> Conflict: release(tenantId)
+            Executor --> Scheduler: TaskExecutionResult(success)
+            deactivate Executor
+
+        else 并发已满
+            Scheduler -> Scheduler: 加入等待队列
+            Scheduler --> Orchestrator: queued
+        end
+        deactivate Scheduler
+    end
+end
+
+Orchestrator --> AppService: submitted
+deactivate Orchestrator
+
+AppService --> Facade: PlanCreationResult.success(planInfo)
+deactivate AppService
+
+Facade -> Facade: 处理结果
+alt 成功
+    Facade --> Operator: void (success)
+else 失败
+    Facade --> Operator: throw TaskCreationException
+end
+deactivate Facade
+
+note right of Facade
+  **RF-01 设计**
+  - 操作方法返回 void
+  - 失败时抛出异常
+  - Application Service 返回 Result DTO
+end note
+
+@enduml
+

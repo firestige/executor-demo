@@ -1,6 +1,6 @@
 package xyz.firestige.executor.domain.stage;
 
-import xyz.firestige.executor.domain.task.TaskContext;
+import xyz.firestige.executor.domain.task.TaskRuntimeContext;
 
 import java.util.List;
 
@@ -9,9 +9,8 @@ import java.util.List;
  */
 public interface TaskStage {
     String getName();
-    boolean canSkip(TaskContext ctx);
-    StageExecutionResult execute(TaskContext ctx);
-    void rollback(TaskContext ctx);
+    boolean canSkip(TaskRuntimeContext ctx);
+    StageExecutionResult execute(TaskRuntimeContext ctx);
+    void rollback(TaskRuntimeContext ctx);
     List<StageStep> getSteps();
 }
-

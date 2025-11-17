@@ -1,9 +1,16 @@
 package xyz.firestige.executor.domain.state;
 
-import xyz.firestige.executor.domain.task.TaskContext;
+import xyz.firestige.executor.domain.state.ctx.TaskTransitionContext;
 import xyz.firestige.executor.state.TaskStatus;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.EnumMap;
+import java.util.EnumSet;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 /**
  * 新 Task 状态机（不使用 V2 命名），带 Guard/Action 扩展。
@@ -14,8 +21,8 @@ public class TaskStateMachine {
     private TaskStatus current;
 
     private final Map<TaskStatus, Set<TaskStatus>> rules = new EnumMap<>(TaskStatus.class);
-    private final Map<String, List<TransitionGuard<TaskContext>>> guards = new HashMap<>();
-    private final Map<String, List<TransitionAction<TaskContext>>> actions = new HashMap<>();
+    private final Map<String, List<TransitionGuard<TaskTransitionContext>>> guards = new HashMap<>();
+    private final Map<String, List<TransitionAction<TaskTransitionContext>>> actions = new HashMap<>();
 
     public TaskStateMachine(TaskStatus initial) {
         this.current = initial;
@@ -40,35 +47,33 @@ public class TaskStateMachine {
 
     private String key(TaskStatus from, TaskStatus to) { return from.name()+"->"+to.name(); }
 
-    public void registerGuard(TaskStatus from, TaskStatus to, TransitionGuard<TaskContext> guard) {
+    public void registerGuard(TaskStatus from, TaskStatus to, TransitionGuard<TaskTransitionContext> guard) {
         guards.computeIfAbsent(key(from,to), k-> new ArrayList<>()).add(guard);
     }
 
-    public void registerAction(TaskStatus from, TaskStatus to, TransitionAction<TaskContext> action) {
+    public void registerAction(TaskStatus from, TaskStatus to, TransitionAction<TaskTransitionContext> action) {
         actions.computeIfAbsent(key(from,to), k-> new ArrayList<>()).add(action);
     }
 
-    public synchronized boolean canTransition(TaskStatus to, TaskContext ctx) {
+    public synchronized boolean canTransition(TaskStatus to, TaskTransitionContext ctx) {
         Set<TaskStatus> allowed = rules.getOrDefault(current, Collections.emptySet());
         if (!allowed.contains(to)) return false;
-        List<TransitionGuard<TaskContext>> gs = guards.get(key(current,to));
+        List<TransitionGuard<TaskTransitionContext>> gs = guards.get(key(current,to));
         if (gs != null) {
-            for (TransitionGuard<TaskContext> g : gs) {
+            for (TransitionGuard<TaskTransitionContext> g : gs) {
                 if (!g.canTransition(ctx)) return false;
             }
         }
         return true;
     }
 
-    public synchronized TaskStatus transitionTo(TaskStatus to, TaskContext ctx) {
-        if (!canTransition(to, ctx)) {
-            return current; // 拒绝非法或不满足 Guard 的迁移
-        }
+    public synchronized TaskStatus transitionTo(TaskStatus to, TaskTransitionContext ctx) {
+        if (!canTransition(to, ctx)) return current;
         TaskStatus old = current;
         current = to;
-        List<TransitionAction<TaskContext>> as = actions.get(key(old,to));
+        List<TransitionAction<TaskTransitionContext>> as = actions.get(key(old,to));
         if (as != null) {
-            for (TransitionAction<TaskContext> a : as) a.onTransition(ctx);
+            for (TransitionAction<TaskTransitionContext> a : as) a.onTransition(ctx);
         }
         return current;
     }

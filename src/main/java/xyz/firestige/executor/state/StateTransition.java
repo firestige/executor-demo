@@ -1,5 +1,7 @@
 package xyz.firestige.executor.state;
 
+import xyz.firestige.executor.exception.FailureInfo;
+
 import java.time.LocalDateTime;
 
 /**
@@ -31,7 +33,7 @@ public class StateTransition {
     /**
      * 失败信息（如果相关）
      */
-    private xyz.firestige.executor.exception.FailureInfo failureInfo;
+    private FailureInfo failureInfo;
 
     public StateTransition() {
         this.timestamp = LocalDateTime.now();
@@ -84,11 +86,11 @@ public class StateTransition {
         this.reason = reason;
     }
 
-    public xyz.firestige.executor.exception.FailureInfo getFailureInfo() {
+    public FailureInfo getFailureInfo() {
         return failureInfo;
     }
 
-    public void setFailureInfo(xyz.firestige.executor.exception.FailureInfo failureInfo) {
+    public void setFailureInfo(FailureInfo failureInfo) {
         this.failureInfo = failureInfo;
     }
 

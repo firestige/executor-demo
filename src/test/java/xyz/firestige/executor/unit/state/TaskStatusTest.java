@@ -7,7 +7,11 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import xyz.firestige.executor.state.TaskStatus;
 import xyz.firestige.executor.util.TimingExtension;
 
-import static org.junit.jupiter.api.Assertions.*;
+import java.util.Arrays;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * TaskStatus 枚举测试
@@ -27,11 +31,11 @@ class TaskStatusTest {
 
         // Then: 包含核心状态
         assertTrue(statuses.length >= 6, "至少应该有6个状态");
-        assertTrue(java.util.Arrays.asList(statuses).contains(TaskStatus.CREATED));
-        assertTrue(java.util.Arrays.asList(statuses).contains(TaskStatus.RUNNING));
-        assertTrue(java.util.Arrays.asList(statuses).contains(TaskStatus.PAUSED));
-        assertTrue(java.util.Arrays.asList(statuses).contains(TaskStatus.COMPLETED));
-        assertTrue(java.util.Arrays.asList(statuses).contains(TaskStatus.FAILED));
+        assertTrue(Arrays.asList(statuses).contains(TaskStatus.CREATED));
+        assertTrue(Arrays.asList(statuses).contains(TaskStatus.RUNNING));
+        assertTrue(Arrays.asList(statuses).contains(TaskStatus.PAUSED));
+        assertTrue(Arrays.asList(statuses).contains(TaskStatus.COMPLETED));
+        assertTrue(Arrays.asList(statuses).contains(TaskStatus.FAILED));
     }
 
     @Test

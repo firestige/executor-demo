@@ -1,184 +1,241 @@
-# Executor Demo – Architecture Prompt (Quick Context Recovery)
+# Executor Demo – Architecture Prompt (English Clean Version)
 
-Updated: 2025-11-15
+Updated: 2025-11-17
 
-Use this prompt at the start of any new session to restore working knowledge of this repository. It summarizes the domain, main modules, contracts, and how to work effectively with the codebase.
+## Purpose
+Multi-tenant blue/green (or weighted) configuration switch executor. A Plan groups tenant-specific Tasks; each Task runs a sequential list of Stages (each composed of ordered Steps) to push new config, broadcast change events, and verify health. Supports max concurrency, FIFO ordering when needed, pause/resume, manual rollback, manual retry, and heartbeat progress events.
 
-Role and focus
-- You are an expert Java/Spring engineer working in this repo.
-- Prioritize correctness, small diff edits, strong tests, and tangible outcomes.
-- Prefer concrete code changes over generic advice; run tests after non-trivial edits.
+## Current Architecture Snapshot
+- **Layered Architecture (RF-01 Complete)**:
+  - **Facade Layer**: DeploymentTaskFacade - DTO conversion (external→internal), parameter validation, exception translation
+  - **Application Service Layer**: PlanApplicationService, TaskApplicationService - business orchestration, state management, returns Result DTOs
+  - **Domain Layer**: Aggregates (PlanAggregate, TaskAggregate), State Machines, Domain Events
+  - **Infrastructure Layer**: Repositories, External Services
+- Legacy removed: ExecutionUnit, TaskOrchestrator, TenantTaskExecutor, ServiceNotificationStage, old Facade implementation.
+- Core components: PlanAggregate, TaskAggregate, CompositeServiceStage, StageStep, ConfigUpdateStep, BroadcastStep, HealthCheckStep, TaskExecutor, TaskStateMachine, TaskStateManager, PlanStateMachine, PlanOrchestrator, TaskScheduler, CheckpointService (InMemory), PreviousConfigRollbackStrategy (placeholder logic).
+- **Result DTOs (DDD-compliant)**: PlanCreationResult, PlanInfo, TaskInfo, PlanOperationResult, TaskOperationResult - clear aggregate boundaries, type safety
+- **Internal DTO**: TenantConfig - decouples application layer from external DTO changes
 
-Project purpose (what this system does)
-- A multi-tenant blue/green deployment switch executor.
-- Orchestrates tenant-level service configuration rollout via a pipeline of service notifications.
-- Goals: async execution, tenant isolation (FIFO per tenant), cross-tenant concurrency, checkpoint-based pause/resume, strict state machine, event-driven observability.
+## Domain Model
+- Plan: Aggregates N tenant Tasks; enforces maxConcurrency and tenant conflict (no concurrent Task for same tenant); supports PAUSED state for plan-level pause/resume.
+- Task: Tenant-level switch job; only responds to pause/cancel at Stage boundaries (cooperative). Rollback & retry are manually triggered via Facade.
+- Stage: Sequential execution of Steps; failure short-circuits Task progress. Rollback re-sends previous known good configuration via a RollbackStrategy.
+- Step types (current): ConfigUpdateStep (apply new config version), BroadcastStep (emit change notification), HealthCheckStep (poll health endpoints until success or timeout).
 
-Key packages and responsibilities
-- facade
-  - DeploymentTaskFacade, DeploymentTaskFacadeImpl: external API layer to create/operate tasks (create/pause/resume/rollback/retry, query status). Aggregates ValidationChain + TaskOrchestrator + TaskStateManager.
-- orchestration
-  - TaskOrchestrator: manages ExecutionUnit lifecycle, routing, tenant/plan mappings, conflict detection (via ConflictValidator), pause/resume/rollback.
-  - ExecutionUnit: a batch of tenant configs executed in CONCURRENT or FIFO mode.
-  - ExecutionUnitScheduler: thread-pool based scheduler creating Pipelines via PipelineFactory; executes tenant tasks concurrently or FIFO.
-  - ExecutionMode, ExecutionUnitStatus/Result: execution-mode and status modeling.
-- execution (+ execution.pipeline)
-  - TenantTaskExecutor: executes one tenant task; publishes start/complete/fail events; moves TaskState via TaskStateManager.
-  - Pipeline: ordered execution of PipelineStage with canSkip, pause/cancel checks, checkpointing via CheckpointManager (InMemoryCheckpointManager impl).
-  - StageResult, StageStatus, PipelineResult: result modeling.
-- service
-  - strategy: ServiceNotificationStrategy interface with DirectRpcNotificationStrategy, RedisRpcNotificationStrategy; supports validateConfig, notify, rollback.
-  - stage: ServiceNotificationStage adapts a ServiceNotificationStrategy into a PipelineStage.
-  - adapter: ServiceNotificationAdapter composes multiple strategies, supports forward execute and reverse rollback.
-  - registry: ServiceRegistry collects and exposes strategies used to construct the Pipeline.
-- state
-  - TaskStatus, TaskStateMachine: explicit transition map; illegal transitions blocked.
-  - TaskStateManager: owns TaskStateMachines per task; publishes Spring events (state.event.*) after successful transitions.
-  - state.event.*: rich lifecycle events (Created/Validated/Started/Progress/StageCompleted/StageFailed/Completed/Failed/Paused/Resumed/RollingBack/RolledBack/RollbackFailed/ValidationFailed).
-- validation
-  - ValidationChain: ordered ConfigValidators with optional fail-fast.
-  - validators: TenantIdValidator, NetworkEndpointValidator, BusinessRuleValidator, ConflictValidator (also tracks running tenants for conflict prevention).
-  - ValidationResult/ValidationSummary/ValidationError/ValidationWarning.
-- config
-  - ExecutorConfiguration: Spring wiring for CheckpointManager, TaskStateManager, ServiceRegistry (registers sample strategies), and PipelineFactory that builds a Pipeline from the registry’s strategies.
+## Context Separation
+- TaskRuntimeContext (current TaskContext): Runtime execution data (MDC, pause/cancel flags, transient map).
+- TaskTransitionContext: Built per state transition; contains TaskAggregate reference + runtime context + totalStages; used by Guards and Actions in the state machine; not used for business step logic.
 
-Important classes/files to skim first
-- executor/config/ExecutorConfiguration.java
-- executor/facade/DeploymentTaskFacade.java, DeploymentTaskFacadeImpl.java
-- executor/orchestration/TaskOrchestrator.java, ExecutionUnitScheduler.java, ExecutionUnit.java
-- executor/execution/TenantTaskExecutor.java
-- executor/execution/pipeline/Pipeline.java, PipelineContext.java, CheckpointManager.java, InMemoryCheckpointManager.java, PipelineStage.java
-- executor/service/stage/ServiceNotificationStage.java
-- executor/service/strategy/*.java, executor/service/adapter/ServiceNotificationAdapter.java, executor/service/registry/ServiceRegistry.java
-- executor/state/* (TaskStateMachine, TaskStateManager, TaskStatus, state.events)
-- executor/validation/* (ValidationChain, validators, results)
-- dto/TenantDeployConfig.java
+## State & Events
+- TaskStateMachine: Explicit transition rules; supports registering Guards and Actions (e.g., FAILED→RUNNING retry limit, RUNNING→PAUSED pause flag, RUNNING→COMPLETED all stages finished).
+- TaskStateManager: Owns per-task TaskStateMachine, builds TaskTransitionContext, executes transitions, publishes Spring events with monotonically increasing sequenceId (for idempotency). Cancellation event carries cancelledBy and lastStage (lastStage resolved from registered stage names).
+- PlanStateMachine: READY→RUNNING→PAUSED/RUNNING minimal wiring; future guards/actions can be added.
+- Event categories:
+  - Lifecycle: Created, Validated, Started, Completed, Failed, Paused, Resumed, Cancelled (cancelledBy, lastStage)
+  - Progress: Progress, Heartbeat (same structure, heartbeat every 10s)
+  - Stage: StageStarted, StageSucceeded, StageFailed
+  - Rollback: RollingBack, RolledBack (includes prev snapshot fields), RollbackFailed
+  - Validation: ValidationFailed
 
-End-to-end flow (happy path)
-1) Facade receives configs: DeploymentTaskFacadeImpl.createSwitchTask(List<TenantDeployConfig>)
-   - Initializes TaskStateMachine: CREATED → VALIDATING
-   - ValidationChain.validateAll → if errors: publish validation-failed event, set VALIDATION_FAILED, return
-   - On success: publish validated event, set PENDING
-2) Orchestrator builds ExecutionUnits and submits to scheduler
-   - Checks tenant conflicts via ConflictValidator; registers running tenants
-   - Maps tenantId→executionUnitId and planId→executionUnitIds
-3) Scheduler executes each ExecutionUnit using a Pipeline from PipelineFactory
-   - For each tenant: TenantTaskExecutor.execute()
-   - Publish TaskStartedEvent, set RUNNING
-   - Pipeline executes ordered ServiceNotificationStage instances
-   - On success: publish TaskCompletedEvent, set COMPLETED; on error: publish TaskFailedEvent, set FAILED
+## Rollback Strategy
+- PreviousConfigRollbackStrategy: Re-send previous configuration snapshot. On ROLLED_BACK transition, snapshot fields are restored into the aggregate; lastKnownGoodVersion is updated via a pluggable RollbackHealthVerifier (default AlwaysTrue, future: real health reconfirmation).
 
-Core invariants and rules
-- Task state transitions are constrained by TaskStateMachine (illegal transitions must not occur).
-- Only one running task per tenant (ConflictValidator guards concurrent runs).
-- Pipeline stages execute in order; canSkip allows conditional skipping.
-- Pause/Cancel are checked before each stage; on pause, save checkpoint and return early.
-- Events are published after successful state transitions by TaskStateManager.
-- ExecutionUnitScheduler controls threading; CONCURRENT vs FIFO modes are respected.
+## Checkpoint
+- CheckpointService (InMemory): Save after each successful Stage; clear on terminal states or after rollback. Future SPI: Redis / DB implementations.
+- Batch recovery (CP-03): `CheckpointService.loadMultiple(List<String>)` to fetch multiple checkpoints at once without mutating aggregates.
+- RedisCheckpointStore (CP-04): Implemented behind a RedisClient abstraction and Spring Data Redis-based client; namespace + TTL supported; enabled via auto-configuration (property `executor.checkpoint.store-type=redis`).
 
-Glossary and DTOs
-- TenantDeployConfig: core input DTO (tenantId, planId/version, endpoints, etc.).
-- ExecutionUnit: a grouped batch of tenant configs for one scheduling unit.
+## Concurrency & Scheduling
+- TaskScheduler: Enforces maxConcurrency; maxConcurrency=1 => strict FIFO; >1 => parallel submission. Uses ConflictRegistry to prevent same-tenant overlap.
+- PlanOrchestrator: Submits Plan Tasks to scheduler; plan-level pause/resume/rollback routed via Facade.
 
-README vs code naming differences (avoid confusion)
-- README mentions BlueGreenExecutorFacade, ExecutionOrder, ServiceConfig, ConfigProcessor; these are not present in the current codebase.
-- Actual external API here is DeploymentTaskFacade/DeploymentTaskFacadeImpl with TenantDeployConfig as input.
-- Threading is managed by ExecutionUnitScheduler’s internal ThreadPoolExecutor, not Spring’s ThreadPoolTaskExecutor from README snippets.
+## Health Check
+- Fixed polling interval: 3 seconds.
+- Max attempts: 10.
+- Success criteria: ALL endpoints report expected version.
+- Tests use stub client with reduced interval/attempts (non-intrusive to production code).
 
-Extensibility checklist
-- Add a validator: implement ConfigValidator and register in ValidationChain.
-- Add a service notification: implement ServiceNotificationStrategy; register via ServiceRegistry; it automatically becomes a PipelineStage.
-- Add a custom Pipeline stage: implement PipelineStage and include it in PipelineFactory.
-- Persist checkpoints: implement CheckpointManager with durable storage (e.g., Redis/DB) and wire it in ExecutorConfiguration.
-- Consume events: add @EventListener components for state.event.*
-- Scheduling policy: extend ExecutionUnitScheduler for custom queueing/priority.
+## Heartbeat
+- Every 10 seconds emit TaskProgressEvent (completedStages/totalStages); acts as a heartbeat/health signal.
 
-How to work effectively in this repo
-- When changing public behavior, update or add focused tests under src/test/java/xyz/firestige/executor/**.
-- Keep edits minimal and cohesive; preserve existing APIs unless the task requires a change.
-- Validate with mvn test locally after non-trivial edits.
+## Configuration Priority
+1. TenantDeployConfig (tenant-specific override)
+2. application configuration
+3. internal defaults
 
-Quick commands (macOS, zsh)
-```bash
-# From project root
-mvn -q -DskipTests=false test
+## Extensibility Points (Reserved / Planned)
+- Policies: RetryPolicy, PausePolicy, CompletionPolicy, RollbackPolicy, HealthCheckPolicy, CheckpointPolicy.
+- Instrumentation: TransitionInstrumentation (beforeGuard / afterTransition hooks).
+- StageFactory: Declarative assembly of Stage step sequences.
+- Checkpoint SPI: RedisCheckpointStore, DBCheckpointStore, selectable via property.
+- Metrics: Micrometer counters/gauges (task_active, task_completed, task_failed, rollback_count, heartbeat_lag).
+- RollbackHealthVerifier: Pluggable health reconfirmation for rollback success to gate lastKnownGoodVersion update.
 
-# Run a single test class (example)
-mvn -q -Dtest=xyz.firestige.executor.unit.execution.PipelineTest test
-```
+## Completed Phases (Archive)
+- Phase 10-13: Core state machine, events, checkpoint, health check, factory abstractions - DONE
+- Phase 14: Observability metrics + MDC stability tests - DONE
+- Phase 15: Performance / concurrency stress tests, lock release safeguards - DONE
+- Phase 16: Final documentation & migration guide, 4+1 architecture views - DONE (2025-11-17)
+- **RF-01: Facade Business Logic Extraction** - DONE (2025-11-17)
+  - Created Result DTOs with DDD principles (PlanCreationResult, PlanInfo, TaskInfo, etc.)
+  - Created internal DTO (TenantConfig) for application layer
+  - Extracted business logic to Application Service layer (PlanApplicationService, TaskApplicationService)
+  - Refactored Facade to use exceptions instead of return values (except queries)
+  - All tests passing: 168 tests, 0 failures, 0 errors, 20 skipped
+- **RF-02: TaskWorkerFactory Parameter Simplification** - DONE (2025-11-17)
+  - Introduced TaskWorkerCreationContext (Parameter Object Pattern + Builder)
+  - Reduced method parameters from 9 to 1, improved readability
+  - Maintained backward compatibility (deprecated old method)
+  - Updated 5 call sites across PlanApplicationService and TaskApplicationService
+  - Added comprehensive unit tests (11 test cases)
 
-Answering style for future sessions
-- Start with a one-line task receipt and a short plan.
-- Prefer concrete code edits with minimal diffs; group changes by file.
-- After edits, build and run relevant tests; iterate on failures up to three quick fixes.
-- Be concise but thorough; avoid filler. If blocked by missing context, read files using search/read tools.
+## Upcoming Phases (High-Level)
+- Phase 17: Architecture refactoring & integration tests
+  - RF-04: Comprehensive integration test suite (Testcontainers, 7 core scenarios)
+- Phase 18: Stage strategy pattern (low priority)
+  - RF-03: Declarative Stage assembly via @Component + @Order auto-discovery
 
-Security and safety
-- No external network calls unless explicitly required by the task.
-- Do not exfiltrate secrets. Follow Microsoft content policies.
+## Key Invariants
+- No concurrent active Task for the same tenant.
+- Pause/cancel only honored at Stage boundaries.
+- lastKnownGoodVersion updated only after successful health confirmation (via RollbackHealthVerifier).
+- All events carry increasing sequenceId; consumers discard older/equal sequenceIds for idempotency.
+- Legacy classes must not reappear; no V2/V3 suffix naming.
 
-This prompt is the minimal working context to regain full-speed productivity in new sessions. Refer to files listed above when deeper inspection is needed.
+## Testing Guidelines
+- Use Facade (DeploymentTaskFacadeImpl) to create & operate Tasks; avoid constructing aggregates directly.
+- Simulate failures via stub HealthCheckClient or failing Step.
+- Test retry paths (fromCheckpoint vs fresh) ensuring completed stages are not re-executed unless intended.
+- Rollback tests assert snapshot restore and (with real verifier) lastKnownGoodVersion gating.
 
-# ARCHITECTURE PROMPT — Executor Demo (Final)
+## Adding a New Step / Stage
+1. Implement StageStep.execute(TaskRuntimeContext).
+2. Register it in a StageFactory that returns ordered List<StageStep>.
+3. Facade uses StageFactory to build CompositeServiceStage.
 
-角色
-- 你是该项目的维护者/贡献者，熟悉 Java/Spring。优先小改动、强测试、结果导向。
+## Glossary
+- prevConfigSnapshot: Previously known good config snapshot (for rollback speed & version tracking).
+- lastKnownGoodVersion: Version verified via health check; set after successful stage or rollback health confirmation.
+- sequenceId: Monotonic numeric identifier per Task (or Plan) event stream.
+- fromCheckpoint retry: Resume execution from saved progress; emits a compensation progress event.
 
-项目目的
-- 多租户蓝绿切换执行器：编排 Plan → Task → Stage，执行服务通知与健康检查，支持并发阈值与 FIFO、checkpoint 暂停/恢复、事件心跳与幂等。
+## Maintenance Checklist (New Session)
+1. Read `TODO.md` (Upcoming Phases + New Backlog).
+2. Run `mvn -q -DskipTests=false test` baseline before edits.
+3. Implement small, cohesive changes; update tests & TODO statuses.
+4. After completing tasks, update `develop.log` with condensed change descriptions and archive completed items from `TODO.md`.
 
-领域模型与语义
-- Plan：一次切换计划，包含 1..N 个租户 Task；控制并发阈值与冲突（同租户互斥）。
-- Task：租户维度切换任务；仅在 Stage 边界响应暂停/取消；回滚/重试仅手动触发；fromCheckpoint 重试会补偿一次进度事件。
-- Stage：由多个 Step 组成；常见步骤：ServiceNotification、HealthCheck；Stage 内不可切片。
-- 健康检查：固定 3s 间隔轮询，连续 10 次失败判定失败；必须全实例成功。
-- 配置优先级：TenantDeployConfig > application config > 默认值。
+## TODO & develop.log Maintenance Protocol
 
-关键模块（仅保留新架构）
-- facade
-  - DeploymentTaskFacade/Impl：外部 API（create/pause/resume/retry/rollback/cancel/query）。
-- orchestration
-  - PlanOrchestrator：计划提交、冲突校验、并发阈值；将 Task 分发给 TaskScheduler。
-  - TaskScheduler：并发阈值 + FIFO 调度，创建并执行 TaskExecutor。
-- execution
-  - TaskExecutor：顺序执行 TaskStage 列表；在 Stage 边界保存/清理 checkpoint；支持 fromCheckpoint 重试与 invokeRollback；发布事件与心跳。
-- domain.stage
-  - TaskStage、StageStep、CompositeServiceStage；内置 steps：NotificationStep、HealthCheckStep。
-- checkpoint
-  - CheckpointService、CheckpointStore（默认 InMemory，可替换 Redis/DB）。
-- state
-  - TaskStateManager：状态迁移与事件发布（sequenceId 幂等）。TaskStatus 枚举表示任务状态。
-- event
-  - TaskEventSink（Spring 实现：SpringTaskEventSink）。
-- config
-  - ExecutorConfiguration：装配 TaskStateManager、ValidationChain、ExecutorProperties、HealthCheckClient、DeploymentTaskFacade。
+### TODO.md - Active Work Tracking
+- **Purpose**: Track current and upcoming work items with full context
+- **Content**:
+  - Guiding principles (architecture invariants, conventions)
+  - Current phase tasks with detailed descriptions (problems, goals, solutions, priority)
+  - Future phase roadmap (high-level planning)
+  - Brief reference to completed phases (link to develop.log for details)
+- **Update Trigger**: When planning new work, starting/completing tasks, or reprioritizing
+- **Format**:
+  - Keep detailed context for active tasks (RF-01, RF-02, etc.)
+  - Mark tasks as TODO/IN_PROGRESS/DONE
+  - Include dependencies between tasks
+  - Archive completed phases with one-line summary + "see develop.log"
 
-事件与心跳
-- 任务事件：Started/Progress/StageCompleted/StageFailed/Completed/Failed/Paused/Resumed/RollingBack/RolledBack/RollbackFailed/ValidationFailed；均带 sequenceId。
-- 心跳：每 10s 报告进度（completed/total），同时作为心跳。
-- 回滚事件带阶段列表（rollingBack/rolledBack）。
+### develop.log - Historical Change Timeline
+- **Purpose**: Day-granular, highly condensed, readable project change history
+- **Content Structure**:
+  ```
+  ## YYYY-MM-DD
+  
+  ### Feature/Phase Name
+  - One-sentence summary of what was done and why
+  - Key outcomes or effects achieved
+  - Files: Major files/components changed (optional but valuable)
+  - Commit: commit-id (optional, when available)
+  ```
+- **Condensation Rules**:
+  - Each change entry: 1-3 sentences maximum
+  - Focus on WHAT changed and WHY (business value)
+  - Omit implementation details unless critical to understanding
+  - Group related changes under a single heading
+  - NO TODO items, NO pending work, NO future plans
+- **Update Trigger**: When completing a significant feature, phase, or day's work
+- **Value vs git log**: 
+  - develop.log is human-readable with business context
+  - git log shows technical commits
+  - develop.log provides day-level aggregated view with rationale
 
-暂停/恢复/取消
-- 协作式，仅在 Stage 之间的 checkpoint 响应；Stage 仅有开始/成功/失败三事件。
+### Workflow Example
+1. **Starting work**: Review TODO.md for current priorities
+2. **During work**: Mark tasks as IN_PROGRESS in TODO.md
+3. **After completion**: 
+   - Update develop.log with condensed historical entry (same day or next day)
+   - Archive completed tasks from TODO.md (move to "Completed Phases" section or remove)
+   - Update TODO.md status, remove completed items if fully archived
+4. **Planning next phase**: Add new tasks to TODO.md with full context
 
-测试策略（不侵入生产）
-- 通过 Facade 构造器注入 ExecutorProperties（压低重试间隔/次数）与 HealthCheckClient stub，加速健康检查测试。
-- 失败场景通过 stub 返回错误模拟，无需真实等待 10×3s。
+### Anti-patterns to Avoid
+- ❌ Don't duplicate detailed task descriptions in develop.log
+- ❌ Don't keep completed TODO items without archiving
+- ❌ Don't add future plans or pending work to develop.log
+- ❌ Don't write multi-paragraph change descriptions in develop.log
+- ✅ DO keep TODO.md focused on active/future work
+- ✅ DO make develop.log entries scannable and concise
+- ✅ DO update develop.log at natural breakpoints (end of day, end of phase)
 
-常看文件
-- facade/DeploymentTaskFacadeImpl.java
-- orchestration/PlanOrchestrator.java, TaskScheduler.java
-- execution/TaskExecutor.java, HeartbeatScheduler.java
-- domain/stage/*（CompositeServiceStage, NotificationStep, HealthCheckStep）
-- checkpoint/*（CheckpointService, InMemoryCheckpointStore）
-- state/*（TaskStateManager, TaskStatus）
-- event/*（TaskEventSink, SpringTaskEventSink）
-- config/ExecutorConfiguration.java
-- README.md, TODO.md
+## Do / Don't
+- DO use TaskStateManager for transitions (remove remaining direct status mutations in upcoming phases).
+- DO keep tests fast (avoid real 3s×10 loops; use stubbed polling).
+- DON’T resurrect deleted legacy classes or mixed old naming.
 
-如何高效工作
-- 小步提交、跑 `mvn -q -DskipTests=false test`；为公共行为变更补测试；优先重用已存在的构造器与注册表。
-- 若新增 Step/策略：实现 StageStep 或策略接口，注册到 Stage 组合工厂后自动纳入执行链。
+## Extension Points Matrix (Stable Contracts)
+- StageFactory
+  - Input: TaskAggregate, TenantDeployConfig, ExecutorProperties, HealthCheckClient
+  - Output: List<TaskStage> (ordered, FIFO)
+  - Default: DefaultStageFactory (ConfigUpdate -> Broadcast -> HealthCheck)
+- TaskWorkerFactory
+  - Input: planId, TaskAggregate, List<TaskStage>, TaskRuntimeContext, CheckpointService, TaskEventSink, progressIntervalSeconds, TaskStateManager, ConflictRegistry
+  - Output: TaskExecutor (with HeartbeatScheduler)
+  - Default: DefaultTaskWorkerFactory (injects MetricsRegistry into TaskExecutor & HeartbeatScheduler)
+- MetricsRegistry
+  - Methods: incrementCounter(name), setGauge(name, value)
+  - Impl: NoopMetricsRegistry (default), MicrometerMetricsRegistry (optional via Spring auto-config)
+- CheckpointStore (SPI via CheckpointService)
+  - Implementations: InMemory (default), Redis (via Spring Data Redis), future DB
+  - Batch: loadMultiple(List<String>)
+- HealthCheckClient
+  - Method: Map<String,Object> get(String url)
+  - Default: MockHealthCheckClient in dev/test; real impl can be provided by glue layer
+- RollbackHealthVerifier
+  - Method: boolean verify(TaskAggregate, TaskRuntimeContext)
+  - Impl: AlwaysTrueRollbackHealthVerifier (default), VersionRollbackHealthVerifier (compares version field)
 
-告别旧实现
-- 旧 ExecutionUnit/TaskOrchestrator/TenantTaskExecutor/ServiceNotificationStage 已删除；不要再引入这些命名或依赖。
+## Event Payloads (Examples)
+- TaskStartedEvent: { taskId, totalStages, sequenceId }
+- TaskProgressEvent: { taskId, currentStage, completedStages, totalStages, sequenceId }
+- TaskStageCompletedEvent: { taskId, stageName, stageResult, sequenceId }
+- TaskStageFailedEvent: { taskId, stageName, failureInfo{type,code,message}, sequenceId }
+- TaskFailedEvent: { taskId, failureInfo{...}, completedStages[], failedStage, sequenceId }
+- TaskCompletedEvent: { taskId, durationMillis, completedStages[], sequenceId }
+- TaskRetryStartedEvent: { taskId, fromCheckpoint, sequenceId }
+- TaskRetryCompletedEvent: { taskId, fromCheckpoint, sequenceId }
+- TaskRollingBackEvent: { taskId, reason, stagesToRollback[], sequenceId }
+- TaskRolledBackEvent: { taskId, prevDeployUnitId, prevDeployUnitVersion, prevDeployUnitName, sequenceId }
+- TaskRollbackFailedEvent: { taskId, failureInfo{...}, partiallyRolledBackStages[], sequenceId }
+- TaskCancelledEvent: { taskId, cancelledBy, lastStage, sequenceId }
+
+## Configuration Priority (Concrete)
+1) TenantDeployConfig (highest)
+2) application configuration (ExecutorProperties)
+3) defaults (ExecutorProperties defaults)
+
+## MDC Fields
+- During execution: planId, taskId, tenantId, stageName
+- Cleared at end of TaskExecutor.execute() and on early exits (pause/cancel/fail)
+
+## Observability
+- Counters: task_active, task_completed, task_failed, task_paused, task_cancelled, rollback_count
+- Gauge: heartbeat_lag (totalStages - completed, non-negative)
+- Micrometer integration via MicrometerMetricsRegistry; Spring auto-config provided (ExecutorAutoConfiguration)
+
+End.

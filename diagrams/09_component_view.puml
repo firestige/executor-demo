@@ -1,0 +1,287 @@
+@startuml 组件图
+!theme plain
+
+package "Facade Layer" <<Rectangle>> {
+  component [DeploymentTaskFacade] as Facade
+  note right of Facade
+    **RF-01 重构**
+    - DTO转换 (外部→内部)
+    - 参数校验
+    - 异常转换
+    - 返回 void (操作)
+  end note
+
+  package "Facade Exceptions" {
+    component [TaskCreationException]
+    component [TaskOperationException]
+    component [TaskNotFoundException]
+    component [PlanNotFoundException]
+  }
+}
+
+package "Application Service Layer" <<Rectangle>> {
+  component [PlanApplicationService] as PlanAppService
+  component [TaskApplicationService] as TaskAppService
+
+  note right of PlanAppService
+    **RF-01 新增**
+    - 业务编排
+    - 状态管理
+    - 返回 Result DTOs
+    - 管理内部注册表
+  end note
+
+  package "Application DTOs" {
+    component [PlanCreationResult]
+    component [PlanInfo] <<Value Object>>
+    component [TaskInfo] <<Value Object>>
+    component [PlanOperationResult]
+    component [TaskOperationResult]
+    component [TenantConfig] <<Internal DTO>>
+  }
+}
+
+package "Orchestration Layer" {
+  component [PlanOrchestrator] as Orchestrator
+  component [TaskScheduler] as Scheduler
+  component [ConflictRegistry] as Conflict
+}
+
+package "Domain Layer" {
+  package "Aggregate" {
+    component [PlanAggregate] as PlanAgg
+    component [TaskAggregate] as TaskAgg
+  }
+
+  package "State Machine" {
+    component [TaskStateMachine] as TaskSM
+    component [PlanStateMachine] as PlanSM
+    component [TaskStateManager] as StateManager
+  }
+
+  package "Stage" {
+    component [CompositeServiceStage] as ServiceStage
+    component [StageFactory] as StageFactory
+    component [ConfigUpdateStep] as Step1
+    component [BroadcastStep] as Step2
+    component [HealthCheckStep] as Step3
+  }
+
+  package "Validation" {
+    component [ValidationChain] as Validator
+  }
+}
+
+package "Execution Layer" {
+  component [TaskExecutor] as Executor
+  component [TaskWorkerFactory] as WorkerFactory
+  component [DefaultTaskWorkerFactory] as DefaultFactory
+  component [HeartbeatScheduler] as Heartbeat
+
+  component [TaskWorkerCreationContext] as WorkerContext
+
+  note right of WorkerContext
+    **RF-02 新增**
+    - 参数对象模式
+    - Builder 模式
+    - 9参数 → 1参数
+  end note
+
+  WorkerFactory <|.. DefaultFactory
+  DefaultFactory --> WorkerContext : uses
+  DefaultFactory --> Executor : creates
+}
+
+package "Infrastructure Layer" {
+  package "Checkpoint" {
+    component [CheckpointService] as CPService
+    interface "CheckpointStore" as CPStore
+    component [InMemoryCheckpointStore] as MemoryCP
+    component [RedisCheckpointStore] as RedisCP
+
+    CPService --> CPStore
+    CPStore <|.. MemoryCP
+    CPStore <|.. RedisCP
+  }
+
+  package "Event" {
+    interface "TaskEventSink" as EventSink
+    component [SpringTaskEventSink] as SpringEvent
+    component [NoopTaskEventSink] as NoopEvent
+
+    EventSink <|.. SpringEvent
+    EventSink <|.. NoopEvent
+  }
+
+  package "Health" {
+    interface "HealthCheckClient" as HealthClient
+    component [MockHealthCheckClient] as MockHealth
+    component [RollbackHealthVerifier] as Verifier
+  }
+
+  package "Metrics" {
+    interface "MetricsRegistry" as MetricsReg
+    component [NoopMetricsRegistry] as NoopMetrics
+    component [MicrometerMetricsRegistry] as MicrometerMetrics
+
+    MetricsReg <|.. NoopMetrics
+    MetricsReg <|.. MicrometerMetrics
+  }
+
+  package "Strategy" {
+    interface "RollbackStrategy" as RBStrategy
+    component [PreviousConfigRollbackStrategy] as PrevConfigRB
+
+    RBStrategy <|.. PrevConfigRB
+  }
+}
+
+package "Configuration" {
+  component [ExecutorProperties] as Props
+  component [ExecutorConfiguration] as Config
+  component [ExecutorAutoConfiguration] as AutoConfig
+}
+
+package "Factory" {
+  component [PlanFactory] as PlanFactory
+}
+
+' Facade 依赖关系 (RF-01)
+Facade --> PlanAppService : delegates
+Facade --> TaskAppService : delegates
+Facade ..> TaskCreationException : throws
+Facade ..> TaskOperationException : throws
+Facade ..> TaskNotFoundException : throws
+Facade ..> PlanNotFoundException : throws
+
+' Application Service 依赖关系 (RF-01)
+PlanAppService --> PlanCreationResult : returns
+PlanAppService --> PlanOperationResult : returns
+PlanAppService --> Orchestrator : uses
+PlanAppService --> StateManager : uses
+PlanAppService --> WorkerFactory : uses
+PlanAppService --> CPService : uses
+PlanAppService --> EventSink : uses
+PlanAppService --> Conflict : uses
+
+TaskAppService --> TaskOperationResult : returns
+TaskAppService --> StateManager : uses
+TaskAppService --> WorkerFactory : uses
+TaskAppService --> CPService : uses
+TaskAppService --> EventSink : uses
+
+PlanCreationResult --> PlanInfo : contains
+PlanInfo --> TaskInfo : contains list
+
+' Orchestration 依赖关系
+Orchestrator --> Scheduler
+Orchestrator --> Conflict
+Orchestrator --> WorkerFactory
+Orchestrator --> PlanAgg
+
+' Factory 依赖关系
+PlanFactory --> PlanAgg
+PlanFactory --> TaskAgg
+StageFactory --> ServiceStage
+StageFactory --> Step1
+StageFactory --> Step2
+StageFactory --> Step3
+WorkerFactory --> Executor
+WorkerFactory --> Heartbeat
+WorkerFactory --> MetricsReg
+
+' Scheduler 依赖关系
+Scheduler --> Executor
+
+' Executor 依赖关系
+Executor --> TaskAgg
+Executor --> Stage
+Executor --> CPService
+Executor --> EventSink
+Executor --> StateManager
+Executor --> Conflict
+Executor --> MetricsReg
+Executor --> Heartbeat
+
+' StateManager 依赖关系
+StateManager --> TaskSM
+StateManager --> EventSink
+StateManager --> TaskAgg
+StateManager --> Verifier
+
+' Stage 依赖关系
+ServiceStage --> Step1
+ServiceStage --> Step2
+ServiceStage --> Step3
+Step3 --> HealthClient
+
+' Rollback 依赖关系
+RBStrategy --> TaskAgg
+RBStrategy --> EventSink
+PrevConfigRB --> Stage
+
+' Configuration 依赖关系
+Config --> Props
+Config --> Validator
+Config --> StateManager
+Config --> HealthClient
+Config --> FacadeImpl
+AutoConfig --> Props
+AutoConfig --> CPService
+AutoConfig --> RedisCP
+
+note right of Facade
+  **对外统一接口**
+  - createSwitchTask
+  - pauseTask / resumeTask
+  - retryTask / rollbackTask
+  - queryTaskStatus
+end note
+
+note right of Orchestrator
+  **计划编排器**
+  - 提交 Plan
+  - 路由任务到 Scheduler
+  - 管理租户冲突
+end note
+
+note right of Scheduler
+  **任务调度器**
+  - 并发控制（maxConcurrency）
+  - FIFO 队列
+  - 任务提交与完成管理
+end note
+
+note right of StateManager
+  **状态管理器**
+  - 管理状态机实例
+  - 执行状态转换
+  - 发布状态事件
+  - 维护 sequenceId
+end note
+
+note right of Executor
+  **任务执行引擎**
+  - 顺序执行 Stage
+  - MDC 注入与清理
+  - Checkpoint 保存恢复
+  - 心跳调度
+  - 指标收集
+end note
+
+note right of CPService
+  **Checkpoint 服务**
+  - 可插拔存储
+  - 批量恢复
+  - 终态清理
+end note
+
+note right of EventSink
+  **事件发布**
+  - Spring 集成
+  - Noop 实现
+  - 事件幂等性
+end note
+
+@enduml
+

@@ -8,7 +8,8 @@ import xyz.firestige.executor.util.TimingExtension;
 import xyz.firestige.executor.validation.ValidationResult;
 import xyz.firestige.executor.validation.validator.ConflictValidator;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * ConflictValidator 单元测试

@@ -10,7 +10,9 @@ import xyz.firestige.executor.execution.pipeline.PipelineContext;
 import xyz.firestige.executor.util.TestDataFactory;
 import xyz.firestige.executor.util.TimingExtension;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * PipelineContext 单元测试

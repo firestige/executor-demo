@@ -7,7 +7,9 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import xyz.firestige.executor.execution.StageStatus;
 import xyz.firestige.executor.util.TimingExtension;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * StageStatus 枚举测试

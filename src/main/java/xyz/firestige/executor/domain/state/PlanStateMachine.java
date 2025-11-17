@@ -3,7 +3,14 @@ package xyz.firestige.executor.domain.state;
 import xyz.firestige.executor.domain.plan.PlanContext;
 import xyz.firestige.executor.domain.plan.PlanStatus;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.EnumMap;
+import java.util.EnumSet;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 /**
  * Plan 状态机（新实现，不使用 V2 命名）。
@@ -25,7 +32,8 @@ public class PlanStateMachine {
         rules.put(PlanStatus.CREATED, EnumSet.of(PlanStatus.VALIDATING));
         rules.put(PlanStatus.VALIDATING, EnumSet.of(PlanStatus.READY, PlanStatus.FAILED));
         rules.put(PlanStatus.READY, EnumSet.of(PlanStatus.RUNNING, PlanStatus.CANCELLED));
-        rules.put(PlanStatus.RUNNING, EnumSet.of(PlanStatus.PARTIAL_FAILED, PlanStatus.COMPLETED, PlanStatus.ROLLING_BACK));
+        rules.put(PlanStatus.RUNNING, EnumSet.of(PlanStatus.PAUSED, PlanStatus.PARTIAL_FAILED, PlanStatus.COMPLETED, PlanStatus.ROLLING_BACK));
+        rules.put(PlanStatus.PAUSED, EnumSet.of(PlanStatus.RUNNING, PlanStatus.CANCELLED));
         rules.put(PlanStatus.PARTIAL_FAILED, EnumSet.of(PlanStatus.RUNNING, PlanStatus.ROLLING_BACK, PlanStatus.FAILED));
         rules.put(PlanStatus.ROLLING_BACK, EnumSet.of(PlanStatus.ROLLED_BACK, PlanStatus.FAILED));
         rules.put(PlanStatus.COMPLETED, EnumSet.of(PlanStatus.ROLLING_BACK));
