@@ -53,28 +53,30 @@ public class PlanDomainService {
 
     private static final Logger logger = LoggerFactory.getLogger(PlanDomainService.class);
 
-    // 核心依赖
-    private final ValidationChain validationChain;
+    // 核心依赖（DDD 重构后简化）
+    private final PlanRepository planRepository;
     private final TaskStateManager stateManager;
     private final PlanFactory planFactory;
     private final PlanOrchestrator planOrchestrator;
+    private final ExecutorProperties executorProperties;
+
+    // TODO: 以下依赖应该移到 TaskDomainService 或 DeploymentApplicationService
     private final StageFactory stageFactory;
     private final TaskWorkerFactory workerFactory;
-    private final ExecutorProperties executorProperties;
-    private final HealthCheckClient healthCheckClient;
     private final CheckpointService checkpointService;
     private final SpringTaskEventSink eventSink;
     private final ConflictRegistry conflictRegistry;
+    private final ValidationChain validationChain;
+    private final HealthCheckClient healthCheckClient;
 
-    // 注册表管理（从 Facade 迁移）
-    private final Map<String, PlanAggregate> planRegistry = new HashMap<>();
+    // TODO: 这些注册表应该通过 TaskRepository 访问
     private final Map<String, TaskAggregate> taskRegistry = new HashMap<>();
     private final Map<String, TaskRuntimeContext> contextRegistry = new HashMap<>();
     private final Map<String, List<TaskStage>> stageRegistry = new HashMap<>();
     private final Map<String, TaskExecutor> executorRegistry = new HashMap<>();
-    private final Map<String, PlanStateMachine> planSmRegistry = new HashMap<>();
 
     public PlanDomainService(
+            PlanRepository planRepository,
             ValidationChain validationChain,
             TaskStateManager stateManager,
             PlanFactory planFactory,
@@ -86,6 +88,7 @@ public class PlanDomainService {
             CheckpointService checkpointService,
             SpringTaskEventSink eventSink,
             ConflictRegistry conflictRegistry) {
+        this.planRepository = planRepository;
         this.validationChain = validationChain;
         this.stateManager = stateManager;
         this.planFactory = planFactory;
@@ -139,7 +142,7 @@ public class PlanDomainService {
 
             // Step 4: 初始化 Plan 状态机
             PlanStateMachine psm = new PlanStateMachine(PlanStatus.READY);
-            planSmRegistry.put(planId, psm);
+            planRepository.saveStateMachine(planId, psm);
             plan.setStatus(PlanStatus.READY);
 
             // Step 5: 构建 Stage（每个 Task）
@@ -164,7 +167,7 @@ public class PlanDomainService {
             // Step 8: 提交 Plan 执行
             planOrchestrator.submitPlan(plan, task -> (taskIdParam) -> {
                 // Plan 进入 RUNNING 状态
-                PlanStateMachine sm = planSmRegistry.get(planId);
+                PlanStateMachine sm = planRepository.getStateMachine(planId);
                 if (sm != null) {
                     sm.transitionTo(PlanStatus.RUNNING, new PlanContext(planId));
                 }
@@ -208,12 +211,12 @@ public class PlanDomainService {
             stateManager.updateState(planId, TaskStatus.RUNNING);
             stateManager.publishTaskStartedEvent(planId, plan.getTasks().size());
 
-            planRegistry.put(planId, plan);
+            planRepository.save(plan);
             plan.getTasks().forEach(t -> taskRegistry.put(t.getTaskId(), t));
 
             // Step 10: 返回成功结果
             PlanInfo planInfo = PlanInfo.from(plan);
-            logger.info("[PlanApplicationService] Plan 创建成功，planId: {}, tasks: {}", planId, plan.getTasks().size());
+            logger.info("[PlanDomainService] Plan 创建成功，planId: {}, tasks: {}", planId, plan.getTasks().size());
             return PlanCreationResult.success(planInfo);
 
         } catch (Exception e) {
@@ -230,9 +233,9 @@ public class PlanDomainService {
      */
     public PlanOperationResult pausePlan(Long planId) {
         String pid = String.valueOf(planId);
-        logger.info("[PlanApplicationService] 暂停计划: {}", pid);
+        logger.info("[PlanDomainService] 暂停计划: {}", pid);
 
-        PlanAggregate plan = planRegistry.get(pid);
+        PlanAggregate plan = planRepository.get(pid);
         if (plan == null) {
             return PlanOperationResult.failure(pid,
                 FailureInfo.of(ErrorType.VALIDATION_ERROR, "计划不存在"),
@@ -248,7 +251,7 @@ public class PlanDomainService {
         });
 
         // 更新 Plan 状态
-        PlanStateMachine sm = planSmRegistry.get(pid);
+        PlanStateMachine sm = planRepository.getStateMachine(pid);
         if (sm != null) {
             sm.transitionTo(PlanStatus.PAUSED, new PlanContext(pid));
         }
@@ -265,9 +268,9 @@ public class PlanDomainService {
      */
     public PlanOperationResult resumePlan(Long planId) {
         String pid = String.valueOf(planId);
-        logger.info("[PlanApplicationService] 恢复计划: {}", pid);
+        logger.info("[PlanDomainService] 恢复计划: {}", pid);
 
-        PlanAggregate plan = planRegistry.get(pid);
+        PlanAggregate plan = planRepository.get(pid);
         if (plan == null) {
             return PlanOperationResult.failure(pid,
                 FailureInfo.of(ErrorType.VALIDATION_ERROR, "计划不存在"),
@@ -283,7 +286,7 @@ public class PlanDomainService {
         });
 
         // 更新 Plan 状态
-        PlanStateMachine sm = planSmRegistry.get(pid);
+        PlanStateMachine sm = planRepository.getStateMachine(pid);
         if (sm != null) {
             sm.transitionTo(PlanStatus.RUNNING, new PlanContext(pid));
         }
@@ -300,9 +303,9 @@ public class PlanDomainService {
      */
     public PlanOperationResult rollbackPlan(Long planId) {
         String pid = String.valueOf(planId);
-        logger.info("[PlanApplicationService] 回滚计划: {}", pid);
+        logger.info("[PlanDomainService] 回滚计划: {}", pid);
 
-        PlanAggregate plan = planRegistry.get(pid);
+        PlanAggregate plan = planRepository.get(pid);
         if (plan == null) {
             return PlanOperationResult.failure(pid,
                 FailureInfo.of(ErrorType.VALIDATION_ERROR, "计划不存在"),
@@ -364,9 +367,9 @@ public class PlanDomainService {
      */
     public PlanOperationResult retryPlan(Long planId, boolean fromCheckpoint) {
         String pid = String.valueOf(planId);
-        logger.info("[PlanApplicationService] 重试计划: {}, fromCheckpoint: {}", pid, fromCheckpoint);
+        logger.info("[PlanDomainService] 重试计划: {}, fromCheckpoint: {}", pid, fromCheckpoint);
 
-        PlanAggregate plan = planRegistry.get(pid);
+        PlanAggregate plan = planRepository.get(pid);
         if (plan == null) {
             return PlanOperationResult.failure(pid,
                 FailureInfo.of(ErrorType.VALIDATION_ERROR, "计划不存在"),

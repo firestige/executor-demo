@@ -44,7 +44,7 @@
 
 ---
 
-### Step 2.2.1: 创建 PlanDomainService 骨架 ⏳
+### Step 2.2.1: 创建 PlanDomainService 骨架 ✅
 **目标**: 在 domain/plan 包下创建新的领域服务
 
 **操作**:
@@ -58,11 +58,11 @@
 - ❌ 原：创建 Plan + 创建 Task + 编排执行
 - ✅ 新：只负责 Plan 聚合的创建、状态管理、生命周期操作
 
-**预期成果**: 新文件编译通过，无破坏性变更
+**预期成果**: 新文件编译通过，无破坏性变更 ✅ (已提交)
 
 ---
 
-### Step 2.2.2: 创建 TaskDomainService 骨架
+### Step 2.2.2: 创建 TaskDomainService 骨架 ✅
 **目标**: 在 domain/task 包下创建新的领域服务
 
 **操作**:
@@ -74,11 +74,11 @@
 **职责调整**:
 - ✅ 只负责 Task 聚合的创建、状态管理、执行管理
 
-**预期成果**: 新文件编译通过
+**预期成果**: 新文件编译通过 ✅ (已提交)
 
 ---
 
-### Step 2.2.3: 重构领域服务使用 Repository
+### Step 2.2.3: 重构领域服务使用 Repository ⏳
 **目标**: 将 Map 替换为 Repository 调用
 
 **PlanDomainService 改造**:
