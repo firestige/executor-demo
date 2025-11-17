@@ -78,28 +78,28 @@
 
 ---
 
-### Step 2.2.3: 重构领域服务使用 Repository ⏳
+### Step 2.2.3: 重构领域服务使用 Repository ✅
 **目标**: 将 Map 替换为 Repository 调用
 
 **PlanDomainService 改造**:
 ```java
 // 原：Map<String, PlanAggregate> planRegistry
 // 新：PlanRepository planRepository
-// 11个参数 → 5个参数
+// 构造器：11个参数（第1个是PlanRepository）
 ```
 
 **TaskDomainService 改造**:
 ```java
 // 原：4个共享Map
 // 新：TaskRepository taskRepository
-// 10个参数 → 5个参数
+// 构造器：10个参数 → 7个参数
 ```
 
-**预期成果**: 领域服务使用 Repository，构造器参数减少
+**预期成果**: 领域服务使用 Repository，构造器参数减少 ✅ (已提交)
 
 ---
 
-### Step 2.2.4: 创建 DeploymentApplicationService
+### Step 2.2.4: 创建 DeploymentApplicationService ⏳
 **目标**: 创建真正的应用服务协调两个领域服务
 
 **文件**: `application/DeploymentApplicationService.java`
