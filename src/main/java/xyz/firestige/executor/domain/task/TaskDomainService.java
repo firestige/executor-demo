@@ -354,16 +354,16 @@ public class TaskDomainService {
 
         // 计算进度
         int completed = task.getCurrentStageIndex();
-        List<TaskStage> stages = taskRuntimeRepository.getStages(executionUnitId);
+        List<TaskStage> stages = taskRuntimeRepository.getStages(executionUnitId).orElse(null);
         int total = (stages != null) ? stages.size() : 0;
         double progress = total == 0 ? 0 : (completed * 100.0 / total);
 
         // 获取当前阶段
-        TaskExecutor exec = taskRuntimeRepository.getExecutor(executionUnitId);
+        TaskExecutor exec = taskRuntimeRepository.getExecutor(executionUnitId).orElse(null);
         String currentStage = exec != null ? exec.getCurrentStageName() : null;
 
         // 获取运行时状态
-        TaskRuntimeContext ctx = taskRuntimeRepository.getContext(executionUnitId);
+        TaskRuntimeContext ctx = taskRuntimeRepository.getContext(executionUnitId).orElse(null);
         boolean paused = ctx != null && ctx.isPauseRequested();
         boolean cancelled = ctx != null && ctx.isCancelRequested();
 

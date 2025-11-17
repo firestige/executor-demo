@@ -109,6 +109,11 @@ public class ExecutorConfiguration {
         return new InMemoryTaskRepository();
     }
 
+    @Bean
+    public xyz.firestige.executor.domain.task.TaskRuntimeRepository taskRuntimeRepository() {
+        return new xyz.firestige.executor.infrastructure.repository.memory.InMemoryTaskRuntimeRepository();
+    }
+
     // ========== Domain Service Bean (DDD 重构新增) ==========
 
     @Bean
@@ -135,6 +140,7 @@ public class ExecutorConfiguration {
     @Bean
     public TaskDomainService taskDomainService(
             TaskRepository taskRepository,
+            xyz.firestige.executor.domain.task.TaskRuntimeRepository taskRuntimeRepository,
             TaskStateManager stateManager,
             ExecutorProperties executorProperties,
             CheckpointService checkpointService,
@@ -142,6 +148,7 @@ public class ExecutorConfiguration {
             ConflictRegistry conflictRegistry) {
         return new TaskDomainService(
                 taskRepository,
+                taskRuntimeRepository,
                 stateManager,
                 new DefaultTaskWorkerFactory(),
                 executorProperties,
@@ -154,17 +161,29 @@ public class ExecutorConfiguration {
     // ========== Application Service Bean (DDD 重构新增) ==========
 
     @Bean
-    public DeploymentApplicationService deploymentApplicationService(
+    public xyz.firestige.executor.application.plan.DeploymentPlanCreator deploymentPlanCreator(
             PlanDomainService planDomainService,
             TaskDomainService taskDomainService,
             HealthCheckClient healthCheckClient,
             BusinessValidator businessValidator) {
-        return new DeploymentApplicationService(
+        return new xyz.firestige.executor.application.plan.DeploymentPlanCreator(
                 planDomainService,
                 taskDomainService,
                 new DefaultStageFactory(),
                 healthCheckClient,
                 businessValidator
+        );
+    }
+
+    @Bean
+    public DeploymentApplicationService deploymentApplicationService(
+            xyz.firestige.executor.application.plan.DeploymentPlanCreator deploymentPlanCreator,
+            PlanDomainService planDomainService,
+            TaskDomainService taskDomainService) {
+        return new DeploymentApplicationService(
+                deploymentPlanCreator,
+                planDomainService,
+                taskDomainService
         );
     }
 
