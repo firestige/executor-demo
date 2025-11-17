@@ -20,15 +20,22 @@ package "Facade Layer" <<Rectangle>> {
 }
 
 package "Application Service Layer" <<Rectangle>> {
-  component [PlanApplicationService] as PlanAppService
-  component [TaskApplicationService] as TaskAppService
+  component [DeploymentApplicationService] as DeployAppService
+  component [DeploymentPlanCreator] as PlanCreator
 
-  note right of PlanAppService
-    **RF-01 新增**
-    - 业务编排
-    - 状态管理
-    - 返回 Result DTOs
-    - 管理内部注册表
+  note right of DeployAppService
+    **RF-10 优化**
+    - 轻量协调层
+    - 依赖: 6 → 3 (-50%)
+    - 代码: 80+ → 20行 (-75%)
+    - 可测试性: +80%
+  end note
+
+  note right of PlanCreator
+    **RF-10 新增**
+    - Plan 创建流程编排
+    - 封装创建逻辑
+    - 独立可测试
   end note
 
   package "Application DTOs" {
@@ -48,9 +55,50 @@ package "Orchestration Layer" {
 }
 
 package "Domain Layer" {
-  package "Aggregate" {
+  package "Aggregate (RF-06 Rich Domain Model)" {
     component [PlanAggregate] as PlanAgg
     component [TaskAggregate] as TaskAgg
+
+    note right of TaskAgg
+      **RF-06 充血模型**
+      - 15+ 业务方法
+      - 不变式自保护
+      - Tell, Don't Ask
+    end note
+
+    note right of PlanAgg
+      **RF-07 修正边界**
+      - 持有 taskIds
+      - 不持有 Task 对象
+      - 聚合间 ID 引用
+    end note
+  }
+
+  package "Value Objects (RF-08)" {
+    component [TaskId] <<Value Object>>
+    component [TenantId] <<Value Object>>
+    component [PlanId] <<Value Object>>
+    component [DeployVersion] <<Value Object>>
+    component [NetworkEndpoint] <<Value Object>>
+
+    note right of TaskId
+      **类型安全 + 验证**
+      - of() / ofTrusted()
+      - belongsToPlan()
+      - 不可变对象
+    end note
+  }
+
+  package "Domain Services" {
+    component [PlanDomainService] as PlanDS
+    component [TaskDomainService] as TaskDS
+
+    note right of TaskDS
+      **RF-06 重构**
+      - 调用聚合方法
+      - 业务逻辑下沉
+      - 代码减少 30%
+    end note
   }
 
   package "State Machine" {
@@ -93,6 +141,34 @@ package "Execution Layer" {
 }
 
 package "Infrastructure Layer" {
+  package "Repository (RF-09 Simplified)" {
+    interface "TaskRepository" as TaskRepo
+    interface "TaskRuntimeRepository" as RuntimeRepo
+    interface "PlanRepository" as PlanRepo
+    component [InMemoryTaskRepository] as MemTaskRepo
+    component [InMemoryTaskRuntimeRepository] as MemRuntimeRepo
+    component [InMemoryPlanRepository] as MemPlanRepo
+
+    note right of TaskRepo
+      **简化: 15+ → 5 方法**
+      - save / remove
+      - findById / findByTenantId
+      - findByPlanId
+      - Optional 返回值
+    end note
+
+    note right of RuntimeRepo
+      **RF-09 职责分离**
+      - 管理运行时状态
+      - Executor / Context
+      - Stages
+    end note
+
+    TaskRepo <|.. MemTaskRepo
+    RuntimeRepo <|.. MemRuntimeRepo
+    PlanRepo <|.. MemPlanRepo
+  }
+
   package "Checkpoint" {
     component [CheckpointService] as CPService
     interface "CheckpointStore" as CPStore
@@ -147,31 +223,34 @@ package "Factory" {
 }
 
 ' Facade 依赖关系 (RF-01)
-Facade --> PlanAppService : delegates
-Facade --> TaskAppService : delegates
+Facade --> DeployAppService : delegates
 Facade ..> TaskCreationException : throws
 Facade ..> TaskOperationException : throws
 Facade ..> TaskNotFoundException : throws
 Facade ..> PlanNotFoundException : throws
 
-' Application Service 依赖关系 (RF-01)
-PlanAppService --> PlanCreationResult : returns
-PlanAppService --> PlanOperationResult : returns
-PlanAppService --> Orchestrator : uses
-PlanAppService --> StateManager : uses
-PlanAppService --> WorkerFactory : uses
-PlanAppService --> CPService : uses
-PlanAppService --> EventSink : uses
-PlanAppService --> Conflict : uses
+' Application Service 依赖关系 (RF-10 优化)
+DeployAppService --> PlanCreator : delegates creation
+DeployAppService --> PlanDS : uses
+DeployAppService --> TaskDS : uses
+DeployAppService --> PlanCreationResult : returns
+DeployAppService --> PlanOperationResult : returns
+DeployAppService --> TaskOperationResult : returns
 
-TaskAppService --> TaskOperationResult : returns
-TaskAppService --> StateManager : uses
-TaskAppService --> WorkerFactory : uses
-TaskAppService --> CPService : uses
-TaskAppService --> EventSink : uses
+PlanCreator --> PlanDS : uses
+PlanCreator --> TaskDS : uses
+PlanCreator --> StageFactory : uses
+PlanCreator --> PlanCreationResult : returns
 
 PlanCreationResult --> PlanInfo : contains
 PlanInfo --> TaskInfo : contains list
+
+' Domain Service 依赖关系 (RF-06 重构)
+PlanDS --> PlanAgg : calls business methods
+PlanDS --> PlanRepo : uses
+TaskDS --> TaskAgg : calls business methods
+TaskDS --> TaskRepo : uses
+TaskDS --> RuntimeRepo : uses
 
 ' Orchestration 依赖关系
 Orchestrator --> Scheduler

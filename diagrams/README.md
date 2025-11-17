@@ -370,6 +370,15 @@ plantuml -tsvg diagrams/*.puml
 
 ## 📝 更新历史
 
+- **2025-11-18 (RF-05~RF-10):** DDD 深度优化
+  - 组件图：新增 Value Objects 包（TaskId, TenantId, PlanId, DeployVersion, NetworkEndpoint）
+  - 组件图：新增 Repository 简化（TaskRepository, TaskRuntimeRepository, PlanRepository）
+  - 组件图：新增 DeploymentPlanCreator（RF-10 应用服务优化）
+  - 组件图：标注 Rich Domain Model（RF-06 业务方法）
+  - 组件图：标注聚合边界修正（RF-07 持有 taskIds）
+  - 类图：待更新（值对象、简化的 Repository）
+  - README：更新核心类列表和设计亮点（RF-05~RF-10）
+  
 - **2025-11-17 (RF-02):** 更新执行层
   - 组件图：新增 TaskWorkerCreationContext（参数对象 + Builder）
   - 类图：新增 TaskWorkerFactory 参数简化设计
