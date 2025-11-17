@@ -106,6 +106,65 @@ Multi-tenant blue/green (or weighted) configuration switch executor. A Plan grou
 1. Read `TODO.md` (Upcoming Phases + New Backlog).
 2. Run `mvn -q -DskipTests=false test` baseline before edits.
 3. Implement small, cohesive changes; update tests & TODO statuses.
+4. After completing tasks, update `develop.log` with condensed change descriptions and archive completed items from `TODO.md`.
+
+## TODO & develop.log Maintenance Protocol
+
+### TODO.md - Active Work Tracking
+- **Purpose**: Track current and upcoming work items with full context
+- **Content**:
+  - Guiding principles (architecture invariants, conventions)
+  - Current phase tasks with detailed descriptions (problems, goals, solutions, priority)
+  - Future phase roadmap (high-level planning)
+  - Brief reference to completed phases (link to develop.log for details)
+- **Update Trigger**: When planning new work, starting/completing tasks, or reprioritizing
+- **Format**:
+  - Keep detailed context for active tasks (RF-01, RF-02, etc.)
+  - Mark tasks as TODO/IN_PROGRESS/DONE
+  - Include dependencies between tasks
+  - Archive completed phases with one-line summary + "see develop.log"
+
+### develop.log - Historical Change Timeline
+- **Purpose**: Day-granular, highly condensed, readable project change history
+- **Content Structure**:
+  ```
+  ## YYYY-MM-DD
+  
+  ### Feature/Phase Name
+  - One-sentence summary of what was done and why
+  - Key outcomes or effects achieved
+  - Files: Major files/components changed (optional but valuable)
+  - Commit: commit-id (optional, when available)
+  ```
+- **Condensation Rules**:
+  - Each change entry: 1-3 sentences maximum
+  - Focus on WHAT changed and WHY (business value)
+  - Omit implementation details unless critical to understanding
+  - Group related changes under a single heading
+  - NO TODO items, NO pending work, NO future plans
+- **Update Trigger**: When completing a significant feature, phase, or day's work
+- **Value vs git log**: 
+  - develop.log is human-readable with business context
+  - git log shows technical commits
+  - develop.log provides day-level aggregated view with rationale
+
+### Workflow Example
+1. **Starting work**: Review TODO.md for current priorities
+2. **During work**: Mark tasks as IN_PROGRESS in TODO.md
+3. **After completion**: 
+   - Update develop.log with condensed historical entry (same day or next day)
+   - Archive completed tasks from TODO.md (move to "Completed Phases" section or remove)
+   - Update TODO.md status, remove completed items if fully archived
+4. **Planning next phase**: Add new tasks to TODO.md with full context
+
+### Anti-patterns to Avoid
+- ❌ Don't duplicate detailed task descriptions in develop.log
+- ❌ Don't keep completed TODO items without archiving
+- ❌ Don't add future plans or pending work to develop.log
+- ❌ Don't write multi-paragraph change descriptions in develop.log
+- ✅ DO keep TODO.md focused on active/future work
+- ✅ DO make develop.log entries scannable and concise
+- ✅ DO update develop.log at natural breakpoints (end of day, end of phase)
 
 ## Do / Don't
 - DO use TaskStateManager for transitions (remove remaining direct status mutations in upcoming phases).
