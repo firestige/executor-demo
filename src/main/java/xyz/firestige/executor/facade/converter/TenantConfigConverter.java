@@ -2,6 +2,7 @@ package xyz.firestige.executor.facade.converter;
 
 import xyz.firestige.dto.deploy.TenantDeployConfig;
 import xyz.firestige.executor.application.dto.DeployUnitIdentifier;
+import xyz.firestige.executor.application.dto.MediaRoutingConfig;
 import xyz.firestige.executor.application.dto.TenantConfig;
 
 import java.util.List;
@@ -9,7 +10,7 @@ import java.util.stream.Collectors;
 
 /**
  * 租户配置转换器（防腐层）
- *
+ * <p>
  * 职责：
  * - 将外部 DTO (TenantDeployConfig) 转换为内部 DTO (TenantConfig)
  * - 隔离外部依赖，保护内部模型
@@ -51,11 +52,11 @@ public class TenantConfigConverter {
         internal.setPlanId(external.getPlanId());
 
         // 部署单元信息
-        if (external.getDeployUnit() != null) {
+        if (external.getDeployUnitName() != null) {
             DeployUnitIdentifier deployUnit = new DeployUnitIdentifier(
-                external.getDeployUnit().getUnitId(),
-                external.getDeployUnit().getRegion(),
-                external.getDeployUnitVersion()
+                external.getPlanId(),
+                external.getDeployUnitVersion(),
+                external.getDeployUnitName()
             );
             internal.setDeployUnit(deployUnit);
         }
@@ -72,11 +73,11 @@ public class TenantConfigConverter {
         internal.setDefaultFlag(external.getDefaultFlag());
 
         // 媒体路由配置
-        if (external.getMediaRoutingConfig() != null) {
-            xyz.firestige.executor.application.dto.MediaRoutingConfig mediaConfig =
-                new xyz.firestige.executor.application.dto.MediaRoutingConfig(
-                    external.getMediaRoutingConfig().getAsMaster(),
-                    external.getMediaRoutingConfig().getMasterGroupId()
+        if (external.getCalledNumberRules() != null && external.getTrunkGroup()!= null) {
+            MediaRoutingConfig mediaConfig =
+                new MediaRoutingConfig(
+                    external.getTrunkGroup(),
+                    external.getCalledNumberRules()
                 );
             internal.setMediaRoutingConfig(mediaConfig);
         }

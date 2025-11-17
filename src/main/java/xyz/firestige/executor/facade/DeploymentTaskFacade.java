@@ -56,21 +56,28 @@ public class DeploymentTaskFacade {
     public void createSwitchTask(List<TenantDeployConfig> configs) {
         logger.info("[Facade] 创建切换任务，配置数量: {}", configs != null ? configs.size() : 0);
 
+        // Step 1: 参数校验（快速失败）
         if (configs == null || configs.isEmpty()) {
             throw new IllegalArgumentException("配置列表不能为空");
         }
 
-        // DTO 转换：外部 DTO → 内部 DTO（防腐层职责）
+        // Step 2: 业务校验（使用 ValidationChain）
+        // ValidationChain 在 Facade 层完成，避免无效数据进入应用层
+        ValidationSummary validationSummary = validationChain.validateAll(configs);
+        if (validationSummary.hasErrors()) {
+            String errorDetail = formatValidationErrors(validationSummary);
+            logger.warn("[Facade] 配置校验失败: {}", errorDetail);
+            throw new IllegalArgumentException("配置校验失败: " + errorDetail);
+        }
+
+        // Step 3: DTO 转换：外部 DTO → 内部 DTO（防腐层职责）
         List<TenantConfig> internalConfigs = TenantConfigConverter.fromExternal(configs);
 
-        // 调用应用服务（使用内部 DTO）
+        // Step 4: 调用应用服务（使用内部 DTO）
         PlanCreationResult result = deploymentApplicationService.createDeploymentPlan(internalConfigs);
 
+        // Step 5: 处理结果
         if (!result.isSuccess()) {
-            if (result.getValidationSummary() != null && result.getValidationSummary().hasErrors()) {
-                String errorDetail = formatValidationErrors(result.getValidationSummary());
-                throw new IllegalArgumentException("配置校验失败: " + errorDetail);
-            }
 
             FailureInfo failureInfo = result.getFailureInfo();
             throw new TaskCreationException(

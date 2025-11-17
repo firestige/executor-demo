@@ -4,8 +4,6 @@ import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import xyz.firestige.executor.application.DeploymentApplicationService;
-import xyz.firestige.executor.application.PlanApplicationService;
-import xyz.firestige.executor.application.TaskApplicationService;
 import xyz.firestige.executor.checkpoint.CheckpointService;
 import xyz.firestige.executor.checkpoint.InMemoryCheckpointStore;
 import xyz.firestige.executor.domain.plan.PlanDomainService;
@@ -149,12 +147,10 @@ public class ExecutorConfiguration {
     public DeploymentApplicationService deploymentApplicationService(
             PlanDomainService planDomainService,
             TaskDomainService taskDomainService,
-            ValidationChain validationChain,
             HealthCheckClient healthCheckClient) {
         return new DeploymentApplicationService(
                 planDomainService,
                 taskDomainService,
-                validationChain,
                 new DefaultStageFactory(),
                 healthCheckClient
         );
@@ -164,8 +160,9 @@ public class ExecutorConfiguration {
 
     @Bean
     public DeploymentTaskFacade deploymentTaskFacade(
-            DeploymentApplicationService deploymentApplicationService) {
-        return new DeploymentTaskFacade(deploymentApplicationService);
+            DeploymentApplicationService deploymentApplicationService,
+            ValidationChain validationChain) {
+        return new DeploymentTaskFacade(deploymentApplicationService, validationChain);
     }
 }
 

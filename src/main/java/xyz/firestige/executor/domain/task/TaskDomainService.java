@@ -2,7 +2,7 @@ package xyz.firestige.executor.domain.task;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import xyz.firestige.dto.deploy.TenantDeployConfig;
+import xyz.firestige.executor.application.dto.TenantConfig;
 import xyz.firestige.executor.domain.stage.StageFactory;
 import xyz.firestige.executor.checkpoint.CheckpointService;
 import xyz.firestige.executor.config.ExecutorProperties;

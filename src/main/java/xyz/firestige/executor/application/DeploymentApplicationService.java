@@ -2,7 +2,6 @@ package xyz.firestige.executor.application;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import xyz.firestige.dto.deploy.TenantDeployConfig;
 import xyz.firestige.executor.application.dto.TenantConfig;
 import xyz.firestige.executor.domain.plan.*;
 import xyz.firestige.executor.domain.stage.StageFactory;
@@ -13,8 +12,6 @@ import xyz.firestige.executor.exception.ErrorType;
 import xyz.firestige.executor.exception.FailureInfo;
 import xyz.firestige.executor.facade.TaskStatusInfo;
 import xyz.firestige.executor.service.health.HealthCheckClient;
-import xyz.firestige.executor.validation.ValidationChain;
-import xyz.firestige.executor.validation.ValidationSummary;
 
 import java.util.List;
 
@@ -24,17 +21,17 @@ import java.util.List;
  * 职责：
  * 1. 协调 Plan 和 Task 的创建（跨聚合操作）
  * 2. 业务流程编排
- * 3. 业务校验
- * 4. 事务边界控制
- * 5. 返回 Result DTOs
+ * 3. 事务边界控制
+ * 4. 返回 Result DTOs
  *
  * 设计说明：
  * - 这是真正的应用服务层
  * - 协调多个领域服务完成业务流程
  * - 不包含领域逻辑，只做编排
  * - 处理跨聚合的业务场景
+ * - 业务校验由 Facade 层完成（使用 ValidationChain）
  *
- * @since DDD 重构 Phase 2.2 - 完成版
+ * @since DDD 重构 Phase 2.3 - 完成版
  */
 public class DeploymentApplicationService {
 
@@ -42,7 +39,6 @@ public class DeploymentApplicationService {
 
     private final PlanDomainService planDomainService;
     private final TaskDomainService taskDomainService;
-    private final ValidationChain validationChain;
     // 依赖其他基础设施服务用于 Stage 构建
     private final StageFactory stageFactory;
     private final HealthCheckClient healthCheckClient;
@@ -50,12 +46,10 @@ public class DeploymentApplicationService {
     public DeploymentApplicationService(
             PlanDomainService planDomainService,
             TaskDomainService taskDomainService,
-            ValidationChain validationChain,
             StageFactory stageFactory,
             HealthCheckClient healthCheckClient) {
         this.planDomainService = planDomainService;
         this.taskDomainService = taskDomainService;
-        this.validationChain = validationChain;
         this.stageFactory = stageFactory;
         this.healthCheckClient = healthCheckClient;
     }
@@ -63,7 +57,7 @@ public class DeploymentApplicationService {
     /**
      * 创建部署计划（协调 Plan 和 Task 创建）- 完整实现
      *
-     * @param configs 租户配置列表（外部 DTO）
+     * @param configs 租户配置列表（内部 DTO）
      * @return Plan 创建结果
      */
     public PlanCreationResult createDeploymentPlan(List<TenantConfig> configs) {
@@ -71,31 +65,21 @@ public class DeploymentApplicationService {
                     configs != null ? configs.size() : 0);
 
         try {
-            // Step 1: 参数校验
-            if (configs == null || configs.isEmpty()) {
-                return PlanCreationResult.failure(
-                    null,
-                    FailureInfo.of(ErrorType.VALIDATION_ERROR, "配置列表不能为空"),
-                    "配置列表为空"
-                );
-            }
+            // 注意：业务校验已在 Facade 层完成（使用 ValidationChain）
+            // 应用层不再重复校验，直接执行业务逻辑
 
-            // Step 2: 业务校验（应用层职责）
-            ValidationSummary validationSummary = validationChain.validateAll(configs);
-            if (validationSummary.hasErrors()) {
-                logger.warn("[DeploymentApplicationService] 配置校验失败，无效配置数: {}",
-                           validationSummary.getInvalidCount());
-                return PlanCreationResult.validationFailure(validationSummary);
-            }
+            // Step 1: 读取 Plan ID
+            String planId = configs.stream()
+                    .map(TenantConfig::getPlanId)
+                    .findFirst()
+                    .map(String::valueOf)
+                    .orElse(null);
+            logger.info("[DeploymentApplicationService] 使用 Plan ID: {}", planId);
 
-            // Step 3: 生成 Plan ID
-            String planId = PlanDomainService.generatePlanId();
-            logger.info("[DeploymentApplicationService] 生成 Plan ID: {}", planId);
+            // Step 2: 创建 Plan（委托给 PlanDomainService）
+            planDomainService.createPlan(planId, configs.size());
 
-            // Step 4: 创建 Plan（委托给 PlanDomainService）
-            PlanAggregate plan = planDomainService.createPlan(planId, configs.size());
-
-            // Step 5: 为每个租户创建 Task（委托给 TaskDomainService）
+            // Step 3: 为每个租户创建 Task（委托给 TaskDomainService）
             for (TenantConfig config : configs) {
                 // 创建 Task 聚合
                 TaskAggregate task = taskDomainService.createTask(planId, config);
@@ -109,20 +93,19 @@ public class DeploymentApplicationService {
                 logger.debug("[DeploymentApplicationService] Task 创建并关联成功: {}", task.getTaskId());
             }
 
-            // Step 6: 启动 Plan 执行（委托给 PlanDomainService）
+            // Step 4: 启动 Plan 执行（委托给 PlanDomainService）
             planDomainService.startPlan(planId);
 
-            // Step 7: 返回结果
+            // Step 5: 返回结果
             PlanInfo planInfo = planDomainService.getPlanInfo(planId);
             logger.info("[DeploymentApplicationService] 部署计划创建成功，planId: {}", planId);
 
-            return PlanCreationResult.success(planId, planInfo);
+            return PlanCreationResult.success(planInfo);
 
         } catch (Exception e) {
             logger.error("[DeploymentApplicationService] 创建部署计划失败", e);
             return PlanCreationResult.failure(
-                null,
-                FailureInfo.of(ErrorType.INTERNAL_ERROR, e.getMessage()),
+                FailureInfo.of(ErrorType.SYSTEM_ERROR, e.getMessage()),
                 "创建失败: " + e.getMessage()
             );
         }
@@ -147,7 +130,7 @@ public class DeploymentApplicationService {
             logger.error("[DeploymentApplicationService] 暂停计划失败: {}", planId, e);
             return PlanOperationResult.failure(
                 planIdStr,
-                FailureInfo.of(ErrorType.INTERNAL_ERROR, e.getMessage()),
+                FailureInfo.of(ErrorType.SYSTEM_ERROR, e.getMessage()),
                 "暂停失败"
             );
         }
@@ -170,7 +153,7 @@ public class DeploymentApplicationService {
             logger.error("[DeploymentApplicationService] 恢复计划失败: {}", planId, e);
             return PlanOperationResult.failure(
                 planIdStr,
-                FailureInfo.of(ErrorType.INTERNAL_ERROR, e.getMessage()),
+                FailureInfo.of(ErrorType.SYSTEM_ERROR, e.getMessage()),
                 "恢复失败"
             );
         }
