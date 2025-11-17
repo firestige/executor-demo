@@ -20,7 +20,8 @@ public class TaskStateGuardsTest {
         String taskId = "t1";
         mgr.initializeTask(taskId, TaskStatus.FAILED);
         TaskAggregate agg = new TaskAggregate(taskId, "p1", "tenant");
-        agg.setRetryCount(3); agg.setMaxRetry(3); // 达到上限
+//        agg.setRetryCount(3);
+        agg.setMaxRetry(3); // 达到上限
         TaskRuntimeContext ctx = new TaskRuntimeContext("p1", taskId, "tenant", null);
         mgr.registerTaskAggregate(taskId, agg, ctx, 1);
         mgr.updateState(taskId, TaskStatus.RUNNING); // Guard 应阻止
@@ -33,7 +34,8 @@ public class TaskStateGuardsTest {
         String taskId = "t2";
         mgr.initializeTask(taskId, TaskStatus.FAILED);
         TaskAggregate agg = new TaskAggregate(taskId, "p1", "tenant");
-        agg.setRetryCount(1); agg.setMaxRetry(3);
+//        agg.setRetryCount(1);
+        agg.setMaxRetry(3);
         TaskRuntimeContext ctx = new TaskRuntimeContext("p1", taskId, "tenant", null);
         mgr.registerTaskAggregate(taskId, agg, ctx, 1);
         mgr.updateState(taskId, TaskStatus.RUNNING);
