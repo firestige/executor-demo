@@ -1,9 +1,11 @@
 package xyz.firestige.executor.config;
 
+import jakarta.validation.Validator;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import xyz.firestige.executor.application.DeploymentApplicationService;
+import xyz.firestige.executor.application.validation.BusinessValidator;
 import xyz.firestige.executor.checkpoint.CheckpointService;
 import xyz.firestige.executor.checkpoint.InMemoryCheckpointStore;
 import xyz.firestige.executor.domain.plan.PlanDomainService;
@@ -44,6 +46,12 @@ import xyz.firestige.executor.validation.validator.TenantIdValidator;
 public class ExecutorConfiguration {
 
     // ========== 基础设施 Bean ==========
+
+    @Bean
+    public Validator validator() {
+        ValidatorFactory factory = Validation.buildDefaultValidatorFactory();
+        return factory.getValidator();
+    }
 
     @Bean
     public TaskStateManager taskStateManager(ApplicationEventPublisher eventPublisher) {
@@ -147,14 +155,14 @@ public class ExecutorConfiguration {
     public DeploymentApplicationService deploymentApplicationService(
             PlanDomainService planDomainService,
             TaskDomainService taskDomainService,
-            xyz.firestige.executor.application.validation.BusinessValidator businessValidator,
-            HealthCheckClient healthCheckClient) {
+            HealthCheckClient healthCheckClient,
+            BusinessValidator businessValidator) {
         return new DeploymentApplicationService(
                 planDomainService,
                 taskDomainService,
-                businessValidator,
                 new DefaultStageFactory(),
-                healthCheckClient
+                healthCheckClient,
+                businessValidator
         );
     }
 
@@ -163,7 +171,7 @@ public class ExecutorConfiguration {
     @Bean
     public DeploymentTaskFacade deploymentTaskFacade(
             DeploymentApplicationService deploymentApplicationService,
-            jakarta.validation.Validator validator) {  // Jakarta Validator
+            Validator validator) {  // Jakarta Validator
         return new DeploymentTaskFacade(deploymentApplicationService, validator);
     }
 }

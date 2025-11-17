@@ -3,6 +3,7 @@ package xyz.firestige.executor.application;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import xyz.firestige.executor.application.dto.TenantConfig;
+import xyz.firestige.executor.application.validation.BusinessValidator;
 import xyz.firestige.executor.domain.plan.*;
 import xyz.firestige.executor.domain.stage.StageFactory;
 import xyz.firestige.executor.domain.task.TaskAggregate;
@@ -12,6 +13,7 @@ import xyz.firestige.executor.exception.ErrorType;
 import xyz.firestige.executor.exception.FailureInfo;
 import xyz.firestige.executor.facade.TaskStatusInfo;
 import xyz.firestige.executor.service.health.HealthCheckClient;
+import xyz.firestige.executor.validation.ValidationSummary;
 
 import java.util.List;
 
@@ -42,16 +44,19 @@ public class DeploymentApplicationService {
     // 依赖其他基础设施服务用于 Stage 构建
     private final StageFactory stageFactory;
     private final HealthCheckClient healthCheckClient;
+    private final BusinessValidator businessValidator;
 
     public DeploymentApplicationService(
             PlanDomainService planDomainService,
             TaskDomainService taskDomainService,
             StageFactory stageFactory,
-            HealthCheckClient healthCheckClient) {
+            HealthCheckClient healthCheckClient,
+            BusinessValidator businessValidator) {
         this.planDomainService = planDomainService;
         this.taskDomainService = taskDomainService;
         this.stageFactory = stageFactory;
         this.healthCheckClient = healthCheckClient;
+        this.businessValidator = businessValidator;
     }
 
     /**

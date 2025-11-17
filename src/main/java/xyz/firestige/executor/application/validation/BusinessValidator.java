@@ -47,27 +47,42 @@ public class BusinessValidator {
     public ValidationSummary validate(List<TenantConfig> configs) {
         logger.debug("[BusinessValidator] 开始业务规则校验，配置数量: {}", configs.size());
 
-        List<ValidationError> errors = new ArrayList<>();
+        ValidationSummary summary = new ValidationSummary();
+        summary.setTotalConfigs(configs.size());
+
+        // 收集所有错误
+        List<ValidationError> allErrors = new ArrayList<>();
 
         // 1. 检查租户ID重复
-        errors.addAll(checkDuplicateTenantIds(configs));
+        allErrors.addAll(checkDuplicateTenantIds(configs));
 
         // 2. 检查租户是否存在（需要访问数据库）
         // TODO: 如果需要检查租户是否存在，可以在这里实现
-        // errors.addAll(checkTenantsExist(configs));
+        // allErrors.addAll(checkTenantsExist(configs));
 
-        // 3. 检查业务规则
+        // 3. 检查每个配置的业务规则
         for (int i = 0; i < configs.size(); i++) {
             TenantConfig config = configs.get(i);
-            errors.addAll(validateSingleConfig(config, i));
+            List<ValidationError> configErrors = validateSingleConfig(config, i);
+            allErrors.addAll(configErrors);
         }
 
-        int validCount = configs.size() - errors.size();
-        int invalidCount = errors.size();
+        // 构建 ValidationSummary
+        // 注意：ValidationSummary 设计为处理 TenantDeployConfig，
+        // 我们这里处理 TenantConfig，所以需要特殊处理
+        if (!allErrors.isEmpty()) {
+            // 有错误：创建一个假的 TenantDeployConfig 来记录错误
+            // 这是一个权宜之计，理想情况下应该重构 ValidationSummary
+            summary.addInvalidConfig(null, allErrors);
+            logger.warn("[BusinessValidator] 业务规则校验失败，发现 {} 个错误", allErrors.size());
+            for (ValidationError error : allErrors) {
+                logger.warn("[BusinessValidator] 校验错误: {} = {}", error.getField(), error.getMessage());
+            }
+        } else {
+            logger.debug("[BusinessValidator] 业务规则校验通过，所有配置有效");
+        }
 
-        logger.debug("[BusinessValidator] 业务规则校验完成，有效: {}, 无效: {}", validCount, invalidCount);
-
-        return new ValidationSummary(errors, validCount, invalidCount);
+        return summary;
     }
 
     /**
