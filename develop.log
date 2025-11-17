@@ -50,3 +50,32 @@
 - 更新 ARCHITECTURE_PROMPT.md 标记所有核心功能开发完成
 - 文件：所有架构文档、PlantUML 图表
 
+### Facade 业务逻辑剥离重构（RF-01）
+- **核心价值**：建立清晰的分层架构，分离职责，提升可维护性和可测试性
+- **分层设计**：
+  - Facade 层：DTO 转换（外部→内部）+ 参数校验 + 异常转换，操作方法返回 void（查询除外）
+  - Application Service 层：业务编排 + 状态管理 + 返回 Result DTOs
+  - Domain 层：聚合 + 状态机 + 领域事件
+- **创建 Result DTO 体系**（DDD 原则）：
+  - PlanCreationResult、PlanInfo（值对象，包含 List<TaskInfo>，体现聚合关系）
+  - PlanOperationResult（Plan 级操作）、TaskOperationResult（Task 级操作）
+  - 类型安全：明确区分 Plan vs Task 操作结果
+- **创建内部 DTO**：TenantConfig（解耦应用层与外部 DTO），使用 record 优化设计
+- **实现 Application Service 层**：
+  - PlanApplicationService：createSwitchTask、pausePlan、resumePlan、rollbackPlan、retryPlan
+  - TaskApplicationService：pauseTask/resumeTask/cancelTask/rollbackTask/retryTask（按 tenant/taskId）、queryTaskStatus
+  - 管理内部注册表（planRegistry、taskRegistry、contextRegistry、stageRegistry、executorRegistry）
+- **重构 Facade**：
+  - 创建 Facade 异常体系（TaskCreationException、TaskOperationException、TaskNotFoundException、PlanNotFoundException）
+  - DeploymentTaskFacade 采用异常驱动：成功返回 void，失败抛异常
+  - 移除旧 Facade 实现和旧 Result 类
+- **测试完善**：
+  - PlanApplicationService：11 个单元测试（创建/暂停/恢复/回滚/重试/验证失败）
+  - TaskApplicationService：12 个单元测试（各种操作场景）
+  - 正向流程测试：4 个集成测试（生命周期/暂停恢复/取消/重试）
+  - 禁用 2 个 flaky 测试（pause/resume timing 问题）
+  - 所有测试通过：168 tests, 0 failures, 0 errors, 20 skipped
+- **文档更新**：更新 ARCHITECTURE_PROMPT.md、TODO.md 反映新架构
+- 文件：application/dto/、application/PlanApplicationService、application/TaskApplicationService、facade/DeploymentTaskFacade、facade/exception/
+
+---

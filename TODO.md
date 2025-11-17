@@ -28,14 +28,20 @@
 
 ### 2.1. 架构重构（Phase 17）
 
-#### RF-01: Facade 业务逻辑剥离 — TODO
+#### RF-01: Facade 业务逻辑剥离 — ✅ DONE (2025-11-17)
 - **问题**：DeploymentTaskFacadeImpl.createSwitchTask 方法包含大量业务逻辑
 - **目标**：Facade 作为防腐层，仅负责数据结构转换和协调调用
 - **方案**：
   - 提取业务逻辑到专门的应用服务层（Application Service）
   - 引入 PlanApplicationService / TaskApplicationService
-  - Facade 仅负责：DTO 转换 + 调用应用服务 + 结果封装
-- **优先级**：高
+  - Facade 仅负责：DTO 转换 + 调用应用服务 + 异常转换
+- **完成情况**：
+  - ✅ 创建 Result DTO 体系（PlanCreationResult, PlanInfo, TaskInfo, PlanOperationResult, TaskOperationResult）
+  - ✅ 创建内部 DTO (TenantConfig) 解耦应用层
+  - ✅ 实现 PlanApplicationService 和 TaskApplicationService
+  - ✅ 重构 DeploymentTaskFacade 为异常驱动模式
+  - ✅ 所有测试通过：168 tests, 0 failures, 0 errors, 20 skipped
+- **优先级**：高 → 已完成
 
 #### RF-02: TaskWorkerFactory 参数简化 — TODO
 - **问题**：DefaultTaskWorkerFactory.create() 方法参数过多（8+ 个参数）
@@ -71,7 +77,7 @@
 - **优先级**：中高
 
 ### 2.2. 测试增强
-- **T-01**: Facade 业务逻辑剥离后的单测更新 — TODO（依赖 RF-01）
+- **T-01**: Facade 业务逻辑剥离后的单测更新 — ✅ DONE (RF-01 完成时一并完成)
 - **T-02**: TaskWorkerFactory 重构后的单测更新 — TODO（依赖 RF-02）
 - **T-04**: 测试基础设施搭建 — TODO（RF-04 子任务）
 - **T-05**: 核心场景集成测试实现 — TODO（RF-04 子任务）
@@ -79,8 +85,8 @@
 - **T-07**: Checkpoint 持久化集成测试 — TODO（RF-04 子任务）
 
 ### 2.3. 文档更新
-- **D-01**: 更新 ARCHITECTURE_PROMPT.md 反映重构后的架构 — TODO（依赖 RF-01/02）
-- **D-02**: 更新类图和组件图 — TODO（依赖 RF-01/02）
+- **D-01**: 更新 ARCHITECTURE_PROMPT.md 反映重构后的架构 — ✅ DONE (RF-01 完成)
+- **D-02**: 更新类图和组件图 — TODO（依赖 RF-01/02 - 可选）
 
 ### 2.4. Stage 策略模式（Phase 18）
 

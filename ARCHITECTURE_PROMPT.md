@@ -6,8 +6,15 @@ Updated: 2025-11-17
 Multi-tenant blue/green (or weighted) configuration switch executor. A Plan groups tenant-specific Tasks; each Task runs a sequential list of Stages (each composed of ordered Steps) to push new config, broadcast change events, and verify health. Supports max concurrency, FIFO ordering when needed, pause/resume, manual rollback, manual retry, and heartbeat progress events.
 
 ## Current Architecture Snapshot
-- Legacy removed: ExecutionUnit, TaskOrchestrator, TenantTaskExecutor, ServiceNotificationStage.
+- **Layered Architecture (RF-01 Complete)**:
+  - **Facade Layer**: DeploymentTaskFacade - DTO conversion (external→internal), parameter validation, exception translation
+  - **Application Service Layer**: PlanApplicationService, TaskApplicationService - business orchestration, state management, returns Result DTOs
+  - **Domain Layer**: Aggregates (PlanAggregate, TaskAggregate), State Machines, Domain Events
+  - **Infrastructure Layer**: Repositories, External Services
+- Legacy removed: ExecutionUnit, TaskOrchestrator, TenantTaskExecutor, ServiceNotificationStage, old Facade implementation.
 - Core components: PlanAggregate, TaskAggregate, CompositeServiceStage, StageStep, ConfigUpdateStep, BroadcastStep, HealthCheckStep, TaskExecutor, TaskStateMachine, TaskStateManager, PlanStateMachine, PlanOrchestrator, TaskScheduler, CheckpointService (InMemory), PreviousConfigRollbackStrategy (placeholder logic).
+- **Result DTOs (DDD-compliant)**: PlanCreationResult, PlanInfo, TaskInfo, PlanOperationResult, TaskOperationResult - clear aggregate boundaries, type safety
+- **Internal DTO**: TenantConfig - decouples application layer from external DTO changes
 
 ## Domain Model
 - Plan: Aggregates N tenant Tasks; enforces maxConcurrency and tenant conflict (no concurrent Task for same tenant); supports PAUSED state for plan-level pause/resume.
@@ -69,10 +76,15 @@ Multi-tenant blue/green (or weighted) configuration switch executor. A Plan grou
 - Phase 14: Observability metrics + MDC stability tests - DONE
 - Phase 15: Performance / concurrency stress tests, lock release safeguards - DONE
 - Phase 16: Final documentation & migration guide, 4+1 architecture views - DONE (2025-11-17)
+- **RF-01: Facade Business Logic Extraction** - DONE (2025-11-17)
+  - Created Result DTOs with DDD principles (PlanCreationResult, PlanInfo, TaskInfo, etc.)
+  - Created internal DTO (TenantConfig) for application layer
+  - Extracted business logic to Application Service layer (PlanApplicationService, TaskApplicationService)
+  - Refactored Facade to use exceptions instead of return values (except queries)
+  - All tests passing: 168 tests, 0 failures, 0 errors, 20 skipped
 
 ## Upcoming Phases (High-Level)
 - Phase 17: Architecture refactoring & integration tests
-  - RF-01: Extract business logic from Facade to Application Service layer
   - RF-02: Simplify TaskWorkerFactory parameters (introduce parameter object)
   - RF-04: Comprehensive integration test suite (Testcontainers, 7 core scenarios)
 - Phase 18: Stage strategy pattern (low priority)
