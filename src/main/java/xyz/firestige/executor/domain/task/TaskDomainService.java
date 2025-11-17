@@ -77,7 +77,8 @@ public class TaskDomainService {
 
         // 创建 Task 聚合
         TaskAggregate task = new TaskAggregate(taskId, config.getTenantId(), planId);
-        task.setStatus(TaskStatus.PENDING);
+        // ✅ 调用聚合的业务方法
+        task.markAsPending();
 
         // 初始化状态
         stateManager.initializeTask(taskId, TaskStatus.PENDING);
@@ -120,11 +121,13 @@ public class TaskDomainService {
 
     /**
      * 根据租户 ID 暂停任务
+     * DDD 重构：调用聚合的业务方法
+     *
      * @param tenantId 租户 ID
      * @return TaskOperationResult
      */
     public TaskOperationResult pauseTaskByTenant(String tenantId) {
-        logger.info("[TaskApplicationService] 暂停租户任务: {}", tenantId);
+        logger.info("[TaskDomainService] 暂停租户任务: {}", tenantId);
 
         TaskAggregate target = findTaskByTenantId(tenantId);
         if (target == null) {
@@ -135,21 +138,37 @@ public class TaskDomainService {
             );
         }
 
-        TaskRuntimeContext ctx = taskRepository.getContext(target.getTaskId());
-        if (ctx != null) {
-            ctx.requestPause();
-        }
+        try {
+            // ✅ 调用聚合的业务方法（不变式保护在聚合内部）
+            target.requestPause();
+            taskRepository.save(target);
 
-        logger.info("[TaskDomainService] 租户任务暂停请求已登记: {}", tenantId);
-        return TaskOperationResult.success(
-            target.getTaskId(),
-            TaskStatus.PAUSED,
-            "租户任务暂停请求已登记，下一 Stage 生效"
-        );
+            // 更新 RuntimeContext（用于执行器检查）
+            TaskRuntimeContext ctx = taskRepository.getContext(target.getTaskId());
+            if (ctx != null) {
+                ctx.requestPause();
+            }
+
+            logger.info("[TaskDomainService] 租户任务暂停请求已登记: {}", tenantId);
+            return TaskOperationResult.success(
+                target.getTaskId(),
+                target.getStatus(),
+                "租户任务暂停请求已登记，下一 Stage 生效"
+            );
+        } catch (IllegalStateException e) {
+            logger.warn("[TaskDomainService] 暂停请求失败: {}", e.getMessage());
+            return TaskOperationResult.failure(
+                target.getTaskId(),
+                FailureInfo.of(ErrorType.VALIDATION_ERROR, e.getMessage()),
+                "暂停失败: " + e.getMessage()
+            );
+        }
     }
 
     /**
      * 根据租户 ID 恢复任务
+     * DDD 重构：调用聚合的业务方法
+     *
      * @param tenantId 租户 ID
      * @return TaskOperationResult
      */
@@ -165,17 +184,31 @@ public class TaskDomainService {
             );
         }
 
-        TaskRuntimeContext ctx = taskRepository.getContext(target.getTaskId());
-        if (ctx != null) {
-            ctx.clearPause();
-        }
+        try {
+            // ✅ 调用聚合的业务方法（不变式保护在聚合内部）
+            target.resume();
+            taskRepository.save(target);
 
-        logger.info("[TaskDomainService] 租户任务恢复请求已登记: {}", tenantId);
-        return TaskOperationResult.success(
-            target.getTaskId(),
-            TaskStatus.RUNNING,
-            "租户任务恢复请求已登记"
-        );
+            // 更新 RuntimeContext
+            TaskRuntimeContext ctx = taskRepository.getContext(target.getTaskId());
+            if (ctx != null) {
+                ctx.clearPause();
+            }
+
+            logger.info("[TaskDomainService] 租户任务已恢复: {}", tenantId);
+            return TaskOperationResult.success(
+                target.getTaskId(),
+                target.getStatus(),
+                "租户任务已恢复"
+            );
+        } catch (IllegalStateException e) {
+            logger.warn("[TaskDomainService] 恢复失败: {}", e.getMessage());
+            return TaskOperationResult.failure(
+                target.getTaskId(),
+                FailureInfo.of(ErrorType.VALIDATION_ERROR, e.getMessage()),
+                "恢复失败: " + e.getMessage()
+            );
+        }
     }
 
     /**

@@ -58,22 +58,24 @@ public class PlanDomainService {
 
     /**
      * 创建 Plan 聚合（只创建 Plan，不创建 Task）
+     * DDD 重构：简化为查询和持久化
      *
      * @param planId Plan ID
-     * @param tenantCount 租户数量
+     * @param tenantCount 租户数量（暂未使用，保留接口兼容）
      * @return Plan 聚合
      */
     public PlanAggregate createPlan(String planId, int tenantCount) {
         logger.info("[PlanDomainService] 创建 Plan: {}, 租户数量: {}", planId, tenantCount);
 
-        // 创建 Plan 聚合（Task 由 TaskDomainService 创建）
+        // ✅ 创建 Plan 聚合（业务逻辑在构造函数中）
         PlanAggregate plan = new PlanAggregate(planId);
-        plan.setStatus(PlanStatus.READY);
         plan.setMaxConcurrency(executorProperties.getMaxConcurrency());
-        // tasks 列表在构造函数中已初始化为空，由应用层添加 Task
+
+        // ✅ 标记为 READY（业务逻辑稍后在应用层调用）
+        // 注意：此时 tasks 为空，需要先添加 Task 再 markAsReady()
 
         // 初始化 Plan 状态机
-        PlanStateMachine stateMachine = new PlanStateMachine(PlanStatus.READY);
+        PlanStateMachine stateMachine = new PlanStateMachine(PlanStatus.CREATED);
         planRepository.saveStateMachine(planId, stateMachine);
 
         // 初始化状态
@@ -88,6 +90,7 @@ public class PlanDomainService {
 
     /**
      * 添加 Task 到 Plan（跨聚合关联，由应用层调用）
+     * DDD 重构：调用聚合的业务方法
      *
      * @param planId Plan ID
      * @param taskAggregate Task 聚合（由 TaskDomainService 创建）
@@ -100,15 +103,43 @@ public class PlanDomainService {
             throw new IllegalArgumentException("Plan 不存在: " + planId);
         }
 
-        // 添加 Task 到 Plan
-        plan.getTasks().add(taskAggregate);
+        // ✅ 调用聚合的业务方法（不变式保护在聚合内部）
+        plan.addTask(taskAggregate);
         planRepository.save(plan);
 
         logger.debug("[PlanDomainService] Task 添加成功: {} -> {}", planId, taskAggregate.getTaskId());
     }
 
     /**
-     * 启动 Plan 执行（需要应用层配合提供 Task 执行逻辑）
+     * 标记 Plan 为 READY
+     * DDD 重构：新增方法，调用聚合业务方法
+     *
+     * @param planId Plan ID
+     */
+    public void markPlanAsReady(String planId) {
+        logger.info("[PlanDomainService] 标记 Plan 为 READY: {}", planId);
+
+        PlanAggregate plan = planRepository.get(planId);
+        if (plan == null) {
+            throw new IllegalArgumentException("Plan 不存在: " + planId);
+        }
+
+        // ✅ 调用聚合的业务方法
+        plan.markAsReady();
+
+        // 更新状态机
+        PlanStateMachine sm = planRepository.getStateMachine(planId);
+        if (sm != null) {
+            sm.transitionTo(PlanStatus.READY, new PlanContext(planId));
+        }
+
+        planRepository.save(plan);
+        logger.info("[PlanDomainService] Plan 已标记为 READY: {}", planId);
+    }
+
+    /**
+     * 启动 Plan 执行
+     * DDD 重构：调用聚合的业务方法
      *
      * @param planId Plan ID
      */
@@ -120,28 +151,27 @@ public class PlanDomainService {
             throw new IllegalArgumentException("Plan 不存在: " + planId);
         }
 
-        if (plan.getTasks() == null || plan.getTasks().isEmpty()) {
-            throw new IllegalStateException("Plan 没有关联的 Task: " + planId);
-        }
+        // ✅ 调用聚合的业务方法（不变式保护在聚合内部）
+        plan.start();
 
-        // 更新 Plan 状态
+        // 更新状态机
         PlanStateMachine sm = planRepository.getStateMachine(planId);
         if (sm != null) {
             sm.transitionTo(PlanStatus.RUNNING, new PlanContext(planId));
         }
-        plan.setStatus(PlanStatus.RUNNING);
-        plan.setStartedAt(LocalDateTime.now());
+
         planRepository.save(plan);
 
-        // 更新状态管理器
+        // 更新状态管理器并发布事件
         stateManager.updateState(planId, TaskStatus.RUNNING);
-        stateManager.publishTaskStartedEvent(planId, plan.getTasks().size());
+        stateManager.publishTaskStartedEvent(planId, plan.getTaskCount());
 
         logger.info("[PlanDomainService] Plan 已启动: {}", planId);
     }
 
     /**
-     * 暂停 Plan 执行（纯领域逻辑）
+     * 暂停 Plan 执行
+     * DDD 重构：调用聚合的业务方法
      *
      * @param planId Plan ID
      */
@@ -153,21 +183,23 @@ public class PlanDomainService {
             throw new IllegalArgumentException("Plan 不存在: " + planId);
         }
 
+        // ✅ 调用聚合的业务方法（不变式保护在聚合内部）
+        plan.pause();
+
         // 更新状态机
         PlanStateMachine sm = planRepository.getStateMachine(planId);
         if (sm != null) {
             sm.transitionTo(PlanStatus.PAUSED, new PlanContext(planId));
         }
 
-        // 更新聚合状态
-        plan.setStatus(PlanStatus.PAUSED);
         planRepository.save(plan);
 
         logger.info("[PlanDomainService] Plan 已暂停: {}", planId);
     }
 
     /**
-     * 恢复 Plan 执行（纯领域逻辑）
+     * 恢复 Plan 执行
+     * DDD 重构：调用聚合的业务方法
      *
      * @param planId Plan ID
      */
@@ -179,14 +211,15 @@ public class PlanDomainService {
             throw new IllegalArgumentException("Plan 不存在: " + planId);
         }
 
+        // ✅ 调用聚合的业务方法（不变式保护在聚合内部）
+        plan.resume();
+
         // 更新状态机
         PlanStateMachine sm = planRepository.getStateMachine(planId);
         if (sm != null) {
             sm.transitionTo(PlanStatus.RUNNING, new PlanContext(planId));
         }
 
-        // 更新聚合状态
-        plan.setStatus(PlanStatus.RUNNING);
         planRepository.save(plan);
 
         logger.info("[PlanDomainService] Plan 已恢复: {}", planId);
