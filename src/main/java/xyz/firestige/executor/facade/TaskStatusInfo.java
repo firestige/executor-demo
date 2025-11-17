@@ -1,98 +1,49 @@
 package xyz.firestige.executor.facade;
 
-import xyz.firestige.executor.exception.FailureInfo;
-import xyz.firestige.executor.execution.checkpoint.Checkpoint;
 import xyz.firestige.executor.state.TaskStatus;
 
-import java.util.ArrayList;
-import java.util.List;
-
 /**
- * 任务状态查询结果
+ * 任务状态信息（Facade 层 DTO）
+ * 用于查询任务状态的返回值
  */
 public class TaskStatusInfo {
 
-    /**
-     * 任务 ID
-     */
     private String taskId;
-
-    /**
-     * 任务状态
-     */
     private TaskStatus status;
-
-    /**
-     * 进度（0-100）
-     */
-    private double progress;
-
-    /**
-     * 当前执行的 Stage
-     */
-    private String currentStage;
-
-    /**
-     * 已完成的 Stage 列表
-     */
-    private List<String> completedStages;
-
-    /**
-     * 失败信息（如果失败）
-     */
-    private FailureInfo failureInfo;
-
-    /**
-     * 检查点信息（如果有）
-     */
-    private Checkpoint checkpoint;
-
-    /**
-     * 消息
-     */
     private String message;
+    private Integer currentStage;
+    private Integer totalStages;
+    private Long startedAt;
+    private Long endedAt;
 
     public TaskStatusInfo() {
-        this.completedStages = new ArrayList<>();
     }
 
     public TaskStatusInfo(String taskId, TaskStatus status) {
         this.taskId = taskId;
         this.status = status;
-        this.completedStages = new ArrayList<>();
     }
 
     /**
-     * 添加已完成的 Stage
+     * 创建失败的状态信息（任务不存在）
      */
-    public void addCompletedStage(String stageName) {
-        this.completedStages.add(stageName);
-    }
-
-    /**
-     * 计算进度
-     */
-    public void calculateProgress(int totalStages) {
-        if (totalStages > 0) {
-            this.progress = (double) completedStages.size() / totalStages * 100;
-        }
-    }
-
-    // 静态工厂方法
-
     public static TaskStatusInfo failure(String message) {
         TaskStatusInfo info = new TaskStatusInfo();
+        info.setStatus(null); // status 为 null 表示任务不存在
         info.setMessage(message);
         return info;
     }
 
+    /**
+     * 创建成功的状态信息
+     */
     public static TaskStatusInfo success(String taskId, TaskStatus status, String message) {
-        TaskStatusInfo info = new TaskStatusInfo(taskId, status);
+        TaskStatusInfo info = new TaskStatusInfo();
+        info.setTaskId(taskId);
+        info.setStatus(status);
         info.setMessage(message);
         return info;
     }
-
-    // Getters and Setters
 
     public String getTaskId() {
         return taskId;
@@ -110,46 +61,6 @@ public class TaskStatusInfo {
         this.status = status;
     }
 
-    public double getProgress() {
-        return progress;
-    }
-
-    public void setProgress(double progress) {
-        this.progress = progress;
-    }
-
-    public String getCurrentStage() {
-        return currentStage;
-    }
-
-    public void setCurrentStage(String currentStage) {
-        this.currentStage = currentStage;
-    }
-
-    public List<String> getCompletedStages() {
-        return completedStages;
-    }
-
-    public void setCompletedStages(List<String> completedStages) {
-        this.completedStages = completedStages;
-    }
-
-    public FailureInfo getFailureInfo() {
-        return failureInfo;
-    }
-
-    public void setFailureInfo(FailureInfo failureInfo) {
-        this.failureInfo = failureInfo;
-    }
-
-    public Checkpoint getCheckpoint() {
-        return checkpoint;
-    }
-
-    public void setCheckpoint(Checkpoint checkpoint) {
-        this.checkpoint = checkpoint;
-    }
-
     public String getMessage() {
         return message;
     }
@@ -158,14 +69,35 @@ public class TaskStatusInfo {
         this.message = message;
     }
 
-    @Override
-    public String toString() {
-        return "TaskStatusInfo{" +
-                "taskId='" + taskId + '\'' +
-                ", status=" + status +
-                ", progress=" + progress +
-                ", currentStage='" + currentStage + '\'' +
-                ", completedStagesCount=" + completedStages.size() +
-                '}';
+    public Integer getCurrentStage() {
+        return currentStage;
+    }
+
+    public void setCurrentStage(Integer currentStage) {
+        this.currentStage = currentStage;
+    }
+
+    public Integer getTotalStages() {
+        return totalStages;
+    }
+
+    public void setTotalStages(Integer totalStages) {
+        this.totalStages = totalStages;
+    }
+
+    public Long getStartedAt() {
+        return startedAt;
+    }
+
+    public void setStartedAt(Long startedAt) {
+        this.startedAt = startedAt;
+    }
+
+    public Long getEndedAt() {
+        return endedAt;
+    }
+
+    public void setEndedAt(Long endedAt) {
+        this.endedAt = endedAt;
     }
 }
