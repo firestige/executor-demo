@@ -1,18 +1,19 @@
 package xyz.firestige.executor.domain.plan;
 
-import xyz.firestige.executor.domain.task.TaskAggregate;
-
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 
 /**
- * 计划聚合（Plan）- DDD 重构：充血模型
+ * 计划聚合（Plan）- DDD 重构：充血模型 + 修正聚合边界
  *
  * 职责：
  * 1. 管理 Plan 生命周期和状态转换
- * 2. 管理 Task 列表
+ * 2. 管理 Task ID 列表（聚合间通过 ID 引用）
  * 3. 保护业务不变式
+ *
+ * DDD 原则：聚合间通过 ID 引用，不直接持有其他聚合对象
  */
 public class PlanAggregate {
 
@@ -21,7 +22,8 @@ public class PlanAggregate {
     private PlanStatus status;
     private Integer maxConcurrency; // 可为空，表示使用全局配置
 
-    private final List<TaskAggregate> tasks = new ArrayList<>();
+    // ✅ DDD 重构：改为持有 Task ID 列表，而非 Task 对象
+    private final List<String> taskIds = new ArrayList<>();
 
     private LocalDateTime createdAt;
     private LocalDateTime startedAt;
@@ -41,12 +43,14 @@ public class PlanAggregate {
     // ============================================
 
     /**
-     * 添加任务到 Plan
+     * 添加任务到 Plan（RF-07 重构：只持有 ID）
      * 不变式：Plan 已启动后不能添加任务，不能添加重复任务
+     *
+     * @param taskId Task ID
      */
-    public void addTask(TaskAggregate task) {
-        if (task == null) {
-            throw new IllegalArgumentException("Task 不能为 null");
+    public void addTask(String taskId) {
+        if (taskId == null || taskId.isBlank()) {
+            throw new IllegalArgumentException("Task ID 不能为空");
         }
 
         if (status != PlanStatus.CREATED && status != PlanStatus.READY) {
@@ -55,16 +59,15 @@ public class PlanAggregate {
             );
         }
 
-        // 检查是否已存在
-        boolean exists = tasks.stream()
-            .anyMatch(t -> t.getTaskId().equals(task.getTaskId()));
-        if (exists) {
+        // ✅ 检查是否已存在（通过 ID）
+        if (taskIds.contains(taskId)) {
             throw new IllegalArgumentException(
-                String.format("任务已存在: %s, planId: %s", task.getTaskId(), planId)
+                String.format("任务已存在: %s, planId: %s", taskId, planId)
             );
         }
 
-        this.tasks.add(task);
+        // ✅ 只添加 ID
+        this.taskIds.add(taskId);
     }
 
     /**
@@ -78,7 +81,7 @@ public class PlanAggregate {
             );
         }
 
-        if (tasks.isEmpty()) {
+        if (taskIds.isEmpty()) {
             throw new IllegalStateException(
                 String.format("Plan 没有关联任务，无法标记为 READY，planId: %s", planId)
             );
@@ -98,7 +101,7 @@ public class PlanAggregate {
             );
         }
 
-        if (tasks.isEmpty()) {
+        if (taskIds.isEmpty()) {
             throw new IllegalStateException(
                 String.format("Plan 没有关联任务，无法启动，planId: %s", planId)
             );
@@ -169,14 +172,14 @@ public class PlanAggregate {
      * 获取任务数量
      */
     public int getTaskCount() {
-        return tasks.size();
+        return taskIds.size();
     }
 
     /**
      * 判断是否可以启动
      */
     public boolean canStart() {
-        return status == PlanStatus.READY && !tasks.isEmpty();
+        return status == PlanStatus.READY && !taskIds.isEmpty();
     }
 
     /**
@@ -237,8 +240,22 @@ public class PlanAggregate {
         this.maxConcurrency = maxConcurrency;
     }
 
-    public List<TaskAggregate> getTasks() {
-        return tasks;
+    /**
+     * 获取任务 ID 列表（RF-07 重构：返回不可变列表）
+     *
+     * @return 任务 ID 列表（不可变）
+     */
+    public List<String> getTaskIds() {
+        return Collections.unmodifiableList(taskIds);
+    }
+
+    /**
+     * 获取任务列表（向后兼容，逐步淘汰）
+     * @deprecated 请使用 getTaskIds()，然后通过 Repository 查询 Task 对象
+     */
+    @Deprecated
+    public List<String> getTasks() {
+        return getTaskIds();
     }
 
     public LocalDateTime getCreatedAt() {

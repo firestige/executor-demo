@@ -34,18 +34,34 @@ public class PlanInfo {
     }
 
     /**
-     * 静态工厂方法：从领域模型构造
+     * 静态工厂方法：从领域模型构造（RF-07 重构：需要传入 taskInfos）
+     * 因为 PlanAggregate 现在只持有 taskIds，需要应用层组装完整信息
+     *
+     * @param plan Plan 聚合
+     * @param taskInfos Task 信息列表（由应用层查询并组装）
+     * @return PlanInfo
      */
-    public static PlanInfo from(PlanAggregate plan) {
-        List<TaskInfo> taskInfos = plan.getTasks().stream()
-            .map(TaskInfo::from)
-            .collect(Collectors.toList());
-
+    public static PlanInfo from(PlanAggregate plan, List<TaskInfo> taskInfos) {
         return new PlanInfo(
             plan.getPlanId(),
             plan.getMaxConcurrency(),
             plan.getStatus(),
-            taskInfos,
+            taskInfos != null ? taskInfos : Collections.emptyList(),
+            plan.getCreatedAt()
+        );
+    }
+
+    /**
+     * 静态工厂方法：不包含 Task 信息（向后兼容）
+     * @deprecated 请使用 from(PlanAggregate, List<TaskInfo>)
+     */
+    @Deprecated
+    public static PlanInfo from(PlanAggregate plan) {
+        return new PlanInfo(
+            plan.getPlanId(),
+            plan.getMaxConcurrency(),
+            plan.getStatus(),
+            Collections.emptyList(),  // 空列表
             plan.getCreatedAt()
         );
     }

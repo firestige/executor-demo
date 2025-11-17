@@ -55,7 +55,8 @@ public class PlanFactory {
             );
             t.setPrevConfigSnapshot(snapshot);
             t.setLastKnownGoodVersion(snapshot.getDeployUnitVersion());
-            plan.addTask(t);
+            // ✅ RF-07 重构：传递 taskId
+            plan.addTask(t.getTaskId());
         }
         return plan;
     }
