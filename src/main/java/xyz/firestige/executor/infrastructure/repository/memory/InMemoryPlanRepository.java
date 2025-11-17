@@ -2,24 +2,24 @@ package xyz.firestige.executor.infrastructure.repository.memory;
 
 import xyz.firestige.executor.domain.plan.PlanAggregate;
 import xyz.firestige.executor.domain.plan.PlanRepository;
-import xyz.firestige.executor.domain.plan.PlanStatus;
 import xyz.firestige.executor.domain.state.PlanStateMachine;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Plan Repository 内存实现
+ * Plan Repository 内存实现（DDD 重构：简化方案）
  *
- * 使用 ConcurrentHashMap 存储 Plan
+ * 使用 ConcurrentHashMap 存储 Plan 聚合根
  *
  * 注意：
+ * - 只管理聚合根
  * - 生产环境应替换为 Redis 或数据库实现
- * - 当前实现不支持持久化和集群
  *
- * @since DDD 重构
+ * @since DDD 重构 Phase 18 - RF-09 简化方案
  */
 public class InMemoryPlanRepository implements PlanRepository {
 
@@ -35,8 +35,14 @@ public class InMemoryPlanRepository implements PlanRepository {
     }
 
     @Override
-    public PlanAggregate get(String planId) {
-        return plans.get(planId);
+    public void remove(String planId) {
+        plans.remove(planId);
+        stateMachines.remove(planId);
+    }
+
+    @Override
+    public Optional<PlanAggregate> findById(String planId) {
+        return Optional.ofNullable(plans.get(planId));
     }
 
     @Override
@@ -45,27 +51,13 @@ public class InMemoryPlanRepository implements PlanRepository {
     }
 
     @Override
-    public void remove(String planId) {
-        plans.remove(planId);
-        stateMachines.remove(planId);
-    }
-
-    @Override
-    public void updateStatus(String planId, PlanStatus status) {
-        PlanAggregate plan = plans.get(planId);
-        if (plan != null) {
-            plan.setStatus(status);
-        }
-    }
-
-    @Override
     public void saveStateMachine(String planId, PlanStateMachine stateMachine) {
         stateMachines.put(planId, stateMachine);
     }
 
     @Override
-    public PlanStateMachine getStateMachine(String planId) {
-        return stateMachines.get(planId);
+    public Optional<PlanStateMachine> getStateMachine(String planId) {
+        return Optional.ofNullable(stateMachines.get(planId));
     }
 }
 
