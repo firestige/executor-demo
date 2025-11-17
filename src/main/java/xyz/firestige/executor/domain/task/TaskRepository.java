@@ -5,9 +5,9 @@ import java.util.Optional;
 
 /**
  * Task Repository 接口（DDD 重构：简化方案）
- *
+ * <p>
  * 职责：Task 聚合根的持久化和基本查询
- *
+ * <p>
  * 设计原则：
  * - 只管理聚合根的完整生命周期
  * - 不暴露聚合内部细节（Stages、Context、Executor）
@@ -59,31 +59,5 @@ public interface TaskRepository {
      * @return Task 列表，如果不存在则返回空列表
      */
     List<TaskAggregate> findByPlanId(String planId);
-
-    // ========== 向后兼容方法（逐步淘汰）==========
-
-    /**
-     * 根据 Task ID 获取 Task（向后兼容）
-     *
-     * @param taskId Task ID
-     * @return Task 聚合，如果不存在则返回 null
-     * @deprecated 请使用 findById(String)，返回 Optional
-     */
-    @Deprecated
-    default TaskAggregate get(String taskId) {
-        return findById(taskId).orElse(null);
-    }
-
-    /**
-     * 根据租户 ID 查找 Task（向后兼容）
-     *
-     * @param tenantId 租户 ID
-     * @return Task 聚合，如果不存在则返回 null
-     * @deprecated 请使用 findByTenantId(String)，返回 Optional
-     */
-    @Deprecated
-    default TaskAggregate findByTenantId(String tenantId) {
-        return findByTenantId(tenantId).orElse(null);
-    }
 }
 

@@ -115,7 +115,7 @@ public class TaskExecutor {
             }
             stateManager.updateState(taskId, TaskStatus.RUNNING);
         } else {
-            task.setStatus(TaskStatus.RUNNING);
+            task.start();
         }
 
         List<StageResult> completed = new ArrayList<>();
