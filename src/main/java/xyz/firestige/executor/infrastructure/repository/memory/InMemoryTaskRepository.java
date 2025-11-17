@@ -1,37 +1,29 @@
 package xyz.firestige.executor.infrastructure.repository.memory;
 
-import xyz.firestige.executor.domain.stage.TaskStage;
 import xyz.firestige.executor.domain.task.TaskAggregate;
 import xyz.firestige.executor.domain.task.TaskRepository;
-import xyz.firestige.executor.domain.task.TaskRuntimeContext;
-import xyz.firestige.executor.execution.TaskExecutor;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
 /**
- * Task Repository 内存实现
+ * Task Repository 内存实现（DDD 重构：简化方案）
  *
- * 使用 ConcurrentHashMap 存储 Task 及其运行时状态
+ * 使用 ConcurrentHashMap 存储 Task 聚合根
  *
  * 注意：
+ * - 只管理聚合根，不管理运行时状态
+ * - 运行时状态由 TaskRuntimeRepository 管理
  * - 生产环境应替换为 Redis 或数据库实现
- * - 当前实现不支持持久化和集群
  *
- * @since DDD 重构
+ * @since DDD 重构 Phase 18 - RF-09 简化方案
  */
 public class InMemoryTaskRepository implements TaskRepository {
 
     private final Map<String, TaskAggregate> tasks = new ConcurrentHashMap<>();
-    private final Map<String, List<TaskStage>> stages = new ConcurrentHashMap<>();
-    private final Map<String, TaskRuntimeContext> contexts = new ConcurrentHashMap<>();
-    private final Map<String, TaskExecutor> executors = new ConcurrentHashMap<>();
-
-    // 控制标志
-    private final Map<String, Boolean> pauseFlags = new ConcurrentHashMap<>();
-    private final Map<String, Boolean> cancelFlags = new ConcurrentHashMap<>();
 
     @Override
     public void save(TaskAggregate task) {
@@ -42,16 +34,20 @@ public class InMemoryTaskRepository implements TaskRepository {
     }
 
     @Override
-    public TaskAggregate get(String taskId) {
-        return tasks.get(taskId);
+    public void remove(String taskId) {
+        tasks.remove(taskId);
     }
 
     @Override
-    public TaskAggregate findByTenantId(String tenantId) {
+    public Optional<TaskAggregate> findById(String taskId) {
+        return Optional.ofNullable(tasks.get(taskId));
+    }
+
+    @Override
+    public Optional<TaskAggregate> findByTenantId(String tenantId) {
         return tasks.values().stream()
             .filter(task -> tenantId.equals(task.getTenantId()))
-            .findFirst()
-            .orElse(null);
+            .findFirst();
     }
 
     @Override
@@ -59,71 +55,6 @@ public class InMemoryTaskRepository implements TaskRepository {
         return tasks.values().stream()
             .filter(task -> planId.equals(task.getPlanId()))
             .collect(Collectors.toList());
-    }
-
-    @Override
-    public void remove(String taskId) {
-        tasks.remove(taskId);
-        stages.remove(taskId);
-        contexts.remove(taskId);
-        executors.remove(taskId);
-        pauseFlags.remove(taskId);
-        cancelFlags.remove(taskId);
-    }
-
-    @Override
-    public void saveStages(String taskId, List<TaskStage> stageList) {
-        stages.put(taskId, stageList);
-    }
-
-    @Override
-    public List<TaskStage> getStages(String taskId) {
-        return stages.get(taskId);
-    }
-
-    @Override
-    public void saveContext(String taskId, TaskRuntimeContext context) {
-        contexts.put(taskId, context);
-    }
-
-    @Override
-    public TaskRuntimeContext getContext(String taskId) {
-        return contexts.get(taskId);
-    }
-
-    @Override
-    public void saveExecutor(String taskId, TaskExecutor executor) {
-        executors.put(taskId, executor);
-    }
-
-    @Override
-    public TaskExecutor getExecutor(String taskId) {
-        return executors.get(taskId);
-    }
-
-    @Override
-    public void requestPause(String taskId) {
-        pauseFlags.put(taskId, true);
-    }
-
-    @Override
-    public void clearPause(String taskId) {
-        pauseFlags.remove(taskId);
-    }
-
-    @Override
-    public void requestCancel(String taskId) {
-        cancelFlags.put(taskId, true);
-    }
-
-    @Override
-    public boolean isPauseRequested(String taskId) {
-        return Boolean.TRUE.equals(pauseFlags.get(taskId));
-    }
-
-    @Override
-    public boolean isCancelRequested(String taskId) {
-        return Boolean.TRUE.equals(cancelFlags.get(taskId));
     }
 }
 

@@ -36,8 +36,9 @@ public class TaskDomainService {
 
     private static final Logger logger = LoggerFactory.getLogger(TaskDomainService.class);
 
-    // 核心依赖（DDD 重构后简化）
+    // 核心依赖（DDD 重构后简化 + RF-09 添加 RuntimeRepository）
     private final TaskRepository taskRepository;
+    private final TaskRuntimeRepository taskRuntimeRepository;
     private final TaskStateManager stateManager;
     private final TaskWorkerFactory workerFactory;
     private final ExecutorProperties executorProperties;
@@ -47,6 +48,7 @@ public class TaskDomainService {
 
     public TaskDomainService(
             TaskRepository taskRepository,
+            TaskRuntimeRepository taskRuntimeRepository,
             TaskStateManager stateManager,
             TaskWorkerFactory workerFactory,
             ExecutorProperties executorProperties,
@@ -54,6 +56,7 @@ public class TaskDomainService {
             SpringTaskEventSink eventSink,
             ConflictRegistry conflictRegistry) {
         this.taskRepository = taskRepository;
+        this.taskRuntimeRepository = taskRuntimeRepository;
         this.stateManager = stateManager;
         this.workerFactory = workerFactory;
         this.executorProperties = executorProperties;
@@ -109,7 +112,7 @@ public class TaskDomainService {
         List<TaskStage> stages = stageFactory.buildStages(task, config, executorProperties, healthCheckClient);
 
         // 保存到仓储
-        taskRepository.saveStages(task.getTaskId(), stages);
+        taskRuntimeRepository.saveStages(task.getTaskId(), stages);
 
         // 注册 Stage 名称
         List<String> stageNames = stages.stream().map(TaskStage::getName).toList();
@@ -144,7 +147,7 @@ public class TaskDomainService {
             taskRepository.save(target);
 
             // 更新 RuntimeContext（用于执行器检查）
-            TaskRuntimeContext ctx = taskRepository.getContext(target.getTaskId());
+            TaskRuntimeContext ctx = taskRuntimeRepository.getContext(target.getTaskId());
             if (ctx != null) {
                 ctx.requestPause();
             }
@@ -190,7 +193,7 @@ public class TaskDomainService {
             taskRepository.save(target);
 
             // 更新 RuntimeContext
-            TaskRuntimeContext ctx = taskRepository.getContext(target.getTaskId());
+            TaskRuntimeContext ctx = taskRuntimeRepository.getContext(target.getTaskId());
             if (ctx != null) {
                 ctx.clearPause();
             }
@@ -229,11 +232,11 @@ public class TaskDomainService {
         }
 
         // 获取或创建 Executor
-        TaskExecutor exec = taskRepository.getExecutor(target.getTaskId());
+        TaskExecutor exec = taskRuntimeRepository.getExecutor(target.getTaskId());
         if (exec == null) {
-            List<TaskStage> stages = taskRepository.getStages(target.getTaskId());
+            List<TaskStage> stages = taskRuntimeRepository.getStages(target.getTaskId());
             if (stages == null) stages = List.of();
-            TaskRuntimeContext ctx = taskRepository.getContext(target.getTaskId());
+            TaskRuntimeContext ctx = taskRuntimeRepository.getContext(target.getTaskId());
             // RF-02: 使用 TaskWorkerCreationContext
             exec = workerFactory.create(
                 TaskWorkerCreationContext.builder()
@@ -295,11 +298,11 @@ public class TaskDomainService {
         }
 
         // 获取或创建 Executor
-        TaskExecutor exec = taskRepository.getExecutor(target.getTaskId());
+        TaskExecutor exec = taskRuntimeRepository.getExecutor(target.getTaskId());
         if (exec == null) {
-            List<TaskStage> stages = taskRepository.getStages(target.getTaskId());
+            List<TaskStage> stages = taskRuntimeRepository.getStages(target.getTaskId());
             if (stages == null) stages = List.of();
-            TaskRuntimeContext ctx = taskRepository.getContext(target.getTaskId());
+            TaskRuntimeContext ctx = taskRuntimeRepository.getContext(target.getTaskId());
             // RF-02: 使用 TaskWorkerCreationContext
             exec = workerFactory.create(
                 TaskWorkerCreationContext.builder()
@@ -314,13 +317,13 @@ public class TaskDomainService {
                     .conflictRegistry(conflictRegistry)
                     .build()
             );
-            taskRepository.saveExecutor(target.getTaskId(), exec);
+            taskRuntimeRepository.saveExecutor(target.getTaskId(), exec);
         }
 
         // 补偿进度事件（checkpoint retry）
         if (fromCheckpoint) {
             int completed = target.getCurrentStageIndex();
-            List<TaskStage> stages = taskRepository.getStages(target.getTaskId());
+            List<TaskStage> stages = taskRuntimeRepository.getStages(target.getTaskId());
             int total = (stages != null) ? stages.size() : 0;
             stateManager.publishTaskProgressEvent(target.getTaskId(), null, completed, total);
         }
@@ -351,16 +354,16 @@ public class TaskDomainService {
 
         // 计算进度
         int completed = task.getCurrentStageIndex();
-        List<TaskStage> stages = taskRepository.getStages(executionUnitId);
+        List<TaskStage> stages = taskRuntimeRepository.getStages(executionUnitId);
         int total = (stages != null) ? stages.size() : 0;
         double progress = total == 0 ? 0 : (completed * 100.0 / total);
 
         // 获取当前阶段
-        TaskExecutor exec = taskRepository.getExecutor(executionUnitId);
+        TaskExecutor exec = taskRuntimeRepository.getExecutor(executionUnitId);
         String currentStage = exec != null ? exec.getCurrentStageName() : null;
 
         // 获取运行时状态
-        TaskRuntimeContext ctx = taskRepository.getContext(executionUnitId);
+        TaskRuntimeContext ctx = taskRuntimeRepository.getContext(executionUnitId);
         boolean paused = ctx != null && ctx.isPauseRequested();
         boolean cancelled = ctx != null && ctx.isCancelRequested();
 
@@ -408,7 +411,7 @@ public class TaskDomainService {
         }
 
         // 设置取消标志
-        TaskRuntimeContext ctx = taskRepository.getContext(task.getTaskId());
+        TaskRuntimeContext ctx = taskRuntimeRepository.getContext(task.getTaskId());
         if (ctx != null) {
             ctx.requestCancel();
         }
@@ -465,7 +468,7 @@ public class TaskDomainService {
      * 获取并注册 Stage 名称
      */
     private List<String> getAndRegStageNames(TaskAggregate task) {
-        List<TaskStage> stages = taskRepository.getStages(task.getTaskId());
+        List<TaskStage> stages = taskRuntimeRepository.getStages(task.getTaskId());
         List<String> stageNames = (stages != null)
             ? stages.stream().map(TaskStage::getName).toList()
             : List.of();
