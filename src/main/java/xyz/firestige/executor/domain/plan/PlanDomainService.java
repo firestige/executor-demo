@@ -128,7 +128,7 @@ public class PlanDomainService {
         plan.markAsReady();
 
         // 更新状态机
-        PlanStateMachine sm = planRepository.getStateMachine(planId);
+        PlanStateMachine sm = planRepository.getStateMachine(planId).orElse(null);
         if (sm != null) {
             sm.transitionTo(PlanStatus.READY, new PlanContext(planId));
         }
@@ -155,7 +155,7 @@ public class PlanDomainService {
         plan.start();
 
         // 更新状态机
-        PlanStateMachine sm = planRepository.getStateMachine(planId);
+        PlanStateMachine sm = planRepository.getStateMachine(planId).orElse(null);
         if (sm != null) {
             sm.transitionTo(PlanStatus.RUNNING, new PlanContext(planId));
         }
@@ -187,7 +187,7 @@ public class PlanDomainService {
         plan.pause();
 
         // 更新状态机
-        PlanStateMachine sm = planRepository.getStateMachine(planId);
+        PlanStateMachine sm = planRepository.getStateMachine(planId).orElse(null);
         if (sm != null) {
             sm.transitionTo(PlanStatus.PAUSED, new PlanContext(planId));
         }
@@ -215,7 +215,7 @@ public class PlanDomainService {
         plan.resume();
 
         // 更新状态机
-        PlanStateMachine sm = planRepository.getStateMachine(planId);
+        PlanStateMachine sm = planRepository.getStateMachine(planId).orElse(null);
         if (sm != null) {
             sm.transitionTo(PlanStatus.RUNNING, new PlanContext(planId));
         }

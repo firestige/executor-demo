@@ -7,9 +7,9 @@ import java.util.Optional;
 
 /**
  * Plan Repository 接口（DDD 重构：简化方案）
- *
+ * <p>
  * 职责：Plan 聚合根的持久化和基本查询
- *
+ * <p>
  * 设计原则：
  * - 只管理聚合根的完整生命周期
  * - 使用 Optional 返回值
@@ -69,31 +69,5 @@ public interface PlanRepository {
      * @return PlanStateMachine，如果不存在则返回 empty
      */
     Optional<PlanStateMachine> getStateMachine(String planId);
-
-    // ========== 向后兼容方法（逐步淘汰）==========
-
-    /**
-     * 根据 Plan ID 获取 Plan（向后兼容）
-     *
-     * @param planId Plan ID
-     * @return Plan 聚合，如果不存在则返回 null
-     * @deprecated 请使用 findById(String)，返回 Optional
-     */
-    @Deprecated
-    default PlanAggregate get(String planId) {
-        return findById(planId).orElse(null);
-    }
-
-    /**
-     * 获取 PlanStateMachine（向后兼容）
-     *
-     * @param planId Plan ID
-     * @return PlanStateMachine，如果不存在则返回 null
-     * @deprecated 请使用 getStateMachine(String)，返回 Optional
-     */
-    @Deprecated
-    default PlanStateMachine getStateMachine(String planId) {
-        return getStateMachine(planId).orElse(null);
-    }
 }
 

@@ -3,124 +3,84 @@ package xyz.firestige.executor.application;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import xyz.firestige.executor.application.dto.TenantConfig;
-import xyz.firestige.executor.application.validation.BusinessValidator;
+import xyz.firestige.executor.application.plan.DeploymentPlanCreator;
+import xyz.firestige.executor.application.plan.PlanCreationContext;
+import xyz.firestige.executor.application.plan.PlanCreationException;
 import xyz.firestige.executor.domain.plan.*;
-import xyz.firestige.executor.domain.stage.StageFactory;
-import xyz.firestige.executor.domain.task.TaskAggregate;
 import xyz.firestige.executor.domain.task.TaskDomainService;
 import xyz.firestige.executor.domain.task.TaskOperationResult;
 import xyz.firestige.executor.exception.ErrorType;
 import xyz.firestige.executor.exception.FailureInfo;
 import xyz.firestige.executor.facade.TaskStatusInfo;
-import xyz.firestige.executor.service.health.HealthCheckClient;
-import xyz.firestige.executor.validation.ValidationSummary;
 
 import java.util.List;
 
 /**
- * 部署应用服务（DDD 重构完成版）
+ * 部署应用服务（DDD 重构：RF-10 优化版）
  *
  * 职责：
- * 1. 协调 Plan 和 Task 的创建（跨聚合操作）
- * 2. 业务流程编排
- * 3. 事务边界控制
- * 4. 返回 Result DTOs
+ * 1. 协调各种部署操作（创建、暂停、恢复等）
+ * 2. 委托具体逻辑给专门的组件（DeploymentPlanCreator、DomainService）
+ * 3. 统一返回 Result DTOs
+ * 4. 异常处理和日志记录
  *
  * 设计说明：
- * - 这是真正的应用服务层
- * - 协调多个领域服务完成业务流程
- * - 不包含领域逻辑，只做编排
- * - 处理跨聚合的业务场景
- * - 业务校验由 Facade 层完成（使用 ValidationChain）
+ * - RF-10 重构：提取 DeploymentPlanCreator，简化职责
+ * - 应用服务只做协调，不包含具体业务逻辑
+ * - 单一职责：部署操作的统一入口
  *
- * @since DDD 重构 Phase 2.3 - 完成版
+ * @since DDD 重构 Phase 18 - RF-10 优化版
  */
 public class DeploymentApplicationService {
 
     private static final Logger logger = LoggerFactory.getLogger(DeploymentApplicationService.class);
 
+    private final DeploymentPlanCreator deploymentPlanCreator;
     private final PlanDomainService planDomainService;
     private final TaskDomainService taskDomainService;
-    // 依赖其他基础设施服务用于 Stage 构建
-    private final StageFactory stageFactory;
-    private final HealthCheckClient healthCheckClient;
-    private final BusinessValidator businessValidator;
 
     public DeploymentApplicationService(
+            DeploymentPlanCreator deploymentPlanCreator,
             PlanDomainService planDomainService,
-            TaskDomainService taskDomainService,
-            StageFactory stageFactory,
-            HealthCheckClient healthCheckClient,
-            BusinessValidator businessValidator) {
+            TaskDomainService taskDomainService) {
+        this.deploymentPlanCreator = deploymentPlanCreator;
         this.planDomainService = planDomainService;
         this.taskDomainService = taskDomainService;
-        this.stageFactory = stageFactory;
-        this.healthCheckClient = healthCheckClient;
-        this.businessValidator = businessValidator;
     }
 
     /**
-     * 创建部署计划（协调 Plan 和 Task 创建）- 完整实现
+     * 创建部署计划（RF-10 重构：委托给 DeploymentPlanCreator）
      *
      * @param configs 租户配置列表（内部 DTO）
      * @return Plan 创建结果
      */
     public PlanCreationResult createDeploymentPlan(List<TenantConfig> configs) {
         logger.info("[DeploymentApplicationService] 创建部署计划，租户数量: {}",
-                    configs != null ? configs.size() : 0);
+                configs != null ? configs.size() : 0);
 
         try {
-            // Step 1: 业务规则校验（应用层职责）
-            // 注意：字段格式校验已在 Facade 层完成（使用 Spring Validator）
-            ValidationSummary businessValidation = businessValidator.validate(configs);
-            if (businessValidation.hasErrors()) {
-                logger.warn("[DeploymentApplicationService] 业务规则校验失败，无效配置数: {}",
-                           businessValidation.getInvalidCount());
-                return PlanCreationResult.validationFailure(businessValidation);
+            // 委托给 DeploymentPlanCreator 处理创建流程
+            PlanCreationContext context = deploymentPlanCreator.createPlan(configs);
+
+            // 检查验证结果
+            if (context.hasValidationErrors()) {
+                return PlanCreationResult.validationFailure(context.getValidationSummary());
             }
 
-            // Step 2: 读取 Plan ID
-            String planId = configs.stream()
-                    .map(TenantConfig::getPlanId)
-                    .findFirst()
-                    .map(String::valueOf)
-                    .orElse(null);
-            logger.info("[DeploymentApplicationService] 使用 Plan ID: {}", planId);
+            // 返回成功结果
+            return PlanCreationResult.success(context.getPlanInfo());
 
-            // Step 2: 创建 Plan（委托给 PlanDomainService）
-            planDomainService.createPlan(planId, configs.size());
-
-            // Step 3: 为每个租户创建 Task（委托给 TaskDomainService）
-            for (TenantConfig config : configs) {
-                // 创建 Task 聚合
-                TaskAggregate task = taskDomainService.createTask(planId, config);
-
-                // 构建 Task 的 Stages
-                taskDomainService.buildTaskStages(task, config, stageFactory, healthCheckClient);
-
-                // ✅ RF-07 重构：只传递 taskId（聚合间通过 ID 引用）
-                planDomainService.addTaskToPlan(planId, task.getTaskId());
-
-                logger.debug("[DeploymentApplicationService] Task 创建并关联成功: {}", task.getTaskId());
-            }
-
-            // Step 3.5: 标记 Plan 为 READY（DDD 重构新增）
-            planDomainService.markPlanAsReady(planId);
-
-            // Step 4: 启动 Plan 执行（委托给 PlanDomainService）
-            planDomainService.startPlan(planId);
-
-            // Step 5: 返回结果
-            PlanInfo planInfo = planDomainService.getPlanInfo(planId);
-            logger.info("[DeploymentApplicationService] 部署计划创建成功，planId: {}", planId);
-
-            return PlanCreationResult.success(planInfo);
-
-        } catch (Exception e) {
+        } catch (PlanCreationException e) {
             logger.error("[DeploymentApplicationService] 创建部署计划失败", e);
             return PlanCreationResult.failure(
-                FailureInfo.of(ErrorType.SYSTEM_ERROR, e.getMessage()),
-                "创建失败: " + e.getMessage()
+                    FailureInfo.of(ErrorType.SYSTEM_ERROR, e.getMessage()),
+                    "创建失败: " + e.getMessage()
+            );
+        } catch (Exception e) {
+            logger.error("[DeploymentApplicationService] 创建部署计划发生未知错误", e);
+            return PlanCreationResult.failure(
+                    FailureInfo.of(ErrorType.SYSTEM_ERROR, e.getMessage()),
+                    "系统错误: " + e.getMessage()
             );
         }
     }
