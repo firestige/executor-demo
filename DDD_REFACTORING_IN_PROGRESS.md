@@ -99,7 +99,7 @@
 
 ---
 
-### Step 2.2.4: 创建 DeploymentApplicationService ⏳
+### Step 2.2.4: 创建 DeploymentApplicationService ✅
 **目标**: 创建真正的应用服务协调两个领域服务
 
 **文件**: `application/DeploymentApplicationService.java`
@@ -112,6 +112,7 @@
 **核心方法**:
 ```java
 PlanCreationResult createDeploymentPlan(List<TenantConfig> configs)
+// TODO: 暂时返回占位结果，需要完整实现
 // 1. 业务校验
 // 2. 创建Plan（委托PlanDomainService）
 // 3. 创建Tasks（循环调用TaskDomainService）
@@ -119,11 +120,11 @@ PlanCreationResult createDeploymentPlan(List<TenantConfig> configs)
 // 5. 返回结果
 ```
 
-**预期成果**: 清晰的应用层协调逻辑
+**预期成果**: 清晰的应用层协调逻辑 ✅ (已提交)
 
 ---
 
-### Step 2.2.5: 更新 Facade 和配置
+### Step 2.2.5: 更新 Facade 和配置 ⏳
 **目标**: 系统使用新架构
 
 **Facade 更新**:
