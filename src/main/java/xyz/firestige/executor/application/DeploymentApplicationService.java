@@ -3,13 +3,16 @@ package xyz.firestige.executor.application;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import xyz.firestige.dto.deploy.TenantDeployConfig;
+import xyz.firestige.executor.application.dto.TenantConfig;
 import xyz.firestige.executor.domain.plan.*;
+import xyz.firestige.executor.domain.stage.StageFactory;
 import xyz.firestige.executor.domain.task.TaskAggregate;
 import xyz.firestige.executor.domain.task.TaskDomainService;
 import xyz.firestige.executor.domain.task.TaskOperationResult;
 import xyz.firestige.executor.exception.ErrorType;
 import xyz.firestige.executor.exception.FailureInfo;
 import xyz.firestige.executor.facade.TaskStatusInfo;
+import xyz.firestige.executor.service.health.HealthCheckClient;
 import xyz.firestige.executor.validation.ValidationChain;
 import xyz.firestige.executor.validation.ValidationSummary;
 
@@ -41,15 +44,15 @@ public class DeploymentApplicationService {
     private final TaskDomainService taskDomainService;
     private final ValidationChain validationChain;
     // 依赖其他基础设施服务用于 Stage 构建
-    private final xyz.firestige.executor.domain.stage.StageFactory stageFactory;
-    private final xyz.firestige.executor.service.health.HealthCheckClient healthCheckClient;
+    private final StageFactory stageFactory;
+    private final HealthCheckClient healthCheckClient;
 
     public DeploymentApplicationService(
             PlanDomainService planDomainService,
             TaskDomainService taskDomainService,
             ValidationChain validationChain,
-            xyz.firestige.executor.domain.stage.StageFactory stageFactory,
-            xyz.firestige.executor.service.health.HealthCheckClient healthCheckClient) {
+            StageFactory stageFactory,
+            HealthCheckClient healthCheckClient) {
         this.planDomainService = planDomainService;
         this.taskDomainService = taskDomainService;
         this.validationChain = validationChain;
@@ -63,7 +66,7 @@ public class DeploymentApplicationService {
      * @param configs 租户配置列表（外部 DTO）
      * @return Plan 创建结果
      */
-    public PlanCreationResult createDeploymentPlan(List<TenantDeployConfig> configs) {
+    public PlanCreationResult createDeploymentPlan(List<TenantConfig> configs) {
         logger.info("[DeploymentApplicationService] 创建部署计划，租户数量: {}",
                     configs != null ? configs.size() : 0);
 
@@ -93,7 +96,7 @@ public class DeploymentApplicationService {
             PlanAggregate plan = planDomainService.createPlan(planId, configs.size());
 
             // Step 5: 为每个租户创建 Task（委托给 TaskDomainService）
-            for (TenantDeployConfig config : configs) {
+            for (TenantConfig config : configs) {
                 // 创建 Task 聚合
                 TaskAggregate task = taskDomainService.createTask(planId, config);
 

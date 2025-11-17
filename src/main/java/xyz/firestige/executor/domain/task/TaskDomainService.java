@@ -3,24 +3,23 @@ package xyz.firestige.executor.domain.task;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import xyz.firestige.dto.deploy.TenantDeployConfig;
-import xyz.firestige.executor.domain.task.TaskOperationResult;
+import xyz.firestige.executor.domain.stage.StageFactory;
 import xyz.firestige.executor.checkpoint.CheckpointService;
 import xyz.firestige.executor.config.ExecutorProperties;
 import xyz.firestige.executor.domain.stage.TaskStage;
-import xyz.firestige.executor.domain.task.TaskAggregate;
-import xyz.firestige.executor.domain.task.TaskRuntimeContext;
 import xyz.firestige.executor.event.SpringTaskEventSink;
 import xyz.firestige.executor.exception.ErrorType;
 import xyz.firestige.executor.exception.FailureInfo;
 import xyz.firestige.executor.execution.TaskExecutor;
+import xyz.firestige.executor.execution.TaskWorkerCreationContext;
 import xyz.firestige.executor.execution.TaskWorkerFactory;
 import xyz.firestige.executor.facade.TaskStatusInfo;
+import xyz.firestige.executor.service.health.HealthCheckClient;
 import xyz.firestige.executor.state.TaskStateManager;
 import xyz.firestige.executor.state.TaskStatus;
 import xyz.firestige.executor.support.conflict.ConflictRegistry;
 
 import java.util.List;
-import java.util.Map;
 
 /**
  * Task 领域服务 (DDD 重构完成版)
@@ -67,10 +66,10 @@ public class TaskDomainService {
      * 创建 Task 聚合（领域服务职责）
      *
      * @param planId Plan ID
-     * @param config 租户部署配置
+     * @param config 租户配置（内部 DTO）
      * @return Task 聚合
      */
-    public TaskAggregate createTask(String planId, TenantDeployConfig config) {
+    public TaskAggregate createTask(String planId, TenantConfig config) {
         logger.info("[TaskDomainService] 创建 Task: planId={}, tenantId={}", planId, config.getTenantId());
 
         // 生成 Task ID
@@ -94,16 +93,16 @@ public class TaskDomainService {
      * 构建 Task 的 Stages（需要配置信息）
      *
      * @param task Task 聚合
-     * @param config 租户部署配置
+     * @param config 租户配置（内部 DTO）
      * @param stageFactory Stage 工厂
      * @param healthCheckClient 健康检查客户端
      * @return Stage 列表
      */
     public List<TaskStage> buildTaskStages(
             TaskAggregate task,
-            TenantDeployConfig config,
-            xyz.firestige.executor.domain.stage.StageFactory stageFactory,
-            xyz.firestige.executor.service.health.HealthCheckClient healthCheckClient) {
+            TenantConfig config,
+            StageFactory stageFactory,
+            HealthCheckClient healthCheckClient) {
         logger.debug("[TaskDomainService] 构建 Task Stages: {}", task.getTaskId());
 
         List<TaskStage> stages = stageFactory.buildStages(task, config, executorProperties, healthCheckClient);
@@ -204,7 +203,7 @@ public class TaskDomainService {
             TaskRuntimeContext ctx = taskRepository.getContext(target.getTaskId());
             // RF-02: 使用 TaskWorkerCreationContext
             exec = workerFactory.create(
-                xyz.firestige.executor.execution.TaskWorkerCreationContext.builder()
+                TaskWorkerCreationContext.builder()
                     .planId(target.getPlanId())
                     .task(target)
                     .stages(stages)
@@ -270,7 +269,7 @@ public class TaskDomainService {
             TaskRuntimeContext ctx = taskRepository.getContext(target.getTaskId());
             // RF-02: 使用 TaskWorkerCreationContext
             exec = workerFactory.create(
-                xyz.firestige.executor.execution.TaskWorkerCreationContext.builder()
+                TaskWorkerCreationContext.builder()
                     .planId(target.getPlanId())
                     .task(target)
                     .stages(stages)
