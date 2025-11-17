@@ -5,6 +5,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import xyz.firestige.dto.deploy.TenantDeployConfig;
+import xyz.firestige.entity.deploy.NetworkEndpoint;
 import xyz.firestige.executor.application.PlanApplicationService;
 import xyz.firestige.executor.application.dto.PlanCreationResult;
 import xyz.firestige.executor.application.dto.PlanInfo;
@@ -24,10 +25,12 @@ import xyz.firestige.executor.orchestration.TaskScheduler;
 import xyz.firestige.executor.service.health.MockHealthCheckClient;
 import xyz.firestige.executor.state.TaskStateManager;
 import xyz.firestige.executor.support.conflict.ConflictRegistry;
+import xyz.firestige.executor.validation.RequiredFieldsValidator;
 import xyz.firestige.executor.validation.ValidationChain;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.ThreadLocalRandom;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -225,7 +228,7 @@ class PlanApplicationServiceTest {
     @DisplayName("创建 Plan - 验证失败场景 (缺少必填字段)")
     void testCreateSwitchTask_ValidationFailure() {
         ValidationChain chainWithValidator = new ValidationChain();
-        chainWithValidator.addValidator(new xyz.firestige.executor.validation.RequiredFieldsValidator());
+        chainWithValidator.addValidator(new RequiredFieldsValidator());
         planApplicationService = new PlanApplicationService(
                 chainWithValidator,
                 stateManager,
@@ -256,7 +259,7 @@ class PlanApplicationServiceTest {
      */
     private List<TenantDeployConfig> createValidConfigs() {
         List<TenantDeployConfig> configs = new ArrayList<>();
-        java.util.concurrent.ThreadLocalRandom rnd = java.util.concurrent.ThreadLocalRandom.current();
+        ThreadLocalRandom rnd = ThreadLocalRandom.current();
         TenantDeployConfig config1 = new TenantDeployConfig();
         config1.setPlanId(1001L);
         config1.setTenantId("tenant_001");
@@ -264,7 +267,7 @@ class PlanApplicationServiceTest {
         config1.setDeployUnitVersion(100L);
         config1.setDeployUnitName("DU-" + java.util.UUID.randomUUID());
         config1.setNacosNameSpace("dev");
-        xyz.firestige.entity.deploy.NetworkEndpoint ep1 = new xyz.firestige.entity.deploy.NetworkEndpoint();
+        NetworkEndpoint ep1 = new NetworkEndpoint();
         ep1.setValue("http://localhost:8080/health");
         config1.setNetworkEndpoints(List.of(ep1));
         configs.add(config1);
@@ -275,7 +278,7 @@ class PlanApplicationServiceTest {
         config2.setDeployUnitVersion(101L);
         config2.setDeployUnitName("DU-" + java.util.UUID.randomUUID());
         config2.setNacosNameSpace("dev");
-        xyz.firestige.entity.deploy.NetworkEndpoint ep2 = new xyz.firestige.entity.deploy.NetworkEndpoint();
+        NetworkEndpoint ep2 = new NetworkEndpoint();
         ep2.setValue("http://localhost:8081/health");
         config2.setNetworkEndpoints(List.of(ep2));
         configs.add(config2);

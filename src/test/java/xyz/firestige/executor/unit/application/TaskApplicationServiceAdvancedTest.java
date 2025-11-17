@@ -12,7 +12,6 @@ import xyz.firestige.executor.application.dto.TaskOperationResult;
 import xyz.firestige.executor.checkpoint.CheckpointService;
 import xyz.firestige.executor.checkpoint.InMemoryCheckpointStore;
 import xyz.firestige.executor.config.ExecutorProperties;
-import xyz.firestige.executor.domain.task.TaskAggregate;
 import xyz.firestige.executor.event.SpringTaskEventSink;
 import xyz.firestige.executor.execution.DefaultTaskWorkerFactory;
 import xyz.firestige.executor.execution.TaskWorkerFactory;
