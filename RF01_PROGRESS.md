@@ -9,13 +9,13 @@
 ## 📊 整体进度
 
 - [x] Phase 1: 创建 Result DTO（0.5 天）✅
-- [ ] Phase 2: 创建内部 DTO（0.5 天）
+- [x] Phase 2: 创建内部 DTO（0.5 天）✅
 - [ ] Phase 3: 创建应用服务层（2 天）
 - [ ] Phase 4: 创建新 Facade（1 天）
 - [ ] Phase 5: 删除旧代码（1 天）
 - [ ] Phase 6: 验证与文档（0.5 天）
 
-**完成百分比**: 17%
+**完成百分比**: 33%
 
 ---
 
@@ -46,22 +46,24 @@
 
 ---
 
-### Phase 2: 创建内部 DTO ⏳
+### Phase 2: 创建内部 DTO ✅
 
-**状态**: 待开始  
+**状态**: 已完成  
 **预计时间**: 0.5 天  
+**实际时间**: 0.5 天  
 **Git Tag**: `rf01-phase2-internal-dto`
 
 **任务清单**:
-- [ ] 在 `application.dto` 包中创建 `TenantConfig.java`
-- [ ] 参考 `TenantDeployConfig` 设计字段
-- [ ] 只包含应用层需要的字段
-- [ ] 编写单元测试
-- [ ] Git commit + tag
+- [x] 在 `application.dto` 包中创建 `TenantConfig.java`
+- [x] 参考 `TenantDeployConfig` 设计字段
+- [x] 只包含应用层需要的字段
+- [x] 编译验证（无错误）
+- [x] 运行测试（全部通过）
+- [x] Git commit + tag
 
-**完成时间**: ___________  
-**提交 ID**: ___________  
-**备注**: ___________
+**完成时间**: 2025-11-17  
+**提交 ID**: rf01-phase2-internal-dto (tag)  
+**备注**: TenantConfig 创建完成，与外部 DTO 解耦，保护应用层接口稳定性
 
 ---
 
