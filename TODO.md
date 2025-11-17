@@ -199,9 +199,28 @@
 
 ---
 
-#### RF-09: 重构仓储接口 — 🟡 TODO
-**预计时间**: 1 天  
-**目标**: 分离 Repository 和 QueryService，符合 CQRS 原则。
+#### RF-09: 简化 Repository 接口 — 🟡 TODO
+**预计时间**: 3-4 小时（简化方案）  
+**目标**: 清理 Repository 接口，移除聚合内部细节暴露，分离运行时状态管理。
+
+**决策**: 不引入复杂的 CQRS 和读写分离（过度设计）
+
+**原因**:
+- 项目规模中小，内存/Redis 存储
+- 读写比例均衡，非海量数据场景
+- 查询需求简单（按 ID、tenantId、planId）
+- 避免不必要的复杂度
+
+**简化方案**:
+1. TaskRepository 只管理聚合根（5 个方法）
+   - save(), remove()
+   - findById(), findByTenantId(), findByPlanId()
+2. 移除聚合内部细节暴露（saveStages, getStages, saveContext 等）
+3. 创建 TaskRuntimeRepository 管理运行时状态（Executor、Context）
+4. 使用 Optional 返回值
+5. 保持实用主义，未来需要时再扩展
+
+**详细说明**: `RF09_SIMPLIFIED_APPROACH.md`
 
 #### RF-10: 优化应用服务 — 🟡 TODO
 **预计时间**: 1 天  
