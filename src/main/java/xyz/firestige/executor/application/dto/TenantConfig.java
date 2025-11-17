@@ -11,14 +11,17 @@ import java.util.List;
  */
 public class TenantConfig {
 
-    // 核心标识
-    private Long deployUnitId;
-    private Long deployUnitVersion;
-    private String deployUnitName;
+    // 核心标识（使用 record 组合）
+    private DeployUnitIdentifier deployUnit;
     private String tenantId;
 
-    // 健康检查相关
-    private List<NetworkEndpoint> healthCheckEndpoints;
+    // HTTP 网关路由信息
+    private List<NetworkEndpoint> networkEndpoints;
+
+    // 健康检查端点
+    // 基于服务约定，优先级：参数 > 配置 > 默认值
+    // 由 Facade 或转换工厂类装配
+    private List<String> healthCheckEndpoints;
 
     // 配置相关
     private String nacosNameSpace;
@@ -28,13 +31,17 @@ public class TenantConfig {
     private Long planId;
     private Long planVersion;
 
-    // 回滚相关（上一次成功配置）
+    // 回滚相关
+    // previousConfig: 上一次成功的完整配置（用于回滚时恢复配置内容）
+    // previousConfigVersion: 冗余字段，快速访问上一次的版本号
+    //   用途：回滚时创建新版本号，保证业务端基于版本号的幂等操作不失效
+    //   设计：虽然可以通过 previousConfig.getDeployUnit().version() 获取，
+    //        但单独字段避免频繁访问，提升可读性
     private TenantConfig previousConfig;
     private Long previousConfigVersion;
 
-    // 业务规则（如果应用层需要）
-    private String calledNumberRules;
-    private String trunkGroup;
+    // 媒体路由配置（使用 record 保证配对约束）
+    private MediaRoutingConfig mediaRoutingConfig;
 
     // 构造器
     public TenantConfig() {
@@ -42,28 +49,12 @@ public class TenantConfig {
 
     // Getters and Setters
 
-    public Long getDeployUnitId() {
-        return deployUnitId;
+    public DeployUnitIdentifier getDeployUnit() {
+        return deployUnit;
     }
 
-    public void setDeployUnitId(Long deployUnitId) {
-        this.deployUnitId = deployUnitId;
-    }
-
-    public Long getDeployUnitVersion() {
-        return deployUnitVersion;
-    }
-
-    public void setDeployUnitVersion(Long deployUnitVersion) {
-        this.deployUnitVersion = deployUnitVersion;
-    }
-
-    public String getDeployUnitName() {
-        return deployUnitName;
-    }
-
-    public void setDeployUnitName(String deployUnitName) {
-        this.deployUnitName = deployUnitName;
+    public void setDeployUnit(DeployUnitIdentifier deployUnit) {
+        this.deployUnit = deployUnit;
     }
 
     public String getTenantId() {
@@ -74,11 +65,19 @@ public class TenantConfig {
         this.tenantId = tenantId;
     }
 
-    public List<NetworkEndpoint> getHealthCheckEndpoints() {
+    public List<NetworkEndpoint> getNetworkEndpoints() {
+        return networkEndpoints;
+    }
+
+    public void setNetworkEndpoints(List<NetworkEndpoint> networkEndpoints) {
+        this.networkEndpoints = networkEndpoints;
+    }
+
+    public List<String> getHealthCheckEndpoints() {
         return healthCheckEndpoints;
     }
 
-    public void setHealthCheckEndpoints(List<NetworkEndpoint> healthCheckEndpoints) {
+    public void setHealthCheckEndpoints(List<String> healthCheckEndpoints) {
         this.healthCheckEndpoints = healthCheckEndpoints;
     }
 
@@ -130,30 +129,35 @@ public class TenantConfig {
         this.previousConfigVersion = previousConfigVersion;
     }
 
-    public String getCalledNumberRules() {
-        return calledNumberRules;
+    public MediaRoutingConfig getMediaRoutingConfig() {
+        return mediaRoutingConfig;
     }
 
-    public void setCalledNumberRules(String calledNumberRules) {
-        this.calledNumberRules = calledNumberRules;
+    public void setMediaRoutingConfig(MediaRoutingConfig mediaRoutingConfig) {
+        this.mediaRoutingConfig = mediaRoutingConfig;
     }
 
-    public String getTrunkGroup() {
-        return trunkGroup;
+    // 便利方法：兼容旧的 API（可选，Phase 3 实施时根据需要决定是否保留）
+
+    public Long getDeployUnitId() {
+        return deployUnit != null ? deployUnit.id() : null;
     }
 
-    public void setTrunkGroup(String trunkGroup) {
-        this.trunkGroup = trunkGroup;
+    public Long getDeployUnitVersion() {
+        return deployUnit != null ? deployUnit.version() : null;
+    }
+
+    public String getDeployUnitName() {
+        return deployUnit != null ? deployUnit.name() : null;
     }
 
     @Override
     public String toString() {
         return "TenantConfig{" +
-                "deployUnitId=" + deployUnitId +
-                ", deployUnitVersion=" + deployUnitVersion +
-                ", deployUnitName='" + deployUnitName + '\'' +
+                "deployUnit=" + deployUnit +
                 ", tenantId='" + tenantId + '\'' +
                 ", planId=" + planId +
+                ", mediaRoutingConfig=" + mediaRoutingConfig +
                 '}';
     }
 }
