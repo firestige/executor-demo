@@ -82,10 +82,15 @@ Multi-tenant blue/green (or weighted) configuration switch executor. A Plan grou
   - Extracted business logic to Application Service layer (PlanApplicationService, TaskApplicationService)
   - Refactored Facade to use exceptions instead of return values (except queries)
   - All tests passing: 168 tests, 0 failures, 0 errors, 20 skipped
+- **RF-02: TaskWorkerFactory Parameter Simplification** - DONE (2025-11-17)
+  - Introduced TaskWorkerCreationContext (Parameter Object Pattern + Builder)
+  - Reduced method parameters from 9 to 1, improved readability
+  - Maintained backward compatibility (deprecated old method)
+  - Updated 5 call sites across PlanApplicationService and TaskApplicationService
+  - Added comprehensive unit tests (11 test cases)
 
 ## Upcoming Phases (High-Level)
 - Phase 17: Architecture refactoring & integration tests
-  - RF-02: Simplify TaskWorkerFactory parameters (introduce parameter object)
   - RF-04: Comprehensive integration test suite (Testcontainers, 7 core scenarios)
 - Phase 18: Stage strategy pattern (low priority)
   - RF-03: Declarative Stage assembly via @Component + @Order auto-discovery

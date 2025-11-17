@@ -12,8 +12,25 @@ import java.util.List;
 
 /**
  * Encapsulate TaskExecutor creation and wiring.
+ *
+ * RF-02: Added context-based create method to simplify parameter passing.
  */
 public interface TaskWorkerFactory {
+
+    /**
+     * Create TaskExecutor with creation context (RF-02 recommended approach)
+     *
+     * @param context encapsulates all parameters needed for TaskExecutor creation
+     * @return configured TaskExecutor instance
+     */
+    TaskExecutor create(TaskWorkerCreationContext context);
+
+    /**
+     * Create TaskExecutor with individual parameters (legacy method, kept for backward compatibility)
+     *
+     * @deprecated Use {@link #create(TaskWorkerCreationContext)} instead for better readability
+     */
+    @Deprecated
     TaskExecutor create(String planId,
                         TaskAggregate task,
                         List<TaskStage> stages,

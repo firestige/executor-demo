@@ -43,14 +43,21 @@
   - ✅ 所有测试通过：168 tests, 0 failures, 0 errors, 20 skipped
 - **优先级**：高 → 已完成
 
-#### RF-02: TaskWorkerFactory 参数简化 — TODO
-- **问题**：DefaultTaskWorkerFactory.create() 方法参数过多（8+ 个参数）
+#### RF-02: TaskWorkerFactory 参数简化 — ✅ DONE (2025-11-17)
+- **问题**：DefaultTaskWorkerFactory.create() 方法参数过多（9 个参数）
 - **目标**：提升可读性和可维护性
 - **方案**：
   - 引入 TaskWorkerCreationContext 参数对象（Builder 模式）
-  - 或使用 TaskWorkerConfig 配置对象封装相关参数
+  - 保持向后兼容（旧方法标记为 @Deprecated）
   - 保持扩展性：便于后续增加新参数
-- **优先级**：中
+- **完成情况**：
+  - ✅ 创建 TaskWorkerCreationContext（Builder 模式 + 参数验证）
+  - ✅ 更新 TaskWorkerFactory 接口（新增 context-based 方法）
+  - ✅ 更新 DefaultTaskWorkerFactory（实现新方法，旧方法委托）
+  - ✅ 更新所有调用点（PlanApplicationService x3, TaskApplicationService x2）
+  - ✅ 编写单元测试（TaskWorkerCreationContextTest - 11 个测试用例）
+  - ✅ 参数从 9 个简化为 1 个，提升可读性
+- **优先级**：中 → 已完成
 
 #### RF-04: 端到端集成测试套件 — TODO
 - **目标**：建立完整的端到端集成测试覆盖
@@ -78,7 +85,7 @@
 
 ### 2.2. 测试增强
 - **T-01**: Facade 业务逻辑剥离后的单测更新 — ✅ DONE (RF-01 完成时一并完成)
-- **T-02**: TaskWorkerFactory 重构后的单测更新 — TODO（依赖 RF-02）
+- **T-02**: TaskWorkerFactory 重构后的单测更新 — ✅ DONE (RF-02 完成时一并完成)
 - **T-04**: 测试基础设施搭建 — TODO（RF-04 子任务）
 - **T-05**: 核心场景集成测试实现 — TODO（RF-04 子任务）
 - **T-06**: 事件流验证测试 — TODO（RF-04 子任务）

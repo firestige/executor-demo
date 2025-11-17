@@ -181,17 +181,19 @@ public class PlanApplicationService {
                 stateManager.registerTaskAggregate(task.getTaskId(), task, ctx, stages.size());
                 stateManager.updateState(task.getTaskId(), TaskStatus.RUNNING);
 
-                // 创建并启动 Executor
+                // 创建并启动 Executor（RF-02: 使用 TaskWorkerCreationContext）
                 TaskExecutor executor = workerFactory.create(
-                    planId,
-                    task,
-                    stages,
-                    ctx,
-                    checkpointService,
-                    eventSink,
-                    executorProperties.getTaskProgressIntervalSeconds(),
-                    stateManager,
-                    conflictRegistry
+                    xyz.firestige.executor.execution.TaskWorkerCreationContext.builder()
+                        .planId(planId)
+                        .task(task)
+                        .stages(stages)
+                        .runtimeContext(ctx)
+                        .checkpointService(checkpointService)
+                        .eventSink(eventSink)
+                        .progressIntervalSeconds(executorProperties.getTaskProgressIntervalSeconds())
+                        .stateManager(stateManager)
+                        .conflictRegistry(conflictRegistry)
+                        .build()
                 );
                 executorRegistry.put(task.getTaskId(), executor);
                 executor.execute();
@@ -314,16 +316,19 @@ public class PlanApplicationService {
             if (exec == null) {
                 List<TaskStage> stages = stageRegistry.getOrDefault(task.getTaskId(), List.of());
                 TaskRuntimeContext ctx = contextRegistry.get(task.getTaskId());
+                // RF-02: 使用 TaskWorkerCreationContext
                 exec = workerFactory.create(
-                    pid,
-                    task,
-                    stages,
-                    ctx,
-                    checkpointService,
-                    eventSink,
-                    executorProperties.getTaskProgressIntervalSeconds(),
-                    stateManager,
-                    conflictRegistry
+                    xyz.firestige.executor.execution.TaskWorkerCreationContext.builder()
+                        .planId(pid)
+                        .task(task)
+                        .stages(stages)
+                        .runtimeContext(ctx)
+                        .checkpointService(checkpointService)
+                        .eventSink(eventSink)
+                        .progressIntervalSeconds(executorProperties.getTaskProgressIntervalSeconds())
+                        .stateManager(stateManager)
+                        .conflictRegistry(conflictRegistry)
+                        .build()
                 );
             }
             exec.invokeRollback();
@@ -369,16 +374,19 @@ public class PlanApplicationService {
             if (exec == null) {
                 List<TaskStage> stages = stageRegistry.getOrDefault(task.getTaskId(), List.of());
                 TaskRuntimeContext ctx = contextRegistry.get(task.getTaskId());
+                // RF-02: 使用 TaskWorkerCreationContext
                 exec = workerFactory.create(
-                    pid,
-                    task,
-                    stages,
-                    ctx,
-                    checkpointService,
-                    eventSink,
-                    executorProperties.getTaskProgressIntervalSeconds(),
-                    stateManager,
-                    conflictRegistry
+                    xyz.firestige.executor.execution.TaskWorkerCreationContext.builder()
+                        .planId(pid)
+                        .task(task)
+                        .stages(stages)
+                        .runtimeContext(ctx)
+                        .checkpointService(checkpointService)
+                        .eventSink(eventSink)
+                        .progressIntervalSeconds(executorProperties.getTaskProgressIntervalSeconds())
+                        .stateManager(stateManager)
+                        .conflictRegistry(conflictRegistry)
+                        .build()
                 );
                 executorRegistry.put(task.getTaskId(), exec);
             }

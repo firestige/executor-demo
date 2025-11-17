@@ -6,23 +6,30 @@ import org.springframework.stereotype.Component;
 import xyz.firestige.dto.deploy.TenantDeployConfig;
 import xyz.firestige.executor.application.PlanApplicationService;
 import xyz.firestige.executor.application.TaskApplicationService;
-import xyz.firestige.executor.application.dto.*;
+import xyz.firestige.executor.application.dto.PlanCreationResult;
+import xyz.firestige.executor.application.dto.PlanInfo;
+import xyz.firestige.executor.application.dto.PlanOperationResult;
+import xyz.firestige.executor.application.dto.TaskOperationResult;
 import xyz.firestige.executor.exception.FailureInfo;
-import xyz.firestige.executor.facade.exception.*;
+import xyz.firestige.executor.facade.exception.PlanNotFoundException;
+import xyz.firestige.executor.facade.exception.TaskCreationException;
+import xyz.firestige.executor.facade.exception.TaskNotFoundException;
+import xyz.firestige.executor.facade.exception.TaskOperationException;
 import xyz.firestige.executor.validation.ValidationError;
+import xyz.firestige.executor.validation.ValidationSummary;
 
 import java.util.List;
 import java.util.stream.Collectors;
 
 /**
  * 部署任务 Facade（RF01 重构版）
- *
+ * <p>
  * 职责：
  * 1. DTO 转换：外部 DTO (TenantDeployConfig) → 内部 DTO (暂时仍使用 TenantDeployConfig，待后续替换)
  * 2. 参数校验（快速失败）
  * 3. 调用应用服务
  * 4. 异常转换：应用层 Result → Facade 异常
- *
+ * <p>
  * 设计说明：
  * - 不定义接口，直接使用具体类（符合 YAGNI 原则）
  * - 返回 void（查询操作除外），通过异常机制处理错误
@@ -47,7 +54,7 @@ public class DeploymentTaskFacade {
      * 创建切换任务
      * @param configs 租户部署配置列表（外部 DTO）
      * @throws IllegalArgumentException 参数校验失败
-     * @throws TaskCreationException 任务创建失败
+     * @throws RuntimeException 任务创建失败等其他运行时失败
      */
     public void createSwitchTask(List<TenantDeployConfig> configs) {
         logger.info("[Facade] 创建切换任务，配置数量: {}", configs != null ? configs.size() : 0);
@@ -183,10 +190,10 @@ public class DeploymentTaskFacade {
      * @return 任务状态信息（查询操作保留返回值）
      * @throws TaskNotFoundException 任务不存在
      */
-    public xyz.firestige.executor.facade.TaskStatusInfo queryTaskStatus(String executionUnitId) {
+    public TaskStatusInfo queryTaskStatus(String executionUnitId) {
         logger.debug("[Facade] 查询任务状态: {}", executionUnitId);
 
-        xyz.firestige.executor.facade.TaskStatusInfo result = taskApplicationService.queryTaskStatus(executionUnitId);
+        TaskStatusInfo result = taskApplicationService.queryTaskStatus(executionUnitId);
 
         // 查询失败时抛出异常
         if (result.getStatus() == null) {
@@ -199,10 +206,10 @@ public class DeploymentTaskFacade {
     /**
      * 根据租户 ID 查询任务状态
      */
-    public xyz.firestige.executor.facade.TaskStatusInfo queryTaskStatusByTenant(String tenantId) {
+    public TaskStatusInfo queryTaskStatusByTenant(String tenantId) {
         logger.debug("[Facade] 查询租户任务状态: {}", tenantId);
 
-        xyz.firestige.executor.facade.TaskStatusInfo result = taskApplicationService.queryTaskStatusByTenant(tenantId);
+        TaskStatusInfo result = taskApplicationService.queryTaskStatusByTenant(tenantId);
 
         if (result.getStatus() == null) {
             throw new TaskNotFoundException("租户任务不存在: " + tenantId);
@@ -280,7 +287,7 @@ public class DeploymentTaskFacade {
     /**
      * 格式化校验错误信息
      */
-    private String formatValidationErrors(xyz.firestige.executor.validation.ValidationSummary summary) {
+    private String formatValidationErrors(ValidationSummary summary) {
         List<ValidationError> errors = summary.getAllErrors();
         if (errors.isEmpty()) {
             return "未知校验错误";

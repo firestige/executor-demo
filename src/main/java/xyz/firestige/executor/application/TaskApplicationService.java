@@ -153,16 +153,19 @@ public class TaskApplicationService {
         if (exec == null) {
             List<TaskStage> stages = stageRegistry.getOrDefault(target.getTaskId(), List.of());
             TaskRuntimeContext ctx = contextRegistry.get(target.getTaskId());
+            // RF-02: 使用 TaskWorkerCreationContext
             exec = workerFactory.create(
-                target.getPlanId(),
-                target,
-                stages,
-                ctx,
-                checkpointService,
-                eventSink,
-                executorProperties.getTaskProgressIntervalSeconds(),
-                stateManager,
-                conflictRegistry
+                xyz.firestige.executor.execution.TaskWorkerCreationContext.builder()
+                    .planId(target.getPlanId())
+                    .task(target)
+                    .stages(stages)
+                    .runtimeContext(ctx)
+                    .checkpointService(checkpointService)
+                    .eventSink(eventSink)
+                    .progressIntervalSeconds(executorProperties.getTaskProgressIntervalSeconds())
+                    .stateManager(stateManager)
+                    .conflictRegistry(conflictRegistry)
+                    .build()
             );
         }
 
@@ -215,16 +218,19 @@ public class TaskApplicationService {
         if (exec == null) {
             List<TaskStage> stages = stageRegistry.getOrDefault(target.getTaskId(), List.of());
             TaskRuntimeContext ctx = contextRegistry.get(target.getTaskId());
+            // RF-02: 使用 TaskWorkerCreationContext
             exec = workerFactory.create(
-                target.getPlanId(),
-                target,
-                stages,
-                ctx,
-                checkpointService,
-                eventSink,
-                executorProperties.getTaskProgressIntervalSeconds(),
-                stateManager,
-                conflictRegistry
+                xyz.firestige.executor.execution.TaskWorkerCreationContext.builder()
+                    .planId(target.getPlanId())
+                    .task(target)
+                    .stages(stages)
+                    .runtimeContext(ctx)
+                    .checkpointService(checkpointService)
+                    .eventSink(eventSink)
+                    .progressIntervalSeconds(executorProperties.getTaskProgressIntervalSeconds())
+                    .stateManager(stateManager)
+                    .conflictRegistry(conflictRegistry)
+                    .build()
             );
             executorRegistry.put(target.getTaskId(), exec);
         }

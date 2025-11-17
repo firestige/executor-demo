@@ -78,4 +78,13 @@
 - **文档更新**：更新 ARCHITECTURE_PROMPT.md、TODO.md 反映新架构
 - 文件：application/dto/、application/PlanApplicationService、application/TaskApplicationService、facade/DeploymentTaskFacade、facade/exception/
 
+### TaskWorkerFactory 参数简化重构（RF-02）
+- **核心价值**：减少方法参数数量（9个 → 1个），提升代码可读性和可维护性
+- **设计方案**：引入参数对象模式 + Builder 模式，保持向后兼容
+- **创建 TaskWorkerCreationContext**：Builder 模式、参数验证（7个必需参数）、不可变对象
+- **更新接口和实现**：TaskWorkerFactory 新增 context-based 方法，旧方法标记 @Deprecated
+- **更新调用点**（5处）：PlanApplicationService（3处）、TaskApplicationService（2处）
+- **测试完善**：TaskWorkerCreationContextTest（11个单元测试，覆盖 Builder 和参数验证）
+- 文件：execution/TaskWorkerCreationContext、execution/TaskWorkerFactory、execution/DefaultTaskWorkerFactory
+
 ---
