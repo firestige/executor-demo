@@ -106,16 +106,12 @@ public class ExecutorConfiguration {
     @Bean
     public PlanDomainService planDomainService(
             PlanRepository planRepository,
-            ValidationChain validationChain,
             TaskStateManager stateManager,
             ExecutorProperties executorProperties,
-            HealthCheckClient healthCheckClient,
-            CheckpointService checkpointService,
-            SpringTaskEventSink eventSink,
-            ConflictRegistry conflictRegistry) {
+            ConflictRegistry conflictRegistry,
+            SpringTaskEventSink eventSink) {
         return new PlanDomainService(
                 planRepository,
-                validationChain,
                 stateManager,
                 new PlanFactory(),
                 new PlanOrchestrator(
@@ -123,13 +119,8 @@ public class ExecutorConfiguration {
                     conflictRegistry,
                     executorProperties
                 ),
-                new DefaultStageFactory(),
-                new DefaultTaskWorkerFactory(),
-                executorProperties,
-                healthCheckClient,
-                checkpointService,
                 eventSink,
-                conflictRegistry
+                executorProperties
         );
     }
 
@@ -166,72 +157,12 @@ public class ExecutorConfiguration {
         );
     }
 
-    // ========== 旧的 Application Service Bean（保持向后兼容，待删除）==========
-
-    /**
-     * @deprecated 使用 {@link #planDomainService} 和 {@link #deploymentApplicationService} 替代
-     */
-    @Deprecated
-    @Bean
-    public PlanApplicationService planApplicationService(
-            ValidationChain validationChain,
-            TaskStateManager stateManager,
-            ExecutorProperties executorProperties,
-            HealthCheckClient healthCheckClient,
-            CheckpointService checkpointService,
-            ConflictRegistry conflictRegistry,
-            SpringTaskEventSink eventSink) {
-        return new PlanApplicationService(
-                validationChain,
-                stateManager,
-                new PlanFactory(),
-                new PlanOrchestrator(new TaskScheduler(Runtime.getRuntime().availableProcessors()), conflictRegistry, executorProperties),
-                new DefaultStageFactory(),
-                new DefaultTaskWorkerFactory(),
-                executorProperties,
-                healthCheckClient,
-                checkpointService,
-                eventSink,
-                conflictRegistry
-        );
-    }
-
-    /**
-     * @deprecated 使用 {@link #taskDomainService} 替代
-     */
-    @Deprecated
-    @Bean
-    public TaskApplicationService taskApplicationService(
-            PlanApplicationService planApplicationService,
-            TaskStateManager stateManager,
-            ExecutorProperties executorProperties,
-            CheckpointService checkpointService,
-            ConflictRegistry conflictRegistry,
-            SpringTaskEventSink eventSink) {
-        return new TaskApplicationService(
-                stateManager,
-                new DefaultTaskWorkerFactory(),
-                executorProperties,
-                checkpointService,
-                eventSink,
-                conflictRegistry,
-                planApplicationService.getTaskRegistry(),
-                planApplicationService.getContextRegistry(),
-                planApplicationService.getStageRegistry(),
-                planApplicationService.getExecutorRegistry()
-        );
-    }
-
     // ========== Facade Bean ==========
 
     @Bean
     public DeploymentTaskFacade deploymentTaskFacade(
-            DeploymentApplicationService deploymentApplicationService,
-            PlanApplicationService planApplicationService,
-            TaskApplicationService taskApplicationService) {
-        // 新架构：优先使用 DeploymentApplicationService
-        // 旧架构：保留 PlanApplicationService 和 TaskApplicationService 以保持兼容
-        return new DeploymentTaskFacade(planApplicationService, taskApplicationService);
+            DeploymentApplicationService deploymentApplicationService) {
+        return new DeploymentTaskFacade(deploymentApplicationService);
     }
 }
 
