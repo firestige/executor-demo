@@ -1,14 +1,14 @@
 package xyz.firestige.deploy.execution;
 
+import java.util.List;
+
 import xyz.firestige.deploy.checkpoint.CheckpointService;
 import xyz.firestige.deploy.domain.stage.TaskStage;
 import xyz.firestige.deploy.domain.task.TaskAggregate;
 import xyz.firestige.deploy.domain.task.TaskRuntimeContext;
 import xyz.firestige.deploy.event.TaskEventSink;
 import xyz.firestige.deploy.state.TaskStateManager;
-import xyz.firestige.deploy.support.conflict.ConflictRegistry;
-
-import java.util.List;
+import xyz.firestige.deploy.support.conflict.TenantConflictManager;
 
 /**
  * TaskWorker 创建上下文
@@ -36,7 +36,7 @@ public class TaskWorkerCreationContext {
 
     // Optional parameters with defaults
     private final int progressIntervalSeconds;
-    private final ConflictRegistry conflictRegistry;
+    private final TenantConflictManager conflictManager;
 
     private TaskWorkerCreationContext(Builder builder) {
         this.planId = builder.planId;
@@ -47,7 +47,7 @@ public class TaskWorkerCreationContext {
         this.eventSink = builder.eventSink;
         this.stateManager = builder.stateManager;
         this.progressIntervalSeconds = builder.progressIntervalSeconds;
-        this.conflictRegistry = builder.conflictRegistry;
+        this.conflictManager = builder.conflictManager;
     }
 
     // Getters
@@ -84,8 +84,8 @@ public class TaskWorkerCreationContext {
         return progressIntervalSeconds;
     }
 
-    public ConflictRegistry getConflictRegistry() {
-        return conflictRegistry;
+    public TenantConflictManager getConflictManager() {
+        return conflictManager;
     }
 
     // Static factory method for builder
@@ -108,7 +108,7 @@ public class TaskWorkerCreationContext {
 
         // Optional parameters with defaults
         private int progressIntervalSeconds = 10;  // default: 10 seconds
-        private ConflictRegistry conflictRegistry = null;  // optional
+        private TenantConflictManager conflictManager = null;  // optional
 
         private Builder() {}
 
@@ -152,8 +152,8 @@ public class TaskWorkerCreationContext {
             return this;
         }
 
-        public Builder conflictRegistry(ConflictRegistry conflictRegistry) {
-            this.conflictRegistry = conflictRegistry;
+        public Builder conflictManager(TenantConflictManager conflictManager) {
+            this.conflictManager = conflictManager;
             return this;
         }
 

@@ -1,16 +1,15 @@
 package xyz.firestige.deploy.orchestration;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import xyz.firestige.deploy.config.ExecutorProperties;
-import xyz.firestige.deploy.domain.plan.PlanAggregate;
-import xyz.firestige.deploy.domain.plan.PlanContext;
-import xyz.firestige.deploy.domain.plan.PlanStatus;
-import xyz.firestige.deploy.domain.task.TaskAggregate;
-import xyz.firestige.deploy.support.conflict.ConflictRegistry;
-
 import java.util.List;
 import java.util.Objects;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import xyz.firestige.deploy.config.ExecutorProperties;
+import xyz.firestige.deploy.domain.plan.PlanAggregate;
+import xyz.firestige.deploy.domain.task.TaskAggregate;
+import xyz.firestige.deploy.support.conflict.TenantConflictManager;
 
 /**
  * 计划编排器（新实现）。暂不接线旧流程。
@@ -24,12 +23,12 @@ public class PlanOrchestrator {
     }
 
     private final TaskScheduler scheduler;
-    private final ConflictRegistry conflicts;
+    private final TenantConflictManager conflictManager; // RF-14
     private final ExecutorProperties props;
 
-    public PlanOrchestrator(TaskScheduler scheduler, ConflictRegistry conflicts, ExecutorProperties props) {
+    public PlanOrchestrator(TaskScheduler scheduler, TenantConflictManager conflictManager, ExecutorProperties props) {
         this.scheduler = Objects.requireNonNull(scheduler);
-        this.conflicts = Objects.requireNonNull(conflicts);
+        this.conflictManager = Objects.requireNonNull(conflictManager);
         this.props = Objects.requireNonNull(props);
     }
 
@@ -43,14 +42,13 @@ public class PlanOrchestrator {
      */
     public void submitPlan(PlanAggregate plan, List<TaskAggregate> taskAggregates, TaskWorkerFactory workerFactory) {
         int maxConcurrency = plan.getMaxConcurrency() != null ? plan.getMaxConcurrency() : props.getMaxConcurrency();
-        PlanContext ctx = new PlanContext(plan.getPlanId());
-        plan.setStatus(PlanStatus.RUNNING);
+        plan.start();
         log.info("提交计划: planId={}, maxConcurrency={}", plan.getPlanId(), maxConcurrency);
 
         for (TaskAggregate t : taskAggregates) {
             // 冲突检测
-            if (!conflicts.register(t.getTenantId(), t.getTaskId())) {
-                String runningTask = conflicts.getRunningTaskId(t.getTenantId());
+            if (!conflictManager.registerTask(t.getTenantId(), t.getTaskId())) {
+                String runningTask = conflictManager.getConflictingTaskId(t.getTenantId());
                 log.warn("租户冲突: tenantId={}, runningTask={}", t.getTenantId(), runningTask);
                 continue;
             }
@@ -70,6 +68,6 @@ public class PlanOrchestrator {
     }
 
     public void releaseTenantLock(String tenantId) {
-        if (tenantId != null) conflicts.release(tenantId);
+        if (tenantId != null) conflictManager.releaseTask(tenantId);
     }
 }

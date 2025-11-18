@@ -11,7 +11,7 @@ import xyz.firestige.deploy.metrics.MetricsRegistry;
 import xyz.firestige.deploy.metrics.NoopMetricsRegistry;
 import xyz.firestige.deploy.state.TaskStateManager;
 import xyz.firestige.deploy.state.TaskStatus;
-import xyz.firestige.deploy.support.conflict.ConflictRegistry;
+import xyz.firestige.deploy.support.conflict.TenantConflictManager;
 
 import java.time.Duration;
 import java.time.LocalDateTime;
@@ -43,7 +43,7 @@ public class TaskExecutor {
     private volatile HeartbeatScheduler heartbeatScheduler; // 允许后置注入
     private final AtomicInteger completedCounter = new AtomicInteger();
     private final TaskStateManager stateManager; // new
-    private final ConflictRegistry conflicts; // for SC-02 release
+    private final TenantConflictManager conflictManager; // RF-14: 统一冲突管理
     private final MetricsRegistry metrics;
 
     public TaskExecutor(String planId,
@@ -65,8 +65,8 @@ public class TaskExecutor {
                         TaskEventSink eventSink,
                         int progressIntervalSeconds,
                         TaskStateManager stateManager,
-                        ConflictRegistry conflicts) {
-        this(planId, task, stages, context, checkpointService, eventSink, progressIntervalSeconds, stateManager, conflicts, new NoopMetricsRegistry());
+                        TenantConflictManager conflictManager) {
+        this(planId, task, stages, context, checkpointService, eventSink, progressIntervalSeconds, stateManager, conflictManager, new NoopMetricsRegistry());
     }
 
     public TaskExecutor(String planId,
@@ -77,7 +77,7 @@ public class TaskExecutor {
                         TaskEventSink eventSink,
                         int progressIntervalSeconds,
                         TaskStateManager stateManager,
-                        ConflictRegistry conflicts,
+                        TenantConflictManager conflictManager,
                         MetricsRegistry metrics) {
         // ...existing assigns...
         this.planId = planId;
@@ -88,7 +88,7 @@ public class TaskExecutor {
         this.eventSink = eventSink;
         this.progressIntervalSeconds = progressIntervalSeconds <= 0 ? 10 : progressIntervalSeconds;
         this.stateManager = stateManager;
-        this.conflicts = conflicts;
+        this.conflictManager = conflictManager;
         this.metrics = metrics != null ? metrics : new NoopMetricsRegistry();
     }
 
@@ -186,7 +186,7 @@ public class TaskExecutor {
                     stopHeartbeat();
                     metrics.incrementCounter("task_failed");
                     // SC-02: release on terminal
-                    if (conflicts != null) conflicts.release(task.getTenantId());
+                    if (conflictManager != null) conflictManager.releaseTask(task.getTenantId());
                     return TaskExecutionResult.fail(planId, taskId, task.getStatus(), stageRes.getMessage(), Duration.between(start, LocalDateTime.now()), completed);
                 }
 
@@ -223,7 +223,7 @@ public class TaskExecutor {
             stopHeartbeat();
             metrics.incrementCounter("task_completed");
             // SC-02: release on terminal
-            if (conflicts != null) conflicts.release(task.getTenantId());
+            if (conflictManager != null) conflictManager.releaseTask(task.getTenantId());
             return TaskExecutionResult.ok(planId, taskId, task.getStatus(), d, completed);
         } finally {
             context.clearMdc();
@@ -291,7 +291,7 @@ public class TaskExecutor {
             eventSink.publishTaskRolledBack(planId, taskId, 0);
         }
         // SC-02: release on terminal
-        if (conflicts != null) conflicts.release(task.getTenantId());
+        if (conflictManager != null) conflictManager.releaseTask(task.getTenantId());
         metrics.incrementCounter("rollback_count");
         return TaskExecutionResult.ok(planId, taskId, task.getStatus(), Duration.ZERO, rollbackStages);
     }

@@ -1,13 +1,13 @@
 package xyz.firestige.deploy.event;
 
-import xyz.firestige.deploy.exception.ErrorType;
-import xyz.firestige.deploy.state.TaskStateManager;
-import xyz.firestige.deploy.exception.FailureInfo;
-import xyz.firestige.deploy.execution.StageResult;
-import xyz.firestige.deploy.support.conflict.ConflictRegistry;
-
 import java.time.Duration;
 import java.util.List;
+
+import xyz.firestige.deploy.exception.ErrorType;
+import xyz.firestige.deploy.exception.FailureInfo;
+import xyz.firestige.deploy.execution.StageResult;
+import xyz.firestige.deploy.state.TaskStateManager;
+import xyz.firestige.deploy.support.conflict.TenantConflictManager;
 
 /**
  * 基于 TaskStateManager 的事件下沉实现，统一使用状态管理器生成的 sequenceId。
@@ -15,22 +15,22 @@ import java.util.List;
 public class SpringTaskEventSink implements TaskEventSink {
 
     private final TaskStateManager stateManager;
-    private final ConflictRegistry conflicts; // optional for fallback release
+    private final TenantConflictManager conflictManager; // optional for fallback release
 
     public SpringTaskEventSink(TaskStateManager stateManager) {
         this.stateManager = stateManager;
-        this.conflicts = null;
+        this.conflictManager = null;
     }
 
-    public SpringTaskEventSink(TaskStateManager stateManager, ConflictRegistry conflicts) {
+    public SpringTaskEventSink(TaskStateManager stateManager, TenantConflictManager conflictManager) {
         this.stateManager = stateManager;
-        this.conflicts = conflicts;
+        this.conflictManager = conflictManager;
     }
 
     private void releaseIfTerminal(String taskId) {
-        if (conflicts == null) return;
+        if (conflictManager == null) return;
         String tenantId = stateManager.getTenantId(taskId);
-        if (tenantId != null) conflicts.release(tenantId);
+        if (tenantId != null) conflictManager.releaseTask(tenantId);
     }
 
     @Override

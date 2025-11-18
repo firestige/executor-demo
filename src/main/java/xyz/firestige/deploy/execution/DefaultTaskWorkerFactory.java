@@ -8,7 +8,7 @@ import xyz.firestige.deploy.event.TaskEventSink;
 import xyz.firestige.deploy.metrics.MetricsRegistry;
 import xyz.firestige.deploy.metrics.NoopMetricsRegistry;
 import xyz.firestige.deploy.state.TaskStateManager;
-import xyz.firestige.deploy.support.conflict.ConflictRegistry;
+import xyz.firestige.deploy.support.conflict.TenantConflictManager;
 
 import java.util.List;
 
@@ -42,7 +42,7 @@ public class DefaultTaskWorkerFactory implements TaskWorkerFactory {
             context.getEventSink(),
             context.getProgressIntervalSeconds(),
             context.getStateManager(),
-            context.getConflictRegistry(),
+            context.getConflictManager(),
             metrics
         );
 
@@ -76,7 +76,7 @@ public class DefaultTaskWorkerFactory implements TaskWorkerFactory {
                                TaskEventSink eventSink,
                                int progressIntervalSeconds,
                                TaskStateManager stateManager,
-                               ConflictRegistry conflicts) {
+                               TenantConflictManager conflictManager) {
         // Delegate to context-based method
         TaskWorkerCreationContext context = TaskWorkerCreationContext.builder()
             .planId(planId)
@@ -87,7 +87,7 @@ public class DefaultTaskWorkerFactory implements TaskWorkerFactory {
             .eventSink(eventSink)
             .progressIntervalSeconds(progressIntervalSeconds)
             .stateManager(stateManager)
-            .conflictRegistry(conflicts)
+            .conflictManager(conflictManager)
             .build();
 
         return create(context);

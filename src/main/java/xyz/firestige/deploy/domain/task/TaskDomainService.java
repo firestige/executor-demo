@@ -16,7 +16,7 @@ import xyz.firestige.deploy.execution.TaskWorkerFactory;
 import xyz.firestige.deploy.facade.TaskStatusInfo;
 import xyz.firestige.deploy.state.TaskStateManager;
 import xyz.firestige.deploy.state.TaskStatus;
-import xyz.firestige.deploy.support.conflict.ConflictRegistry;
+import xyz.firestige.deploy.support.conflict.TenantConflictManager;
 
 import java.util.List;
 
@@ -42,7 +42,7 @@ public class TaskDomainService {
     private final TaskWorkerFactory workerFactory;
     private final ExecutorProperties executorProperties;
     private final CheckpointService checkpointService;
-    private final ConflictRegistry conflictRegistry;
+    private final TenantConflictManager conflictManager;
     // ✅ RF-11 改进版: 使用领域事件发布器接口（支持多种实现）
     private final DomainEventPublisher domainEventPublisher;
 
@@ -53,7 +53,7 @@ public class TaskDomainService {
             TaskWorkerFactory workerFactory,
             ExecutorProperties executorProperties,
             CheckpointService checkpointService,
-            ConflictRegistry conflictRegistry,
+            TenantConflictManager conflictManager,
             DomainEventPublisher domainEventPublisher) {
         this.taskRepository = taskRepository;
         this.taskRuntimeRepository = taskRuntimeRepository;
@@ -61,7 +61,7 @@ public class TaskDomainService {
         this.workerFactory = workerFactory;
         this.executorProperties = executorProperties;
         this.checkpointService = checkpointService;
-        this.conflictRegistry = conflictRegistry;
+        this.conflictManager = conflictManager;
         this.domainEventPublisher = domainEventPublisher;
     }
 
@@ -455,7 +455,7 @@ public class TaskDomainService {
                         .eventSink(eventSink)
                         .progressIntervalSeconds(executorProperties.getTaskProgressIntervalSeconds())
                         .stateManager(stateManager)
-                        .conflictRegistry(conflictRegistry)
+                        .conflictManager(conflictManager)
                         .build()
         );
         return exec;

@@ -7,6 +7,7 @@ import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import xyz.firestige.deploy.application.DeploymentApplicationService;
+import xyz.firestige.deploy.application.plan.DeploymentPlanCreator;
 import xyz.firestige.deploy.application.validation.BusinessValidator;
 import xyz.firestige.deploy.checkpoint.CheckpointService;
 import xyz.firestige.deploy.checkpoint.InMemoryCheckpointStore;
@@ -30,6 +31,7 @@ import xyz.firestige.deploy.service.health.HealthCheckClient;
 import xyz.firestige.deploy.service.health.MockHealthCheckClient;
 import xyz.firestige.deploy.state.TaskStateManager;
 import xyz.firestige.deploy.support.conflict.ConflictRegistry;
+import xyz.firestige.deploy.support.conflict.TenantConflictManager;
 import xyz.firestige.deploy.validation.ValidationChain;
 import xyz.firestige.deploy.validation.validator.BusinessRuleValidator;
 import xyz.firestige.deploy.validation.validator.ConflictValidator;
@@ -84,8 +86,9 @@ public class ExecutorConfiguration {
     }
 
     @Bean
-    public ConflictRegistry conflictRegistry() {
-        return new ConflictRegistry();
+    public TenantConflictManager conflictManager() {
+        // TODO 按配置来，不要写死
+        return new TenantConflictManager(TenantConflictManager.ConflictPolicy.FINE_GRAINED);
     }
 
     @Bean
@@ -96,8 +99,8 @@ public class ExecutorConfiguration {
     @Bean
     public SpringTaskEventSink springTaskEventSink(
             TaskStateManager stateManager,
-            ConflictRegistry conflictRegistry) {
-        return new SpringTaskEventSink(stateManager, conflictRegistry);
+            TenantConflictManager conflictManager) {
+        return new SpringTaskEventSink(stateManager, conflictManager);
     }
 
     // ========== Repository Bean (DDD 重构新增) ==========
@@ -124,7 +127,7 @@ public class ExecutorConfiguration {
             PlanRepository planRepository,
             TaskStateManager stateManager,
             ExecutorProperties executorProperties,
-            ConflictRegistry conflictRegistry,
+            TenantConflictManager conflictManager,
             SpringTaskEventSink eventSink,
             DomainEventPublisher domainEventPublisher) {
         return new PlanDomainService(
@@ -133,7 +136,7 @@ public class ExecutorConfiguration {
                 new PlanFactory(),
                 new PlanOrchestrator(
                     new TaskScheduler(Runtime.getRuntime().availableProcessors()),
-                    conflictRegistry,
+                    conflictManager,
                     executorProperties
                 ),
                 eventSink,
@@ -149,7 +152,7 @@ public class ExecutorConfiguration {
             TaskStateManager stateManager,
             ExecutorProperties executorProperties,
             CheckpointService checkpointService,
-            ConflictRegistry conflictRegistry,
+            TenantConflictManager conflictManager,
             DomainEventPublisher domainEventPublisher) {
         return new TaskDomainService(
                 taskRepository,
@@ -158,7 +161,7 @@ public class ExecutorConfiguration {
                 new DefaultTaskWorkerFactory(),
                 executorProperties,
                 checkpointService,
-                conflictRegistry,
+                conflictManager,
                 domainEventPublisher
         );
     }
@@ -180,17 +183,15 @@ public class ExecutorConfiguration {
 
     @Bean
     public DeploymentApplicationService deploymentApplicationService(
-            xyz.firestige.deploy.application.plan.DeploymentPlanCreator deploymentPlanCreator,
+            DeploymentPlanCreator deploymentPlanCreator,
             PlanDomainService planDomainService,
             TaskDomainService taskDomainService,
-            xyz.firestige.deploy.orchestration.strategy.PlanSchedulingStrategy planSchedulingStrategy,
-            xyz.firestige.deploy.support.conflict.ConflictRegistry conflictRegistry) {
+            TenantConflictManager conflictManager) {
         return new DeploymentApplicationService(
                 deploymentPlanCreator,
                 planDomainService,
                 taskDomainService,
-                planSchedulingStrategy,
-                conflictRegistry
+                conflictManager
         );
     }
 

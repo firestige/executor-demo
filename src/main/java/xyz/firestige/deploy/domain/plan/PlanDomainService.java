@@ -134,7 +134,7 @@ public class PlanDomainService {
         planRepository.save(plan);
 
         // ✅ RF-11: 提取并发布聚合产生的领域事件
-        plan.getDomainEvents().forEach(eventPublisher::publishEvent);
+        plan.getDomainEvents().forEach(domainEventPublisher::publish);
         plan.clearDomainEvents();
 
         logger.info("[PlanDomainService] Plan 已标记为 READY: {}", planId);
@@ -164,7 +164,7 @@ public class PlanDomainService {
         planRepository.save(plan);
 
         // ✅ RF-11: 提取并发布聚合产生的领域事件
-        plan.getDomainEvents().forEach(eventPublisher::publishEvent);
+        plan.getDomainEvents().forEach(domainEventPublisher::publish);
         plan.clearDomainEvents();
 
         // 更新状态管理器并发布事件
@@ -198,7 +198,7 @@ public class PlanDomainService {
         planRepository.save(plan);
 
         // ✅ RF-11: 提取并发布聚合产生的领域事件
-        plan.getDomainEvents().forEach(eventPublisher::publishEvent);
+        plan.getDomainEvents().forEach(domainEventPublisher::publish);
         plan.clearDomainEvents();
 
         logger.info("[PlanDomainService] Plan 已暂停: {}", planId);
@@ -228,22 +228,10 @@ public class PlanDomainService {
         planRepository.save(plan);
 
         // ✅ RF-11: 提取并发布聚合产生的领域事件
-        plan.getDomainEvents().forEach(eventPublisher::publishEvent);
+        plan.getDomainEvents().forEach(domainEventPublisher::publish);
         plan.clearDomainEvents();
 
         logger.info("[PlanDomainService] Plan 已恢复: {}", planId);
-    }
-
-    /**
-     * 获取 Plan 信息
-     *
-     * @param planId Plan ID
-     * @return PlanInfo
-     */
-    public PlanInfo getPlanInfo(String planId) {
-        return planRepository.findById(planId)
-                .map(PlanInfo::from)
-                .orElse(null);
     }
 
     /**

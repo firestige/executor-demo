@@ -4,12 +4,14 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import xyz.firestige.deploy.application.dto.TenantConfig;
 import xyz.firestige.deploy.application.validation.BusinessValidator;
+import xyz.firestige.deploy.domain.plan.PlanAggregate;
 import xyz.firestige.deploy.domain.plan.PlanDomainService;
 import xyz.firestige.deploy.domain.plan.PlanInfo;
 import xyz.firestige.deploy.domain.stage.StageFactory;
 import xyz.firestige.deploy.domain.stage.TaskStage;
 import xyz.firestige.deploy.domain.task.TaskAggregate;
 import xyz.firestige.deploy.domain.task.TaskDomainService;
+import xyz.firestige.deploy.domain.task.TaskInfo;
 import xyz.firestige.deploy.validation.ValidationSummary;
 
 import java.util.List;
@@ -75,10 +77,10 @@ public class DeploymentPlanCreator {
 
         try {
             // Step 3: 创建 Plan
-            planDomainService.createPlan(planId, configs.size());
+            PlanAggregate plan = planDomainService.createPlan(planId, configs.size());
 
             // Step 4: 为每个租户创建 Task
-            configs.forEach(this::createAndLinkTask);
+            List<TaskInfo> tasks = configs.stream().map(this::createAndLinkTask).map(TaskInfo::from).toList();
 
             // Step 5: 标记 Plan 为 READY
             planDomainService.markPlanAsReady(planId);
@@ -87,7 +89,8 @@ public class DeploymentPlanCreator {
             planDomainService.startPlan(planId);
 
             // Step 7: 获取 Plan 信息并返回
-            PlanInfo planInfo = planDomainService.getPlanInfo(planId);
+
+            PlanInfo planInfo = PlanInfo.from(plan, tasks);
             logger.info("[DeploymentPlanCreator] 部署计划创建成功，planId: {}", planId);
 
             return PlanCreationContext.success(planInfo);
@@ -103,7 +106,7 @@ public class DeploymentPlanCreator {
      *
      * @param config 租户配置
      */
-    private void createAndLinkTask(TenantConfig config) {
+    private TaskAggregate createAndLinkTask(TenantConfig config) {
         String planId = String.valueOf(config.getPlanId());
         // 创建 Task 聚合
         TaskAggregate task = taskDomainService.createTask(planId, config);
@@ -116,6 +119,8 @@ public class DeploymentPlanCreator {
         planDomainService.addTaskToPlan(planId, task.getTaskId());
 
         logger.debug("[DeploymentPlanCreator] Task 创建并关联成功: {}", task.getTaskId());
+
+        return task;
     }
 
     private List<TaskStage> buildStagesForTask(TaskAggregate task, TenantConfig config) {

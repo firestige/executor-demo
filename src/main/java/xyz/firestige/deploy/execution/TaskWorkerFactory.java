@@ -7,6 +7,7 @@ import xyz.firestige.deploy.domain.task.TaskRuntimeContext;
 import xyz.firestige.deploy.event.TaskEventSink;
 import xyz.firestige.deploy.state.TaskStateManager;
 import xyz.firestige.deploy.support.conflict.ConflictRegistry;
+import xyz.firestige.deploy.support.conflict.TenantConflictManager;
 
 import java.util.List;
 
@@ -39,6 +40,6 @@ public interface TaskWorkerFactory {
                         TaskEventSink eventSink,
                         int progressIntervalSeconds,
                         TaskStateManager stateManager,
-                        ConflictRegistry conflicts);
+                        TenantConflictManager conflictManager);
 }
 

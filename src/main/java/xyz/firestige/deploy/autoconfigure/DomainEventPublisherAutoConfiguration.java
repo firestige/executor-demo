@@ -11,6 +11,8 @@ import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import xyz.firestige.deploy.event.*;
+import xyz.firestige.deploy.infrastructure.mq.KafkaDomainEventPublisher;
+import xyz.firestige.deploy.infrastructure.mq.RocketMQDomainEventPublisher;
 
 /**
  * 领域事件发布器自动配置

@@ -1,26 +1,29 @@
 package xyz.firestige.deploy.application;
 
+import java.util.List;
+import java.util.stream.Collectors;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.transaction.annotation.Transactional;
+
 import xyz.firestige.deploy.application.dto.TenantConfig;
 import xyz.firestige.deploy.application.plan.DeploymentPlanCreator;
 import xyz.firestige.deploy.application.plan.PlanCreationContext;
 import xyz.firestige.deploy.application.plan.PlanCreationException;
-import xyz.firestige.deploy.domain.plan.*;
+import xyz.firestige.deploy.domain.plan.PlanCreationResult;
+import xyz.firestige.deploy.domain.plan.PlanDomainService;
+import xyz.firestige.deploy.domain.plan.PlanOperationResult;
+import xyz.firestige.deploy.domain.plan.PlanStatus;
 import xyz.firestige.deploy.domain.task.TaskDomainService;
 import xyz.firestige.deploy.domain.task.TaskOperationResult;
 import xyz.firestige.deploy.exception.ErrorType;
 import xyz.firestige.deploy.exception.FailureInfo;
 import xyz.firestige.deploy.facade.TaskStatusInfo;
-import xyz.firestige.deploy.orchestration.strategy.PlanSchedulingStrategy;
-import xyz.firestige.deploy.support.conflict.ConflictRegistry;
-
-import java.util.List;
-import java.util.stream.Collectors;
+import xyz.firestige.deploy.support.conflict.TenantConflictManager;
 
 /**
- * 部署应用服务（DDD 重构：RF-10 优化版 + RF-12 事务管理 + 调度策略）
+ * 部署应用服务（DDD 重构：RF-10 优化版 + RF-12 事务管理 + RF-14 冲突管理优化）
  *
  * 职责：
  * 1. 协调各种部署操作（创建、暂停、恢复等）
@@ -28,15 +31,16 @@ import java.util.stream.Collectors;
  * 3. 统一返回 Result DTOs
  * 4. 异常处理和日志记录
  * 5. 事务边界管理（RF-12）
- * 6. 调度策略检查（RF-12）
+ * 6. 租户冲突检测（RF-14：合并策略）
  *
  * 设计说明：
  * - RF-10 重构：提取 DeploymentPlanCreator，简化职责
  * - RF-12 重构：添加 @Transactional，集成调度策略
+ * - RF-14 重构：合并 ConflictRegistry + PlanSchedulingStrategy
  * - 应用服务只做协调，不包含具体业务逻辑
  * - 单一职责：部署操作的统一入口
  *
- * @since DDD 重构 Phase 18 - RF-12
+ * @since DDD 重构 Phase 18 - RF-14
  */
 public class DeploymentApplicationService {
 
@@ -45,20 +49,17 @@ public class DeploymentApplicationService {
     private final DeploymentPlanCreator deploymentPlanCreator;
     private final PlanDomainService planDomainService;
     private final TaskDomainService taskDomainService;
-    private final PlanSchedulingStrategy schedulingStrategy;
-    private final ConflictRegistry conflictRegistry;
+    private final TenantConflictManager conflictManager;
 
     public DeploymentApplicationService(
             DeploymentPlanCreator deploymentPlanCreator,
             PlanDomainService planDomainService,
             TaskDomainService taskDomainService,
-            PlanSchedulingStrategy schedulingStrategy,
-            ConflictRegistry conflictRegistry) {
+            TenantConflictManager conflictManager) {
         this.deploymentPlanCreator = deploymentPlanCreator;
         this.planDomainService = planDomainService;
         this.taskDomainService = taskDomainService;
-        this.schedulingStrategy = schedulingStrategy;
-        this.conflictRegistry = conflictRegistry;
+        this.conflictManager = conflictManager;
     }
 
     /**
@@ -73,22 +74,18 @@ public class DeploymentApplicationService {
                 configs != null ? configs.size() : 0);
 
         try {
-            // RF-12: 提取租户 ID
+            // RF-14: 提取租户 ID
             List<String> tenantIds = configs.stream()
                 .map(TenantConfig::getTenantId)
                 .collect(Collectors.toList());
 
-            // RF-12: 调度策略检查（纯内存操作，< 1ms）
-            if (!schedulingStrategy.canCreatePlan(tenantIds)) {
-                // 找出冲突租户
-                List<String> conflictTenants = tenantIds.stream()
-                    .filter(tid -> conflictRegistry.hasConflict(tid))
-                    .collect(Collectors.toList());
-
-                logger.warn("[DeploymentApplicationService] 创建 Plan 被拒绝，冲突租户: {}", conflictTenants);
+            // RF-14: 冲突检测（统一接口，纯内存操作，< 1ms）
+            TenantConflictManager.ConflictCheckResult conflictCheck = conflictManager.canCreatePlan(tenantIds);
+            if (!conflictCheck.isAllowed()) {
+                logger.warn("[DeploymentApplicationService] 创建 Plan 被拒绝，冲突租户: {}", 
+                    conflictCheck.getConflictingTenants());
                 return PlanCreationResult.failure(
-                    FailureInfo.of(ErrorType.CONFLICT,
-                        "租户冲突：以下租户已在运行中的 Plan 中: " + conflictTenants),
+                    FailureInfo.of(ErrorType.CONFLICT, conflictCheck.getMessage()),
                     "请等待相关 Plan 完成，或移除冲突租户后重试"
                 );
             }
@@ -101,8 +98,7 @@ public class DeploymentApplicationService {
                 return PlanCreationResult.validationFailure(context.getValidationSummary());
             }
 
-            // RF-12: 通知调度策略 Plan 已创建
-            schedulingStrategy.onPlanCreated(context.getPlanId(), tenantIds);
+            // RF-14: 无需通知（TenantConflictManager 无状态，锁由 Task 注册时管理）
 
             // 返回成功结果（事务自动提交）
             return PlanCreationResult.success(context.getPlanInfo());
