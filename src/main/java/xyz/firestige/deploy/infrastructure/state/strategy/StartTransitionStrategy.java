@@ -17,7 +17,7 @@ public class StartTransitionStrategy implements StateTransitionStrategy {
     }
 
     @Override
-    public void execute(TaskAggregate agg, TaskRuntimeContext context, Object additionalData) {
+    public void execute(TaskAggregate agg, TaskRuntimeContext context) {
         agg.start();  // 委托给聚合的业务方法
     }
 

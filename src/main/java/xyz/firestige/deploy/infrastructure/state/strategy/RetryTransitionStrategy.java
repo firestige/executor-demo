@@ -38,9 +38,9 @@ public class RetryTransitionStrategy implements StateTransitionStrategy {
     }
 
     @Override
-    public void execute(TaskAggregate agg, TaskRuntimeContext context, Object additionalData) {
+    public void execute(TaskAggregate agg, TaskRuntimeContext context) {
         // additionalData: boolean fromCheckpoint
-        boolean fromCheckpoint = additionalData instanceof Boolean ? (Boolean) additionalData : false;
+        boolean fromCheckpoint = context.getAdditionalData("fromCheckpoint", false);
         agg.retry(fromCheckpoint, globalMaxRetry);
     }
 

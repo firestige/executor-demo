@@ -245,11 +245,7 @@ public class DeploymentApplicationService {
         if (finalStatus == TaskStatus.ROLLED_BACK) {
             // 聚合产生的事件已由 TaskDomainService 发布
         } else if (finalStatus == TaskStatus.ROLLBACK_FAILED) {
-            stateManager.publishTaskRollbackFailedEvent(
-                context.getTask().getTaskId(),
-                FailureInfo.of(ErrorType.SYSTEM_ERROR, "rollback failed"),
-                null
-            );
+
         }
 
         logger.info("[DeploymentApplicationService] 租户任务回滚结束: {}, status: {}",

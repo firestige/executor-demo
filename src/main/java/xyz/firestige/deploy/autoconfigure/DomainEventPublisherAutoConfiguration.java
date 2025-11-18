@@ -13,8 +13,8 @@ import org.springframework.context.annotation.Configuration;
 import xyz.firestige.deploy.domain.shared.event.DomainEventPublisher;
 import xyz.firestige.deploy.infrastructure.event.CompositeDomainEventPublisher;
 import xyz.firestige.deploy.infrastructure.event.SpringDomainEventPublisher;
-import xyz.firestige.deploy.infrastructure.mq.KafkaDomainEventPublisher;
-import xyz.firestige.deploy.infrastructure.mq.RocketMQDomainEventPublisher;
+import xyz.firestige.deploy.infrastructure.message.KafkaDomainEventPublisher;
+import xyz.firestige.deploy.infrastructure.message.RocketMQDomainEventPublisher;
 
 /**
  * 领域事件发布器自动配置

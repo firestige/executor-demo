@@ -38,9 +38,8 @@ public interface StateTransitionStrategy {
      *
      * @param agg 任务聚合
      * @param context 运行时上下文
-     * @param additionalData 额外数据（用于某些特殊转换）
      */
-    void execute(TaskAggregate agg, TaskRuntimeContext context, Object additionalData);
+    void execute(TaskAggregate agg, TaskRuntimeContext context);
 
     /**
      * 获取此策略支持的源状态

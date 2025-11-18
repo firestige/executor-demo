@@ -1,6 +1,6 @@
 package xyz.firestige.deploy.domain.task;
 
-import xyz.firestige.deploy.domain.stage.TaskStage;
+import xyz.firestige.deploy.infrastructure.execution.stage.TaskStage;
 import xyz.firestige.deploy.infrastructure.execution.TaskExecutor;
 
 import java.util.List;

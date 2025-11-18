@@ -17,7 +17,7 @@ public class RollbackCompleteTransitionStrategy implements StateTransitionStrate
     }
 
     @Override
-    public void execute(TaskAggregate agg, TaskRuntimeContext context, Object additionalData) {
+    public void execute(TaskAggregate agg, TaskRuntimeContext context) {
         agg.completeRollback();
     }
 

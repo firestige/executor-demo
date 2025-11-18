@@ -6,7 +6,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import xyz.firestige.deploy.application.dto.TenantConfig;
-import xyz.firestige.deploy.domain.stage.TaskStage;
+import xyz.firestige.deploy.infrastructure.execution.stage.TaskStage;
 import xyz.firestige.deploy.domain.shared.event.DomainEventPublisher;
 import xyz.firestige.deploy.domain.shared.exception.ErrorType;
 import xyz.firestige.deploy.domain.shared.exception.FailureInfo;
@@ -71,9 +71,6 @@ public class TaskDomainService {
         // ✅ 调用聚合的业务方法
         task.markAsPending();
 
-        // 初始化状态
-        stateManager.initializeTask(taskId, TaskStatus.PENDING);
-
         // 保存到仓储
         taskRepository.save(task);
 
@@ -98,10 +95,6 @@ public class TaskDomainService {
 
         // 保存到仓储
         taskRuntimeRepository.saveStages(task.getTaskId(), stages);
-
-        // 注册 Stage 名称
-        List<String> stageNames = stages.stream().map(TaskStage::getName).toList();
-        stateManager.registerStageNames(task.getTaskId(), stageNames);
 
         logger.debug("[TaskDomainService] Task Stages 构建完成: {}, stage数量: {}", task.getTaskId(), stages.size());
     }
@@ -256,7 +249,7 @@ public class TaskDomainService {
         if (fromCheckpoint) {
             int completed = target.getCurrentStageIndex();
             int total = taskRuntimeRepository.getStages(target.getTaskId()).orElseGet(List::of).size();
-            stateManager.publishTaskProgressEvent(target.getTaskId(), null, completed, total);
+            // 发布进度补偿事件
         }
 
         // 获取运行时数据
@@ -349,9 +342,8 @@ public class TaskDomainService {
         // 设置取消标志
         taskRuntimeRepository.getContext(task.getTaskId()).ifPresent(TaskRuntimeContext::requestCancel);
 
-        // 更新状态
-        stateManager.updateState(task.getTaskId(), TaskStatus.CANCELLED);
-        stateManager.publishTaskCancelledEvent(task.getTaskId(), "domain-service");
+        task.cancel("任务取消请求已登记");// 调用聚合的取消方法
+        taskRepository.save(task);// 保存状态变更
 
         logger.info("[TaskDomainService] 任务取消请求已登记: {}", taskId);
         return TaskOperationResult.success(
@@ -397,15 +389,5 @@ public class TaskDomainService {
         return taskRepository.findByTenantId(tenantId).orElse(null);
     }
 
-    /**
-     * 获取并注册 Stage 名称
-     */
-    private List<String> getAndRegStageNames(TaskAggregate task) {
-        List<String> stageNames = taskRuntimeRepository.getStages(task.getTaskId())
-                .map(list -> list.stream().map(TaskStage::getName).toList())
-                .orElseGet(List::of);
-        stateManager.registerStageNames(task.getTaskId(), stageNames);
-        return stageNames;
-    }
 }
 

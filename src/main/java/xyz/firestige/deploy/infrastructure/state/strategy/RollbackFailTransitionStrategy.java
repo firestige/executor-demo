@@ -17,9 +17,9 @@ public class RollbackFailTransitionStrategy implements StateTransitionStrategy {
     }
 
     @Override
-    public void execute(TaskAggregate agg, TaskRuntimeContext context, Object additionalData) {
+    public void execute(TaskAggregate agg, TaskRuntimeContext context) {
         // additionalData: String reason
-        String reason = additionalData instanceof String ? (String) additionalData : "Unknown failure";
+        String reason = context.getAdditionalData("reason", "Unknown failure");
         agg.failRollback(reason);
     }
 

@@ -6,11 +6,12 @@ import org.junit.jupiter.api.Test;
 import org.mockito.InOrder;
 import xyz.firestige.deploy.application.dto.TenantConfig;
 import xyz.firestige.deploy.application.validation.BusinessValidator;
+import xyz.firestige.deploy.config.ExecutorProperties;
 import xyz.firestige.deploy.domain.plan.PlanAggregate;
 import xyz.firestige.deploy.domain.plan.PlanDomainService;
-import xyz.firestige.deploy.domain.stage.CompositeServiceStage;
-import xyz.firestige.deploy.domain.stage.StageFactory;
-import xyz.firestige.deploy.domain.stage.TaskStage;
+import xyz.firestige.deploy.infrastructure.execution.stage.CompositeServiceStage;
+import xyz.firestige.deploy.infrastructure.execution.stage.StageFactory;
+import xyz.firestige.deploy.infrastructure.execution.stage.TaskStage;
 import xyz.firestige.deploy.domain.task.TaskAggregate;
 import xyz.firestige.deploy.domain.task.TaskDomainService;
 import xyz.firestige.deploy.domain.shared.validation.ValidationError;
@@ -46,10 +47,11 @@ class DeploymentPlanCreatorTest {
         mockTaskService = mock(TaskDomainService.class);
         mockStageFactory = mock(StageFactory.class);
         mockValidator = mock(BusinessValidator.class);
+        ExecutorProperties executorProperties = new ExecutorProperties();
 
         creator = new DeploymentPlanCreator(
                 mockPlanService, mockTaskService,
-                mockStageFactory, mockValidator
+                mockStageFactory, mockValidator, executorProperties
         );
     }
 
@@ -69,7 +71,7 @@ class DeploymentPlanCreatorTest {
         // Mock Plan 创建
         PlanAggregate plan = new PlanAggregate(String.valueOf(planId));
         plan.setMaxConcurrency(1);
-        when(mockPlanService.createPlan(any(), anyInt()))
+        when(mockPlanService.createPlan(any(), anyInt(), anyInt()))
                 .thenReturn(plan);
 
         // Mock Task 创建
@@ -99,7 +101,7 @@ class DeploymentPlanCreatorTest {
         );
         // TODO: 验证调用顺序这里应该注意调用值的顺序，断言太严过不去，但全是 any 相当于没断言
         inOrder.verify(mockValidator).validate(configs);
-        inOrder.verify(mockPlanService).createPlan(any(), anyInt());
+        inOrder.verify(mockPlanService).createPlan(any(), anyInt(), anyInt());
         inOrder.verify(mockTaskService).createTask(any(), any());
         inOrder.verify(mockStageFactory).buildStages(configs.get(0));
         inOrder.verify(mockPlanService).addTaskToPlan(any(), any());
@@ -123,6 +125,6 @@ class DeploymentPlanCreatorTest {
         assertTrue(context.hasValidationErrors());
 
         // 验证后续步骤未执行
-        verify(mockPlanService, never()).createPlan(any(), anyInt());
+        verify(mockPlanService, never()).createPlan(any(), anyInt(), anyInt());
     }
 }

@@ -1,6 +1,5 @@
 package xyz.firestige.deploy.config;
 
-import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
@@ -18,12 +17,11 @@ import xyz.firestige.deploy.infrastructure.external.health.MockHealthCheckClient
 import xyz.firestige.deploy.infrastructure.persistence.checkpoint.InMemoryCheckpointRepository;
 import xyz.firestige.deploy.domain.plan.PlanDomainService;
 import xyz.firestige.deploy.domain.plan.PlanRepository;
-import xyz.firestige.deploy.domain.stage.DefaultStageFactory;
+import xyz.firestige.deploy.infrastructure.execution.stage.DefaultStageFactory;
 import xyz.firestige.deploy.domain.task.TaskDomainService;
 import xyz.firestige.deploy.domain.task.TaskRepository;
 import xyz.firestige.deploy.domain.task.TaskRuntimeRepository;
 import xyz.firestige.deploy.domain.shared.event.DomainEventPublisher;
-import xyz.firestige.deploy.infrastructure.event.SpringTaskEventSink;
 import xyz.firestige.deploy.facade.DeploymentTaskFacade;
 import xyz.firestige.deploy.infrastructure.persistence.plan.InMemoryPlanRepository;
 import xyz.firestige.deploy.infrastructure.persistence.task.InMemoryTaskRepository;
@@ -59,8 +57,8 @@ public class ExecutorConfiguration {
     }
 
     @Bean
-    public TaskStateManager taskStateManager(ApplicationEventPublisher eventPublisher) {
-        return new TaskStateManager(eventPublisher);
+    public TaskStateManager taskStateManager() {
+        return new TaskStateManager();
     }
 
     @Bean
@@ -95,22 +93,13 @@ public class ExecutorConfiguration {
     }
 
     @Bean
-    public SpringTaskEventSink springTaskEventSink(
-            TaskStateManager stateManager,
-            TenantConflictManager conflictManager) {
-        return new SpringTaskEventSink(stateManager, conflictManager);
-    }
-
-    @Bean
     public TaskWorkerFactory taskWorkerFactory(
             CheckpointService checkpointService,
-            SpringTaskEventSink eventSink,
             TaskStateManager stateManager,
             TenantConflictManager conflictManager,
             ExecutorProperties executorProperties) {
         return new DefaultTaskWorkerFactory(
                 checkpointService,
-                eventSink,
                 stateManager,
                 conflictManager,
                 executorProperties.getTaskProgressIntervalSeconds(),
@@ -140,13 +129,9 @@ public class ExecutorConfiguration {
     @Bean
     public PlanDomainService planDomainService(
             PlanRepository planRepository,
-            TaskStateManager stateManager,
-            ExecutorProperties executorProperties,
             DomainEventPublisher domainEventPublisher) {
         return new PlanDomainService(
                 planRepository,
-                stateManager,
-                executorProperties,
                 domainEventPublisher
         );
     }
@@ -171,12 +156,14 @@ public class ExecutorConfiguration {
     public DeploymentPlanCreator deploymentPlanCreator(
             PlanDomainService planDomainService,
             TaskDomainService taskDomainService,
-            BusinessValidator businessValidator) {
+            BusinessValidator businessValidator,
+            ExecutorProperties executorProperties) {
         return new DeploymentPlanCreator(
                 planDomainService,
                 taskDomainService,
                 new DefaultStageFactory(),
-                businessValidator
+                businessValidator,
+                executorProperties
         );
     }
 

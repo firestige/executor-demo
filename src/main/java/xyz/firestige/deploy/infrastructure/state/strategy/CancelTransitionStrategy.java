@@ -18,9 +18,9 @@ public class CancelTransitionStrategy implements StateTransitionStrategy {
     }
 
     @Override
-    public void execute(TaskAggregate agg, TaskRuntimeContext context, Object additionalData) {
+    public void execute(TaskAggregate agg, TaskRuntimeContext context) {
         // additionalData: String cancelledBy
-        String cancelledBy = additionalData instanceof String ? (String) additionalData : "System";
+        String cancelledBy = context.getAdditionalData("cancelledBy", "system");
         agg.cancel(cancelledBy);
     }
 

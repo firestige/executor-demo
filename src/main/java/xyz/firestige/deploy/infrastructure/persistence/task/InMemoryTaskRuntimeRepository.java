@@ -1,7 +1,7 @@
 package xyz.firestige.deploy.infrastructure.persistence.task;
 
 import org.springframework.stereotype.Repository;
-import xyz.firestige.deploy.domain.stage.TaskStage;
+import xyz.firestige.deploy.infrastructure.execution.stage.TaskStage;
 import xyz.firestige.deploy.domain.task.TaskRuntimeContext;
 import xyz.firestige.deploy.domain.task.TaskRuntimeRepository;
 import xyz.firestige.deploy.infrastructure.execution.TaskExecutor;

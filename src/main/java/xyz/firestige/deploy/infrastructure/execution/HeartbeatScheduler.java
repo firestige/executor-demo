@@ -5,7 +5,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.function.IntSupplier;
-import xyz.firestige.deploy.infrastructure.event.TaskEventSink;
+
 import xyz.firestige.deploy.infrastructure.metrics.MetricsRegistry;
 import xyz.firestige.deploy.infrastructure.metrics.NoopMetricsRegistry;
 
@@ -19,7 +19,6 @@ public class HeartbeatScheduler {
     private final String taskId;
     private final int totalStages;
     private final IntSupplier completedStagesSupplier;
-    private final TaskEventSink sink;
     private final int intervalSeconds;
     private volatile boolean stopped;
     private ScheduledFuture<?> future;
@@ -27,15 +26,14 @@ public class HeartbeatScheduler {
     private final MetricsRegistry metrics;
     private final String gaugeName;
 
-    public HeartbeatScheduler(String planId, String taskId, int totalStages, IntSupplier completedStagesSupplier, TaskEventSink sink, int intervalSeconds) {
-        this(planId, taskId, totalStages, completedStagesSupplier, sink, intervalSeconds, new NoopMetricsRegistry(), "heartbeat_lag");
+    public HeartbeatScheduler(String planId, String taskId, int totalStages, IntSupplier completedStagesSupplier, int intervalSeconds) {
+        this(planId, taskId, totalStages, completedStagesSupplier, intervalSeconds, new NoopMetricsRegistry(), "heartbeat_lag");
     }
 
     public HeartbeatScheduler(String planId,
                               String taskId,
                               int totalStages,
                               IntSupplier completedStagesSupplier,
-                              TaskEventSink sink,
                               int intervalSeconds,
                               MetricsRegistry metrics,
                               String gaugeName) {
@@ -43,7 +41,6 @@ public class HeartbeatScheduler {
         this.taskId = taskId;
         this.totalStages = totalStages;
         this.completedStagesSupplier = completedStagesSupplier;
-        this.sink = sink;
         this.intervalSeconds = intervalSeconds;
         this.metrics = metrics != null ? metrics : new NoopMetricsRegistry();
         this.gaugeName = (gaugeName == null || gaugeName.isEmpty()) ? "heartbeat_lag" : gaugeName;
@@ -59,7 +56,6 @@ public class HeartbeatScheduler {
         future = scheduler.scheduleAtFixedRate(() -> {
             if (stopped) return;
             int completed = completedStagesSupplier.getAsInt();
-            sink.publishTaskProgressDetail(planId, taskId, completed, totalStages, 0);
             int lag = Math.max(0, totalStages - completed);
             metrics.setGauge(gaugeName, lag);
         }, 0, intervalSeconds, TimeUnit.SECONDS);

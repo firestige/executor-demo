@@ -3,10 +3,10 @@ package xyz.firestige.deploy.infrastructure.execution;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import xyz.firestige.deploy.application.checkpoint.CheckpointService;
-import xyz.firestige.deploy.domain.stage.TaskStage;
+import xyz.firestige.deploy.domain.task.TaskRepository;
+import xyz.firestige.deploy.infrastructure.execution.stage.TaskStage;
 import xyz.firestige.deploy.domain.task.TaskAggregate;
 import xyz.firestige.deploy.domain.task.TaskRuntimeContext;
-import xyz.firestige.deploy.infrastructure.event.TaskEventSink;
 import xyz.firestige.deploy.domain.task.TaskStatus;
 import xyz.firestige.deploy.infrastructure.metrics.MetricsRegistry;
 import xyz.firestige.deploy.infrastructure.metrics.NoopMetricsRegistry;
@@ -18,9 +18,9 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 
-import xyz.firestige.deploy.domain.stage.CompositeServiceStage;
-import xyz.firestige.deploy.domain.stage.rollback.RollbackStrategy;
-import xyz.firestige.deploy.domain.stage.steps.ConfigUpdateStep;
+import xyz.firestige.deploy.infrastructure.execution.stage.CompositeServiceStage;
+import xyz.firestige.deploy.infrastructure.execution.stage.rollback.RollbackStrategy;
+import xyz.firestige.deploy.infrastructure.execution.stage.steps.ConfigUpdateStep;
 import xyz.firestige.deploy.infrastructure.state.TaskStateManager;
 
 /**
@@ -37,24 +37,24 @@ public class TaskExecutor {
     private final TaskAggregate task;
     private final List<TaskStage> stages;
     private final TaskRuntimeContext context;
+
+    private final TaskRepository taskRepository;
     private final CheckpointService checkpointService;
-    private final TaskEventSink eventSink;
-    private final int progressIntervalSeconds;
-    private volatile HeartbeatScheduler heartbeatScheduler; // 允许后置注入
-    private final AtomicInteger completedCounter = new AtomicInteger();
     private final TaskStateManager stateManager; // new
     private final TenantConflictManager conflictManager; // RF-14: 统一冲突管理
     private final MetricsRegistry metrics;
 
+    private final int progressIntervalSeconds;
+    private volatile HeartbeatScheduler heartbeatScheduler; // 允许后置注入
+
     public TaskExecutor(String planId,
                         TaskAggregate task,
                         List<TaskStage> stages,
                         TaskRuntimeContext context,
                         CheckpointService checkpointService,
-                        TaskEventSink eventSink,
                         int progressIntervalSeconds,
                         TaskStateManager stateManager) {
-        this(planId, task, stages, context, checkpointService, eventSink, progressIntervalSeconds, stateManager, null, new NoopMetricsRegistry());
+        this(planId, task, stages, context, checkpointService, progressIntervalSeconds, stateManager, null, new NoopMetricsRegistry());
     }
 
     public TaskExecutor(String planId,
@@ -62,11 +62,10 @@ public class TaskExecutor {
                         List<TaskStage> stages,
                         TaskRuntimeContext context,
                         CheckpointService checkpointService,
-                        TaskEventSink eventSink,
                         int progressIntervalSeconds,
                         TaskStateManager stateManager,
                         TenantConflictManager conflictManager) {
-        this(planId, task, stages, context, checkpointService, eventSink, progressIntervalSeconds, stateManager, conflictManager, new NoopMetricsRegistry());
+        this(planId, task, stages, context, checkpointService, progressIntervalSeconds, stateManager, conflictManager, new NoopMetricsRegistry());
     }
 
     public TaskExecutor(String planId,
@@ -74,7 +73,6 @@ public class TaskExecutor {
                         List<TaskStage> stages,
                         TaskRuntimeContext context,
                         CheckpointService checkpointService,
-                        TaskEventSink eventSink,
                         int progressIntervalSeconds,
                         TaskStateManager stateManager,
                         TenantConflictManager conflictManager,
@@ -85,7 +83,6 @@ public class TaskExecutor {
         this.stages = stages != null ? stages : new ArrayList<>();
         this.context = context;
         this.checkpointService = checkpointService;
-        this.eventSink = eventSink;
         this.progressIntervalSeconds = progressIntervalSeconds <= 0 ? 10 : progressIntervalSeconds;
         this.stateManager = stateManager;
         this.conflictManager = conflictManager;

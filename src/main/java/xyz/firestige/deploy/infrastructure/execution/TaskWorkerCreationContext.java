@@ -2,7 +2,7 @@ package xyz.firestige.deploy.infrastructure.execution;
 
 import java.util.List;
 
-import xyz.firestige.deploy.domain.stage.TaskStage;
+import xyz.firestige.deploy.infrastructure.execution.stage.TaskStage;
 import xyz.firestige.deploy.domain.task.TaskAggregate;
 import xyz.firestige.deploy.domain.task.TaskRuntimeContext;
 

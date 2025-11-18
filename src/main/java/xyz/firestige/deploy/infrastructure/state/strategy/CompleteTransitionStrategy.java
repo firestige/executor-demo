@@ -40,7 +40,7 @@ public class CompleteTransitionStrategy implements StateTransitionStrategy {
     }
 
     @Override
-    public void execute(TaskAggregate agg, TaskRuntimeContext context, Object additionalData) {
+    public void execute(TaskAggregate agg, TaskRuntimeContext context) {
         // RF-13: complete() 是 private 方法，由 completeStage() 自动调用
         // 这里不需要做任何事，状态已经被 completeStage() 修改
         // 如果外部直接调用 updateState(COMPLETED)，这里也不会执行

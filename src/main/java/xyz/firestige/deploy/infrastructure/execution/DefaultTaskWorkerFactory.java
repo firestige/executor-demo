@@ -1,7 +1,6 @@
 package xyz.firestige.deploy.infrastructure.execution;
 
 import xyz.firestige.deploy.application.checkpoint.CheckpointService;
-import xyz.firestige.deploy.infrastructure.event.TaskEventSink;
 import xyz.firestige.deploy.infrastructure.metrics.MetricsRegistry;
 import xyz.firestige.deploy.infrastructure.metrics.NoopMetricsRegistry;
 import xyz.firestige.deploy.infrastructure.scheduling.TenantConflictManager;
@@ -16,7 +15,6 @@ import xyz.firestige.deploy.infrastructure.state.TaskStateManager;
 public class DefaultTaskWorkerFactory implements TaskWorkerFactory {
     private final MetricsRegistry metrics;
     private final CheckpointService checkpointService;
-    private final TaskEventSink eventSink;
     private final TaskStateManager stateManager;
     private final TenantConflictManager conflictManager;
     private final int progressIntervalSeconds;
@@ -33,13 +31,11 @@ public class DefaultTaskWorkerFactory implements TaskWorkerFactory {
      */
     public DefaultTaskWorkerFactory(
             CheckpointService checkpointService,
-            TaskEventSink eventSink,
             TaskStateManager stateManager,
             TenantConflictManager conflictManager,
             int progressIntervalSeconds,
             MetricsRegistry metrics) {
         this.checkpointService = checkpointService;
-        this.eventSink = eventSink;
         this.stateManager = stateManager;
         this.conflictManager = conflictManager;
         this.progressIntervalSeconds = progressIntervalSeconds;
@@ -58,7 +54,6 @@ public class DefaultTaskWorkerFactory implements TaskWorkerFactory {
             context.getStages(),
             context.getRuntimeContext(),
             checkpointService,
-            eventSink,
             progressIntervalSeconds,
             stateManager,
             conflictManager,
@@ -70,7 +65,6 @@ public class DefaultTaskWorkerFactory implements TaskWorkerFactory {
             context.getTask().getTaskId(),
             context.getStages().size(),
             executor::getCompletedStageCount,
-            eventSink,
             progressIntervalSeconds,
             metrics,
             "heartbeat_lag"

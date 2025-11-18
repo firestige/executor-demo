@@ -19,7 +19,7 @@ public class ResumeTransitionStrategy implements StateTransitionStrategy {
     }
 
     @Override
-    public void execute(TaskAggregate agg, TaskRuntimeContext context, Object additionalData) {
+    public void execute(TaskAggregate agg, TaskRuntimeContext context) {
         agg.resume();  // 委托给聚合
     }
 

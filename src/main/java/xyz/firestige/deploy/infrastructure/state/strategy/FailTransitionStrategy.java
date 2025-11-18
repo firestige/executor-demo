@@ -19,10 +19,11 @@ public class FailTransitionStrategy implements StateTransitionStrategy {
     }
 
     @Override
-    public void execute(TaskAggregate agg, TaskRuntimeContext context, Object additionalData) {
+    public void execute(TaskAggregate agg, TaskRuntimeContext context) {
         // additionalData: StageResult 或 FailureInfo
-        if (additionalData instanceof StageResult) {
-            StageResult result = (StageResult) additionalData;
+        // 从上下文中获取失败信息
+        Object additionalData = context.getAdditionalData("failureData");
+        if (additionalData instanceof StageResult result) {
             agg.failStage(result);
         } else {
             // 兼容：如果没有 StageResult，创建一个默认的
