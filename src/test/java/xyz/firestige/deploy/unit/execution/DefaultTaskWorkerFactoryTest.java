@@ -20,14 +20,28 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 public class DefaultTaskWorkerFactoryTest {
     @Test
     void createsExecutorWithHeartbeat() {
-        TaskWorkerFactory f = new DefaultTaskWorkerFactory();
         TaskStateManager sm = new TaskStateManager();
+        CheckpointService checkpointService = new CheckpointService(new InMemoryCheckpointStore());
+        SpringTaskEventSink eventSink = new SpringTaskEventSink(sm);
+        
+        // RF-17: 基础设施依赖通过构造器注入
+        TaskWorkerFactory f = new DefaultTaskWorkerFactory(
+            checkpointService,
+            eventSink,
+            sm,
+            null,  // conflictManager
+            5,     // progressIntervalSeconds
+            null   // metrics
+        );
+        
         String planId = "p";
         TaskAggregate agg = new TaskAggregate("task-t","p","ten");
         TaskRuntimeContext ctx = new TaskRuntimeContext("p","t","ten", null);
         sm.initializeTask(agg.getTaskId(), TaskStatus.PENDING);
         sm.registerTaskAggregate(agg.getTaskId(), agg, ctx, 0);
-        TaskExecutor exec = f.create(planId, agg, List.of(), ctx, new CheckpointService(new InMemoryCheckpointStore()), new SpringTaskEventSink(sm), 5, sm, null);
+        
+        // RF-17: Context 只包含领域数据
+        TaskExecutor exec = f.create(planId, agg, List.of(), ctx, checkpointService, eventSink, 5, sm, null);
         assertNotNull(exec);
         assertNull(exec.getCurrentStageName());
         // heartbeat is injected; cannot easily assert running state here without starting execution

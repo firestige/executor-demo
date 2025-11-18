@@ -2,18 +2,14 @@ package xyz.firestige.deploy.execution;
 
 import java.util.List;
 
-import xyz.firestige.deploy.checkpoint.CheckpointService;
 import xyz.firestige.deploy.domain.stage.TaskStage;
 import xyz.firestige.deploy.domain.task.TaskAggregate;
 import xyz.firestige.deploy.domain.task.TaskRuntimeContext;
-import xyz.firestige.deploy.event.TaskEventSink;
-import xyz.firestige.deploy.state.TaskStateManager;
-import xyz.firestige.deploy.support.conflict.TenantConflictManager;
 
 /**
  * TaskWorker 创建上下文
  *
- * 封装 TaskExecutor 创建所需的所有参数，使用 Builder 模式提升可读性和可维护性。
+ * 封装 TaskExecutor 创建所需的领域数据，使用 Builder 模式提升可读性和可维护性。
  *
  * 设计目标（RF-02）：
  * - 减少方法参数数量（9个 → 1个）
@@ -21,33 +17,28 @@ import xyz.firestige.deploy.support.conflict.TenantConflictManager;
  * - 便于扩展（新增参数不影响现有调用）
  * - 参数验证集中化
  *
+ * RF-17 重构：
+ * - 只保留领域数据（planId, task, stages, runtimeContext）
+ * - 基础设施依赖通过 DefaultTaskWorkerFactory 构造器注入
+ * - existingExecutor 用于复用场景
+ *
  * @since RF-02
  */
 public class TaskWorkerCreationContext {
 
-    // Required parameters
+    // Domain data
     private final String planId;
     private final TaskAggregate task;
     private final List<TaskStage> stages;
     private final TaskRuntimeContext runtimeContext;
-    private final CheckpointService checkpointService;
-    private final TaskEventSink eventSink;
-    private final TaskStateManager stateManager;
-
-    // Optional parameters with defaults
-    private final int progressIntervalSeconds;
-    private final TenantConflictManager conflictManager;
+    private final TaskExecutor existingExecutor;
 
     private TaskWorkerCreationContext(Builder builder) {
         this.planId = builder.planId;
         this.task = builder.task;
         this.stages = builder.stages;
         this.runtimeContext = builder.runtimeContext;
-        this.checkpointService = builder.checkpointService;
-        this.eventSink = builder.eventSink;
-        this.stateManager = builder.stateManager;
-        this.progressIntervalSeconds = builder.progressIntervalSeconds;
-        this.conflictManager = builder.conflictManager;
+        this.existingExecutor = builder.existingExecutor;
     }
 
     // Getters
@@ -68,24 +59,12 @@ public class TaskWorkerCreationContext {
         return runtimeContext;
     }
 
-    public CheckpointService getCheckpointService() {
-        return checkpointService;
+    public TaskExecutor getExistingExecutor() {
+        return existingExecutor;
     }
 
-    public TaskEventSink getEventSink() {
-        return eventSink;
-    }
-
-    public TaskStateManager getStateManager() {
-        return stateManager;
-    }
-
-    public int getProgressIntervalSeconds() {
-        return progressIntervalSeconds;
-    }
-
-    public TenantConflictManager getConflictManager() {
-        return conflictManager;
+    public boolean hasExistingExecutor() {
+        return existingExecutor != null;
     }
 
     // Static factory method for builder
@@ -102,13 +81,7 @@ public class TaskWorkerCreationContext {
         private TaskAggregate task;
         private List<TaskStage> stages;
         private TaskRuntimeContext runtimeContext;
-        private CheckpointService checkpointService;
-        private TaskEventSink eventSink;
-        private TaskStateManager stateManager;
-
-        // Optional parameters with defaults
-        private int progressIntervalSeconds = 10;  // default: 10 seconds
-        private TenantConflictManager conflictManager = null;  // optional
+        private TaskExecutor existingExecutor;
 
         private Builder() {}
 
@@ -132,28 +105,8 @@ public class TaskWorkerCreationContext {
             return this;
         }
 
-        public Builder checkpointService(CheckpointService checkpointService) {
-            this.checkpointService = checkpointService;
-            return this;
-        }
-
-        public Builder eventSink(TaskEventSink eventSink) {
-            this.eventSink = eventSink;
-            return this;
-        }
-
-        public Builder stateManager(TaskStateManager stateManager) {
-            this.stateManager = stateManager;
-            return this;
-        }
-
-        public Builder progressIntervalSeconds(int progressIntervalSeconds) {
-            this.progressIntervalSeconds = progressIntervalSeconds;
-            return this;
-        }
-
-        public Builder conflictManager(TenantConflictManager conflictManager) {
-            this.conflictManager = conflictManager;
+        public Builder existingExecutor(TaskExecutor existingExecutor) {
+            this.existingExecutor = existingExecutor;
             return this;
         }
 
@@ -177,18 +130,8 @@ public class TaskWorkerCreationContext {
             if (runtimeContext == null) {
                 throw new IllegalArgumentException("runtimeContext is required");
             }
-            if (checkpointService == null) {
-                throw new IllegalArgumentException("checkpointService is required");
-            }
-            if (eventSink == null) {
-                throw new IllegalArgumentException("eventSink is required");
-            }
-            if (stateManager == null) {
-                throw new IllegalArgumentException("stateManager is required");
-            }
 
             return new TaskWorkerCreationContext(this);
         }
     }
 }
-

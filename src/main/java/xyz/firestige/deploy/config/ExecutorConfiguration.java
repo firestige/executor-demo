@@ -105,8 +105,20 @@ public class ExecutorConfiguration {
     }
 
     @Bean
-    public TaskWorkerFactory taskWorkerFactory() {
-        return new DefaultTaskWorkerFactory();
+    public TaskWorkerFactory taskWorkerFactory(
+            CheckpointService checkpointService,
+            SpringTaskEventSink eventSink,
+            TaskStateManager stateManager,
+            TenantConflictManager conflictManager,
+            ExecutorProperties executorProperties) {
+        return new DefaultTaskWorkerFactory(
+                checkpointService,
+                eventSink,
+                stateManager,
+                conflictManager,
+                executorProperties.getTaskProgressIntervalSeconds(),
+                null  // metrics: 使用默认的 NoopMetricsRegistry
+        );
     }
 
     // ========== Repository Bean (DDD 重构新增) ==========
@@ -186,10 +198,7 @@ public class ExecutorConfiguration {
             PlanDomainService planDomainService,
             TaskDomainService taskDomainService,
             TenantConflictManager conflictManager,
-            xyz.firestige.deploy.execution.TaskWorkerFactory taskWorkerFactory,
-            CheckpointService checkpointService,
-            SpringTaskEventSink eventSink,
-            ExecutorProperties executorProperties,
+            TaskWorkerFactory taskWorkerFactory,
             TaskStateManager stateManager) {
         return new DeploymentApplicationService(
                 deploymentPlanCreator,
@@ -197,9 +206,6 @@ public class ExecutorConfiguration {
                 taskDomainService,
                 conflictManager,
                 taskWorkerFactory,
-                checkpointService,
-                eventSink,
-                executorProperties,
                 stateManager
         );
     }

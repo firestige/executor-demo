@@ -11,6 +11,7 @@ import xyz.firestige.deploy.event.DomainEventPublisher;
 import xyz.firestige.deploy.exception.ErrorType;
 import xyz.firestige.deploy.exception.FailureInfo;
 import xyz.firestige.deploy.execution.TaskExecutor;
+import xyz.firestige.deploy.execution.TaskWorkerCreationContext;
 import xyz.firestige.deploy.facade.TaskStatusInfo;
 import xyz.firestige.deploy.state.TaskStateManager;
 import xyz.firestige.deploy.state.TaskStatus;
@@ -201,13 +202,13 @@ public class TaskDomainService {
     }
 
     /**
-     * 准备回滚任务（RF-15: 只做准备，不执行）
+     * 准备回滚任务（RF-17: 返回简化的 TaskWorkerCreationContext）
      * 应用层负责创建 TaskExecutor 并执行回滚
      *
      * @param tenantId 租户 ID
-     * @return TaskExecutionContext 包含执行所需的聚合和运行时数据，null 表示未找到任务
+     * @return TaskWorkerCreationContext 包含执行所需的聚合和运行时数据，null 表示未找到任务
      */
-    public TaskExecutionContext prepareRollbackByTenant(String tenantId) {
+    public TaskWorkerCreationContext prepareRollbackByTenant(String tenantId) {
         logger.info("[TaskDomainService] 准备回滚租户任务: {}", tenantId);
 
         TaskAggregate target = findTaskByTenantId(tenantId);
@@ -226,18 +227,24 @@ public class TaskDomainService {
         TaskExecutor executor = taskRuntimeRepository.getExecutor(target.getTaskId()).orElse(null);
 
         logger.info("[TaskDomainService] 任务准备完成，等待应用层执行回滚: {}", target.getTaskId());
-        return new TaskExecutionContext(target, stages, ctx, executor);
+        return TaskWorkerCreationContext.builder()
+            .planId(target.getPlanId())
+            .task(target)
+            .stages(stages)
+            .runtimeContext(ctx)
+            .existingExecutor(executor)
+            .build();
     }
 
     /**
-     * 准备重试任务（RF-15: 只做准备，不执行）
+     * 准备重试任务（RF-17: 返回简化的 TaskWorkerCreationContext）
      * 应用层负责创建 TaskExecutor 并执行重试
      *
      * @param tenantId 租户 ID
      * @param fromCheckpoint 是否从检查点恢复
-     * @return TaskExecutionContext 包含执行所需的聚合和运行时数据，null 表示未找到任务
+     * @return TaskWorkerCreationContext 包含执行所需的聚合和运行时数据，null 表示未找到任务
      */
-    public TaskExecutionContext prepareRetryByTenant(String tenantId, boolean fromCheckpoint) {
+    public TaskWorkerCreationContext prepareRetryByTenant(String tenantId, boolean fromCheckpoint) {
         logger.info("[TaskDomainService] 准备重试租户任务: {}, fromCheckpoint: {}", tenantId, fromCheckpoint);
 
         TaskAggregate target = findTaskByTenantId(tenantId);
@@ -259,7 +266,13 @@ public class TaskDomainService {
         TaskExecutor executor = taskRuntimeRepository.getExecutor(target.getTaskId()).orElse(null);
 
         logger.info("[TaskDomainService] 任务准备完成，等待应用层执行重试: {}", target.getTaskId());
-        return new TaskExecutionContext(target, stages, ctx, executor);
+        return TaskWorkerCreationContext.builder()
+            .planId(target.getPlanId())
+            .task(target)
+            .stages(stages)
+            .runtimeContext(ctx)
+            .existingExecutor(executor)
+            .build();
     }
 
 

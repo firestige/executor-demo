@@ -11,16 +11,12 @@ import xyz.firestige.deploy.application.dto.TenantConfig;
 import xyz.firestige.deploy.application.plan.DeploymentPlanCreator;
 import xyz.firestige.deploy.application.plan.PlanCreationContext;
 import xyz.firestige.deploy.application.plan.PlanCreationException;
-import xyz.firestige.deploy.checkpoint.CheckpointService;
-import xyz.firestige.deploy.config.ExecutorProperties;
 import xyz.firestige.deploy.domain.plan.PlanCreationResult;
 import xyz.firestige.deploy.domain.plan.PlanDomainService;
 import xyz.firestige.deploy.domain.plan.PlanOperationResult;
 import xyz.firestige.deploy.domain.plan.PlanStatus;
 import xyz.firestige.deploy.domain.task.TaskDomainService;
-import xyz.firestige.deploy.domain.task.TaskExecutionContext;
 import xyz.firestige.deploy.domain.task.TaskOperationResult;
-import xyz.firestige.deploy.event.TaskEventSink;
 import xyz.firestige.deploy.exception.ErrorType;
 import xyz.firestige.deploy.exception.FailureInfo;
 import xyz.firestige.deploy.execution.TaskExecutor;
@@ -32,7 +28,7 @@ import xyz.firestige.deploy.state.TaskStatus;
 import xyz.firestige.deploy.support.conflict.TenantConflictManager;
 
 /**
- * 部署应用服务（RF-15: 执行层上移版）
+ * 部署应用服务（RF-17: 依赖注入优化版）
  *
  * 职责：
  * 1. 协调各种部署操作（创建、暂停、恢复等）
@@ -41,17 +37,19 @@ import xyz.firestige.deploy.support.conflict.TenantConflictManager;
  * 4. 异常处理和日志记录
  * 5. 事务边界管理（RF-12）
  * 6. 租户冲突检测（RF-14：合并策略）
- * 7. 执行器创建和调度（RF-15：从领域层上移）
+ * 7. 执行器创建协调（RF-17：通过工厂封装）
  *
  * 设计说明：
  * - RF-10 重构：提取 DeploymentPlanCreator，简化职责
  * - RF-12 重构：添加 @Transactional，集成调度策略
  * - RF-14 重构：合并 ConflictRegistry + PlanSchedulingStrategy
  * - RF-15 重构：从领域层接管 TaskExecutor 创建和执行职责
+ * - RF-16 重构：引入 TaskExecutorFactory，依赖从 9 个减少到 6 个
+ * - RF-17 重构：基础设施依赖注入到工厂，依赖从 6 个减少到 5 个
  * - 应用服务只做协调，不包含具体业务逻辑
  * - 单一职责：部署操作的统一入口
  *
- * @since RF-15: 执行层从领域层上移到应用层
+ * @since RF-17: 基础设施依赖注入到 TaskWorkerFactory
  */
 public class DeploymentApplicationService {
 
@@ -61,11 +59,9 @@ public class DeploymentApplicationService {
     private final PlanDomainService planDomainService;
     private final TaskDomainService taskDomainService;
     private final TenantConflictManager conflictManager;
-    // RF-15: 执行层依赖（从 TaskDomainService 上移）
+    // RF-17: 使用 TaskWorkerFactory 直接创建执行器
     private final TaskWorkerFactory taskWorkerFactory;
-    private final CheckpointService checkpointService;
-    private final TaskEventSink eventSink;
-    private final ExecutorProperties executorProperties;
+    // RF-16: 保留 stateManager 用于发布回滚失败事件
     private final TaskStateManager stateManager;
 
     public DeploymentApplicationService(
@@ -74,18 +70,12 @@ public class DeploymentApplicationService {
             TaskDomainService taskDomainService,
             TenantConflictManager conflictManager,
             TaskWorkerFactory taskWorkerFactory,
-            CheckpointService checkpointService,
-            TaskEventSink eventSink,
-            ExecutorProperties executorProperties,
             TaskStateManager stateManager) {
         this.deploymentPlanCreator = deploymentPlanCreator;
         this.planDomainService = planDomainService;
         this.taskDomainService = taskDomainService;
         this.conflictManager = conflictManager;
         this.taskWorkerFactory = taskWorkerFactory;
-        this.checkpointService = checkpointService;
-        this.eventSink = eventSink;
-        this.executorProperties = executorProperties;
         this.stateManager = stateManager;
     }
 
@@ -222,7 +212,7 @@ public class DeploymentApplicationService {
     }
 
     /**
-     * 根据租户 ID 回滚任务（RF-15: 应用层创建执行器）
+     * 根据租户 ID 回滚任务（RF-17: 应用层创建执行器）
      *
      * @param tenantId 租户 ID
      * @return 操作结果
@@ -232,7 +222,7 @@ public class DeploymentApplicationService {
         logger.info("[DeploymentApplicationService] 回滚租户任务: {}", tenantId);
 
         // Step 1: 调用领域服务准备回滚
-        TaskExecutionContext context = taskDomainService.prepareRollbackByTenant(tenantId);
+        TaskWorkerCreationContext context = taskDomainService.prepareRollbackByTenant(tenantId);
         if (context == null) {
             return TaskOperationResult.failure(
                 null,
@@ -271,7 +261,7 @@ public class DeploymentApplicationService {
     }
 
     /**
-     * 根据租户 ID 重试任务（RF-15: 应用层创建执行器）
+     * 根据租户 ID 重试任务（RF-17: 应用层创建执行器）
      *
      * @param tenantId 租户 ID
      * @param fromCheckpoint 是否从 checkpoint 恢复
@@ -283,7 +273,7 @@ public class DeploymentApplicationService {
                     tenantId, fromCheckpoint);
 
         // Step 1: 调用领域服务准备重试
-        TaskExecutionContext context = taskDomainService.prepareRetryByTenant(tenantId, fromCheckpoint);
+        TaskWorkerCreationContext context = taskDomainService.prepareRetryByTenant(tenantId, fromCheckpoint);
         if (context == null) {
             return TaskOperationResult.failure(
                 null,
@@ -343,31 +333,16 @@ public class DeploymentApplicationService {
         return taskDomainService.queryTaskStatusByTenant(tenantId);
     }
 
-    // ========== 辅助方法 (RF-15) ==========
+    // ========== 辅助方法 (RF-17) ==========
 
     /**
-     * 创建 TaskExecutor（RF-15: 从 TaskDomainService 移动到应用层）
+     * 创建 TaskExecutor（RF-17: 直接委托给 TaskWorkerFactory）
      *
-     * @param context Task 执行上下文
+     * @param context Task 创建上下文
      * @return TaskExecutor 实例
      */
-    private TaskExecutor createTaskExecutor(TaskExecutionContext context) {
-        logger.debug("[DeploymentApplicationService] 创建 TaskExecutor: {}",
-                    context.getTask().getTaskId());
-
-        TaskWorkerCreationContext workerContext = TaskWorkerCreationContext.builder()
-                .planId(context.getTask().getPlanId())
-                .task(context.getTask())
-                .stages(context.getStages())
-                .runtimeContext(context.getRuntimeContext())
-                .checkpointService(checkpointService)
-                .eventSink(eventSink)
-                .progressIntervalSeconds(executorProperties.getTaskProgressIntervalSeconds())
-                .stateManager(stateManager)
-                .conflictManager(conflictManager)
-                .build();
-
-        return taskWorkerFactory.create(workerContext);
+    private TaskExecutor createTaskExecutor(TaskWorkerCreationContext context) {
+        return taskWorkerFactory.create(context);
     }
 }
 
