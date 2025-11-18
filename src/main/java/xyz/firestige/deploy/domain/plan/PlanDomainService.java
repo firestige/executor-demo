@@ -2,14 +2,13 @@ package xyz.firestige.deploy.domain.plan;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import xyz.firestige.deploy.application.orchestration.PlanOrchestrator;
 import xyz.firestige.deploy.config.ExecutorProperties;
-import xyz.firestige.deploy.event.DomainEventPublisher;
+import xyz.firestige.deploy.domain.shared.event.DomainEventPublisher;
 import xyz.firestige.deploy.domain.state.PlanStateMachine;
-import xyz.firestige.deploy.event.SpringTaskEventSink;
-import xyz.firestige.deploy.factory.PlanFactory;
-import xyz.firestige.deploy.orchestration.PlanOrchestrator;
-import xyz.firestige.deploy.state.TaskStateManager;
-import xyz.firestige.deploy.state.TaskStatus;
+import xyz.firestige.deploy.infrastructure.event.SpringTaskEventSink;
+import xyz.firestige.deploy.domain.task.TaskStatus;
+import xyz.firestige.deploy.infrastructure.state.TaskStateManager;
 
 /**
  * Plan 领域服务（DDD 重构完成版）

@@ -1,10 +1,23 @@
 package xyz.firestige.deploy.domain.task;
 
-import xyz.firestige.deploy.domain.shared.vo.*;
-import xyz.firestige.deploy.domain.value.*;
-import xyz.firestige.deploy.execution.StageResult;
-import xyz.firestige.deploy.state.TaskStatus;
-import xyz.firestige.deploy.state.event.*;
+import xyz.firestige.deploy.domain.shared.vo.DeployVersion;
+import xyz.firestige.deploy.domain.shared.vo.PlanId;
+import xyz.firestige.deploy.domain.shared.vo.TaskId;
+import xyz.firestige.deploy.domain.shared.vo.TenantId;
+import xyz.firestige.deploy.domain.shared.vo.TimeRange;
+import xyz.firestige.deploy.domain.stage.StageProgress;
+import xyz.firestige.deploy.infrastructure.execution.StageResult;
+import xyz.firestige.deploy.infrastructure.state.event.TaskCancelledEvent;
+import xyz.firestige.deploy.infrastructure.state.event.TaskCompletedEvent;
+import xyz.firestige.deploy.infrastructure.state.event.TaskFailedEvent;
+import xyz.firestige.deploy.infrastructure.state.event.TaskPausedEvent;
+import xyz.firestige.deploy.infrastructure.state.event.TaskResumedEvent;
+import xyz.firestige.deploy.infrastructure.state.event.TaskRetryStartedEvent;
+import xyz.firestige.deploy.infrastructure.state.event.TaskRollbackFailedEvent;
+import xyz.firestige.deploy.infrastructure.state.event.TaskRolledBackEvent;
+import xyz.firestige.deploy.infrastructure.state.event.TaskRollingBackEvent;
+import xyz.firestige.deploy.infrastructure.state.event.TaskStartedEvent;
+import xyz.firestige.deploy.infrastructure.state.event.TaskStatusEvent;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;

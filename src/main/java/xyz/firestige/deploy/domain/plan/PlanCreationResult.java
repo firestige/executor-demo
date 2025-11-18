@@ -1,7 +1,7 @@
 package xyz.firestige.deploy.domain.plan;
 
-import xyz.firestige.deploy.exception.FailureInfo;
-import xyz.firestige.deploy.validation.ValidationSummary;
+import xyz.firestige.deploy.domain.shared.exception.FailureInfo;
+import xyz.firestige.deploy.domain.shared.validation.ValidationSummary;
 
 /**
  * Plan 创建结果

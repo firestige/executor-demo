@@ -1,6 +1,12 @@
 package xyz.firestige.deploy.domain.plan;
 
-import xyz.firestige.deploy.state.event.plan.*;
+import xyz.firestige.deploy.domain.plan.event.PlanCompletedEvent;
+import xyz.firestige.deploy.domain.plan.event.PlanFailedEvent;
+import xyz.firestige.deploy.domain.plan.event.PlanPausedEvent;
+import xyz.firestige.deploy.domain.plan.event.PlanReadyEvent;
+import xyz.firestige.deploy.domain.plan.event.PlanResumedEvent;
+import xyz.firestige.deploy.domain.plan.event.PlanStartedEvent;
+import xyz.firestige.deploy.domain.plan.event.PlanStatusEvent;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;

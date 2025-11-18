@@ -10,7 +10,9 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import xyz.firestige.deploy.event.*;
+import xyz.firestige.deploy.domain.shared.event.DomainEventPublisher;
+import xyz.firestige.deploy.infrastructure.event.CompositeDomainEventPublisher;
+import xyz.firestige.deploy.infrastructure.event.SpringDomainEventPublisher;
 import xyz.firestige.deploy.infrastructure.mq.KafkaDomainEventPublisher;
 import xyz.firestige.deploy.infrastructure.mq.RocketMQDomainEventPublisher;
 

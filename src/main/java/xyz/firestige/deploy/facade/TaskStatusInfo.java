@@ -1,6 +1,6 @@
 package xyz.firestige.deploy.facade;
 
-import xyz.firestige.deploy.state.TaskStatus;
+import xyz.firestige.deploy.domain.task.TaskStatus;
 
 /**
  * 任务状态信息（Facade 层 DTO）

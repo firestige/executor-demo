@@ -2,11 +2,11 @@ package xyz.firestige.deploy.domain.stage.steps;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import xyz.firestige.deploy.infrastructure.external.health.HealthCheckClient;
 import xyz.firestige.entity.deploy.NetworkEndpoint;
 import xyz.firestige.deploy.config.ExecutorProperties;
 import xyz.firestige.deploy.domain.stage.StageStep;
 import xyz.firestige.deploy.domain.task.TaskRuntimeContext;
-import xyz.firestige.deploy.service.health.HealthCheckClient;
 
 import java.util.List;
 import java.util.Map;

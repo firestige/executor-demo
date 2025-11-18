@@ -7,14 +7,13 @@ import org.slf4j.LoggerFactory;
 
 import xyz.firestige.deploy.application.dto.TenantConfig;
 import xyz.firestige.deploy.domain.stage.TaskStage;
-import xyz.firestige.deploy.event.DomainEventPublisher;
-import xyz.firestige.deploy.exception.ErrorType;
-import xyz.firestige.deploy.exception.FailureInfo;
-import xyz.firestige.deploy.execution.TaskExecutor;
-import xyz.firestige.deploy.execution.TaskWorkerCreationContext;
+import xyz.firestige.deploy.domain.shared.event.DomainEventPublisher;
+import xyz.firestige.deploy.domain.shared.exception.ErrorType;
+import xyz.firestige.deploy.domain.shared.exception.FailureInfo;
 import xyz.firestige.deploy.facade.TaskStatusInfo;
-import xyz.firestige.deploy.state.TaskStateManager;
-import xyz.firestige.deploy.state.TaskStatus;
+import xyz.firestige.deploy.infrastructure.execution.TaskExecutor;
+import xyz.firestige.deploy.infrastructure.execution.TaskWorkerCreationContext;
+import xyz.firestige.deploy.infrastructure.state.TaskStateManager;
 
 /**
  * Task 领域服务 (RF-15: 执行层解耦版)

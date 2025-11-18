@@ -1,7 +1,7 @@
 package xyz.firestige.deploy.application.plan;
 
 import xyz.firestige.deploy.domain.plan.PlanInfo;
-import xyz.firestige.deploy.validation.ValidationSummary;
+import xyz.firestige.deploy.domain.shared.validation.ValidationSummary;
 
 /**
  * Plan 创建上下文（RF-10 重构）

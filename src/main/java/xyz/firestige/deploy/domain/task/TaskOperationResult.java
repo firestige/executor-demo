@@ -1,7 +1,6 @@
 package xyz.firestige.deploy.domain.task;
 
-import xyz.firestige.deploy.exception.FailureInfo;
-import xyz.firestige.deploy.state.TaskStatus;
+import xyz.firestige.deploy.domain.shared.exception.FailureInfo;
 
 /**
  * Task 操作结果

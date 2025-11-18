@@ -1,6 +1,6 @@
 package xyz.firestige.deploy.facade.exception;
 
-import xyz.firestige.deploy.exception.FailureInfo;
+import xyz.firestige.deploy.domain.shared.exception.FailureInfo;
 
 /**
  * 任务操作异常

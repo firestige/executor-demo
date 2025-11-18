@@ -1,7 +1,7 @@
 package xyz.firestige.deploy.domain.state;
 
 import xyz.firestige.deploy.domain.state.ctx.TaskTransitionContext;
-import xyz.firestige.deploy.state.TaskStatus;
+import xyz.firestige.deploy.domain.task.TaskStatus;
 
 import java.util.ArrayList;
 import java.util.Collections;

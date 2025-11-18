@@ -1,7 +1,6 @@
 package xyz.firestige.deploy.domain.task;
 
 import org.slf4j.MDC;
-import xyz.firestige.deploy.execution.pipeline.PipelineContext;
 
 /**
  * Task runtime context: MDC, pause/cancel flags, and pipeline context bridge.
@@ -10,15 +9,13 @@ public class TaskRuntimeContext {
     private final String planId;
     private final String taskId;
     private final String tenantId;
-    private final PipelineContext pipelineContext;
     private volatile boolean pauseRequested;
     private volatile boolean cancelRequested;
 
-    public TaskRuntimeContext(String planId, String taskId, String tenantId, PipelineContext pipelineContext) {
+    public TaskRuntimeContext(String planId, String taskId, String tenantId) {
         this.planId = planId;
         this.taskId = taskId;
         this.tenantId = tenantId;
-        this.pipelineContext = pipelineContext;
     }
 
     public void injectMdc(String stageName) {
@@ -31,8 +28,6 @@ public class TaskRuntimeContext {
     }
 
     public void clearMdc() { MDC.clear(); }
-
-    public PipelineContext getPipelineContext() { return pipelineContext; }
 
     public boolean isPauseRequested() { return pauseRequested; }
     public void requestPause() { this.pauseRequested = true; }

@@ -18,15 +18,15 @@ import xyz.firestige.deploy.domain.plan.PlanOperationResult;
 import xyz.firestige.deploy.domain.plan.PlanStatus;
 import xyz.firestige.deploy.domain.task.TaskDomainService;
 import xyz.firestige.deploy.domain.task.TaskOperationResult;
-import xyz.firestige.deploy.exception.ErrorType;
-import xyz.firestige.deploy.exception.FailureInfo;
-import xyz.firestige.deploy.execution.TaskExecutor;
-import xyz.firestige.deploy.execution.TaskWorkerCreationContext;
-import xyz.firestige.deploy.execution.TaskWorkerFactory;
+import xyz.firestige.deploy.domain.shared.exception.ErrorType;
+import xyz.firestige.deploy.domain.shared.exception.FailureInfo;
 import xyz.firestige.deploy.facade.TaskStatusInfo;
-import xyz.firestige.deploy.state.TaskStateManager;
-import xyz.firestige.deploy.state.TaskStatus;
-import xyz.firestige.deploy.support.conflict.TenantConflictManager;
+import xyz.firestige.deploy.domain.task.TaskStatus;
+import xyz.firestige.deploy.infrastructure.execution.TaskExecutor;
+import xyz.firestige.deploy.infrastructure.execution.TaskWorkerCreationContext;
+import xyz.firestige.deploy.infrastructure.execution.TaskWorkerFactory;
+import xyz.firestige.deploy.infrastructure.scheduling.TenantConflictManager;
+import xyz.firestige.deploy.infrastructure.state.TaskStateManager;
 
 /**
  * 部署应用服务（RF-17: 依赖注入优化版）

@@ -8,36 +8,36 @@ import jakarta.validation.Validation;
 import jakarta.validation.Validator;
 import jakarta.validation.ValidatorFactory;
 import xyz.firestige.deploy.application.DeploymentApplicationService;
+import xyz.firestige.deploy.application.orchestration.PlanOrchestrator;
+import xyz.firestige.deploy.application.orchestration.TaskScheduler;
 import xyz.firestige.deploy.application.plan.DeploymentPlanCreator;
 import xyz.firestige.deploy.application.validation.BusinessValidator;
-import xyz.firestige.deploy.checkpoint.CheckpointService;
-import xyz.firestige.deploy.checkpoint.InMemoryCheckpointStore;
+import xyz.firestige.deploy.application.checkpoint.CheckpointService;
+import xyz.firestige.deploy.infrastructure.execution.DefaultTaskWorkerFactory;
+import xyz.firestige.deploy.infrastructure.execution.TaskWorkerFactory;
+import xyz.firestige.deploy.infrastructure.external.health.HealthCheckClient;
+import xyz.firestige.deploy.infrastructure.external.health.MockHealthCheckClient;
+import xyz.firestige.deploy.infrastructure.persistence.checkpoint.InMemoryCheckpointRepository;
 import xyz.firestige.deploy.domain.plan.PlanDomainService;
 import xyz.firestige.deploy.domain.plan.PlanRepository;
 import xyz.firestige.deploy.domain.stage.DefaultStageFactory;
 import xyz.firestige.deploy.domain.task.TaskDomainService;
 import xyz.firestige.deploy.domain.task.TaskRepository;
 import xyz.firestige.deploy.domain.task.TaskRuntimeRepository;
-import xyz.firestige.deploy.event.DomainEventPublisher;
-import xyz.firestige.deploy.event.SpringTaskEventSink;
-import xyz.firestige.deploy.execution.DefaultTaskWorkerFactory;
-import xyz.firestige.deploy.execution.TaskWorkerFactory;
+import xyz.firestige.deploy.domain.shared.event.DomainEventPublisher;
+import xyz.firestige.deploy.infrastructure.event.SpringTaskEventSink;
 import xyz.firestige.deploy.facade.DeploymentTaskFacade;
-import xyz.firestige.deploy.factory.PlanFactory;
-import xyz.firestige.deploy.infrastructure.repository.memory.InMemoryPlanRepository;
-import xyz.firestige.deploy.infrastructure.repository.memory.InMemoryTaskRepository;
-import xyz.firestige.deploy.infrastructure.repository.memory.InMemoryTaskRuntimeRepository;
-import xyz.firestige.deploy.orchestration.PlanOrchestrator;
-import xyz.firestige.deploy.orchestration.TaskScheduler;
-import xyz.firestige.deploy.service.health.HealthCheckClient;
-import xyz.firestige.deploy.service.health.MockHealthCheckClient;
-import xyz.firestige.deploy.state.TaskStateManager;
-import xyz.firestige.deploy.support.conflict.TenantConflictManager;
-import xyz.firestige.deploy.validation.ValidationChain;
-import xyz.firestige.deploy.validation.validator.BusinessRuleValidator;
-import xyz.firestige.deploy.validation.validator.ConflictValidator;
-import xyz.firestige.deploy.validation.validator.NetworkEndpointValidator;
-import xyz.firestige.deploy.validation.validator.TenantIdValidator;
+import xyz.firestige.deploy.domain.plan.PlanFactory;
+import xyz.firestige.deploy.infrastructure.persistence.plan.InMemoryPlanRepository;
+import xyz.firestige.deploy.infrastructure.persistence.task.InMemoryTaskRepository;
+import xyz.firestige.deploy.infrastructure.persistence.task.InMemoryTaskRuntimeRepository;
+import xyz.firestige.deploy.infrastructure.scheduling.TenantConflictManager;
+import xyz.firestige.deploy.application.validation.ConflictValidator;
+import xyz.firestige.deploy.infrastructure.state.TaskStateManager;
+import xyz.firestige.deploy.infrastructure.validation.ValidationChain;
+import xyz.firestige.deploy.infrastructure.validation.validator.BusinessRuleValidator;
+import xyz.firestige.deploy.infrastructure.validation.validator.NetworkEndpointValidator;
+import xyz.firestige.deploy.infrastructure.validation.validator.TenantIdValidator;
 
 /**
  * 执行器配置类（DDD 重构版）
@@ -94,7 +94,7 @@ public class ExecutorConfiguration {
 
     @Bean
     public CheckpointService checkpointService() {
-        return new CheckpointService(new InMemoryCheckpointStore());
+        return new CheckpointService(new InMemoryCheckpointRepository());
     }
 
     @Bean

@@ -1,6 +1,6 @@
 package xyz.firestige.deploy.config;
 
-import xyz.firestige.deploy.support.conflict.TenantConflictManager;
+import xyz.firestige.deploy.infrastructure.scheduling.TenantConflictManager;
 
 /**
  * 全局配置（通过 application 配置覆盖默认值）。

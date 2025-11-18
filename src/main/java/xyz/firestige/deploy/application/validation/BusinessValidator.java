@@ -4,8 +4,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 import xyz.firestige.deploy.application.dto.TenantConfig;
-import xyz.firestige.deploy.validation.ValidationError;
-import xyz.firestige.deploy.validation.ValidationSummary;
+import xyz.firestige.deploy.domain.shared.validation.ValidationError;
+import xyz.firestige.deploy.domain.shared.validation.ValidationSummary;
 
 import java.util.*;
 import java.util.stream.Collectors;

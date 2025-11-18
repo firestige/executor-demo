@@ -12,7 +12,7 @@ import xyz.firestige.deploy.domain.stage.TaskStage;
 import xyz.firestige.deploy.domain.task.TaskAggregate;
 import xyz.firestige.deploy.domain.task.TaskDomainService;
 import xyz.firestige.deploy.domain.task.TaskInfo;
-import xyz.firestige.deploy.validation.ValidationSummary;
+import xyz.firestige.deploy.domain.shared.validation.ValidationSummary;
 
 import java.util.List;
 

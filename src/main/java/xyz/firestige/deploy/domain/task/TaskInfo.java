@@ -1,7 +1,5 @@
 package xyz.firestige.deploy.domain.task;
 
-import xyz.firestige.deploy.state.TaskStatus;
-
 /**
  * Task 信息
  * 值对象，表达 Task 实体的基本信息

@@ -1,6 +1,6 @@
 package xyz.firestige.deploy.domain.plan;
 
-import xyz.firestige.deploy.exception.FailureInfo;
+import xyz.firestige.deploy.domain.shared.exception.FailureInfo;
 
 /**
  * Plan 操作结果

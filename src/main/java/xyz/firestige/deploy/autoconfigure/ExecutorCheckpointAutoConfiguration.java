@@ -8,11 +8,11 @@ import org.springframework.context.ApplicationContext;
 import org.springframework.context.annotation.Bean;
 import org.springframework.data.redis.connection.RedisConnectionFactory;
 import org.springframework.data.redis.core.RedisTemplate;
-import xyz.firestige.deploy.checkpoint.CheckpointStore;
-import xyz.firestige.deploy.checkpoint.InMemoryCheckpointStore;
-import xyz.firestige.deploy.checkpoint.RedisCheckpointStore;
-import xyz.firestige.deploy.redis.RedisClient;
-import xyz.firestige.deploy.redis.SpringDataRedisClient;
+import xyz.firestige.deploy.domain.task.CheckpointRepository;
+import xyz.firestige.deploy.infrastructure.persistence.checkpoint.InMemoryCheckpointRepository;
+import xyz.firestige.deploy.infrastructure.persistence.checkpoint.RedisCheckpointRepository;
+import xyz.firestige.deploy.infrastructure.redis.RedisClient;
+import xyz.firestige.deploy.infrastructure.redis.SpringDataRedisClient;
 
 @AutoConfiguration
 @EnableConfigurationProperties(ExecutorCheckpointProperties.class)
@@ -36,13 +36,13 @@ public class ExecutorCheckpointAutoConfiguration {
     }
 
     @Bean
-    @ConditionalOnMissingBean(CheckpointStore.class)
-    public CheckpointStore checkpointStore(ExecutorCheckpointProperties props, ApplicationContext ctx) {
+    @ConditionalOnMissingBean(CheckpointRepository.class)
+    public CheckpointRepository checkpointStore(ExecutorCheckpointProperties props, ApplicationContext ctx) {
         if (props.getStoreType() == ExecutorCheckpointProperties.StoreType.redis) {
             RedisClient client = ctx.getBean(RedisClient.class);
-            return new RedisCheckpointStore(client, props.getNamespace(), props.getTtl());
+            return new RedisCheckpointRepository(client, props.getNamespace(), props.getTtl());
         }
-        return new InMemoryCheckpointStore();
+        return new InMemoryCheckpointRepository();
     }
 }
 

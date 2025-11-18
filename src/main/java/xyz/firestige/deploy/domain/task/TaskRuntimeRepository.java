@@ -1,16 +1,16 @@
 package xyz.firestige.deploy.domain.task;
 
 import xyz.firestige.deploy.domain.stage.TaskStage;
-import xyz.firestige.deploy.execution.TaskExecutor;
+import xyz.firestige.deploy.infrastructure.execution.TaskExecutor;
 
 import java.util.List;
 import java.util.Optional;
 
 /**
  * Task Runtime Repository 接口（DDD 重构：简化方案）
- *
+ * <p>
  * 职责：管理 Task 的运行时状态（Executor、Context、Stages）
- *
+ * <p>
  * 设计说明：
  * - 与持久化的聚合根分离
  * - 专门管理临时运行时状态

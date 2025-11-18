@@ -1,7 +1,7 @@
 package xyz.firestige.deploy.infrastructure.mq;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import xyz.firestige.deploy.event.DomainEventPublisher;
+import xyz.firestige.deploy.domain.shared.event.DomainEventPublisher;
 
 import java.util.List;
 

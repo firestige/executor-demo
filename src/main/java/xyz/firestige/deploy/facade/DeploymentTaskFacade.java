@@ -12,7 +12,7 @@ import xyz.firestige.deploy.domain.plan.PlanCreationResult;
 import xyz.firestige.deploy.domain.plan.PlanInfo;
 import xyz.firestige.deploy.domain.plan.PlanOperationResult;
 import xyz.firestige.deploy.domain.task.TaskOperationResult;
-import xyz.firestige.deploy.exception.FailureInfo;
+import xyz.firestige.deploy.domain.shared.exception.FailureInfo;
 import xyz.firestige.deploy.facade.converter.TenantConfigConverter;
 import xyz.firestige.deploy.facade.exception.PlanNotFoundException;
 import xyz.firestige.deploy.facade.exception.TaskCreationException;

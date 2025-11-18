@@ -5,8 +5,8 @@ import org.slf4j.LoggerFactory;
 import xyz.firestige.deploy.domain.task.TaskAggregate;
 import xyz.firestige.deploy.domain.task.TaskRuntimeContext;
 import xyz.firestige.deploy.domain.task.TenantDeployConfigSnapshot;
-import xyz.firestige.deploy.service.health.HealthCheckClient;
 import xyz.firestige.deploy.config.ExecutorProperties;
+import xyz.firestige.deploy.infrastructure.external.health.HealthCheckClient;
 
 /**
  * 使用上一版可用配置进行回滚：重发旧配置 + 健康确认旧版本号。
