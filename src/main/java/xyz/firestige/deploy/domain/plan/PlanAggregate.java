@@ -26,7 +26,7 @@ import java.util.List;
  */
 public class PlanAggregate {
 
-    private String planId;
+    private final String planId;
     private String version;
     private PlanStatus status;
     private Integer maxConcurrency; // 可为空，表示使用全局配置
@@ -34,7 +34,7 @@ public class PlanAggregate {
     // ✅ DDD 重构：改为持有 Task ID 列表，而非 Task 对象
     private final List<String> taskIds = new ArrayList<>();
 
-    private LocalDateTime createdAt;
+    private final LocalDateTime createdAt;
     private LocalDateTime startedAt;
     private LocalDateTime endedAt;
 

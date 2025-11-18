@@ -4,7 +4,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import xyz.firestige.deploy.config.ExecutorProperties;
 import xyz.firestige.deploy.domain.shared.event.DomainEventPublisher;
-import xyz.firestige.deploy.domain.state.PlanStateMachine;
 import xyz.firestige.deploy.domain.task.TaskStatus;
 import xyz.firestige.deploy.infrastructure.state.TaskStateManager;
 
@@ -64,13 +63,6 @@ public class PlanDomainService {
         // ✅ 标记为 READY（业务逻辑稍后在应用层调用）
         // 注意：此时 tasks 为空，需要先添加 Task 再 markAsReady()
 
-        // 初始化 Plan 状态机
-        PlanStateMachine stateMachine = new PlanStateMachine(PlanStatus.CREATED);
-        planRepository.saveStateMachine(planId, stateMachine);
-
-        // 初始化状态
-        stateManager.initializeTask(planId, TaskStatus.PENDING);
-
         // 保存到仓储
         planRepository.save(plan);
 
@@ -113,8 +105,8 @@ public class PlanDomainService {
         // ✅ 调用聚合的业务方法
         plan.markAsReady();
 
-        // 更新状态机
-        updatePlanState(planId, PlanStatus.READY, plan);
+        // 更新状态机并发布事件
+        updatePlanStateAndPublishEvent(plan);
 
         logger.info("[PlanDomainService] Plan 已标记为 READY: {}", planId);
     }
@@ -134,8 +126,8 @@ public class PlanDomainService {
         // ✅ 调用聚合的业务方法（不变式保护在聚合内部）
         plan.start();
 
-        // 更新状态机
-        updatePlanState(planId, PlanStatus.RUNNING, plan);
+        // 更新状态机并发布事件
+        updatePlanStateAndPublishEvent(plan);
 
         // 更新状态管理器并发布事件
         stateManager.updateState(planId, TaskStatus.RUNNING);
@@ -159,8 +151,8 @@ public class PlanDomainService {
         // ✅ 调用聚合的业务方法（不变式保护在聚合内部）
         plan.pause();
 
-        // 更新状态机
-        updatePlanState(planId, PlanStatus.PAUSED, plan);
+        // 更新状态机并发布事件
+        updatePlanStateAndPublishEvent(plan);
 
         logger.info("[PlanDomainService] Plan 已暂停: {}", planId);
     }
@@ -180,16 +172,13 @@ public class PlanDomainService {
         // ✅ 调用聚合的业务方法（不变式保护在聚合内部）
         plan.resume();
 
-        // 更新状态机
-        updatePlanState(planId, PlanStatus.RUNNING, plan);
+        // 更新状态机并发布事件
+        updatePlanStateAndPublishEvent(plan);
 
         logger.info("[PlanDomainService] Plan 已恢复: {}", planId);
     }
 
-    private void updatePlanState(String planId, PlanStatus running, PlanAggregate plan) {
-        planRepository.getStateMachine(planId)
-                .ifPresent(sm -> sm.transitionTo(running, new PlanContext(planId)));
-
+    private void updatePlanStateAndPublishEvent(PlanAggregate plan) {
         planRepository.save(plan);
 
         // ✅ RF-11: 提取并发布聚合产生的领域事件

@@ -1,7 +1,5 @@
 package xyz.firestige.deploy.domain.plan;
 
-import xyz.firestige.deploy.domain.state.PlanStateMachine;
-
 import java.util.List;
 import java.util.Optional;
 
@@ -51,23 +49,5 @@ public interface PlanRepository {
      * @return Plan 列表，如果不存在则返回空列表
      */
     List<PlanAggregate> findAll();
-
-    // ========== 状态机管理 ==========
-
-    /**
-     * 保存 PlanStateMachine
-     *
-     * @param planId Plan ID
-     * @param stateMachine PlanStateMachine 实例
-     */
-    void saveStateMachine(String planId, PlanStateMachine stateMachine);
-
-    /**
-     * 获取 PlanStateMachine
-     *
-     * @param planId Plan ID
-     * @return PlanStateMachine，如果不存在则返回 empty
-     */
-    Optional<PlanStateMachine> getStateMachine(String planId);
 }
 
