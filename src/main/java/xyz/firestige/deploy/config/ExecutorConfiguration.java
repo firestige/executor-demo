@@ -8,8 +8,6 @@ import jakarta.validation.Validation;
 import jakarta.validation.Validator;
 import jakarta.validation.ValidatorFactory;
 import xyz.firestige.deploy.application.DeploymentApplicationService;
-import xyz.firestige.deploy.application.orchestration.PlanOrchestrator;
-import xyz.firestige.deploy.application.orchestration.TaskScheduler;
 import xyz.firestige.deploy.application.plan.DeploymentPlanCreator;
 import xyz.firestige.deploy.application.validation.BusinessValidator;
 import xyz.firestige.deploy.application.checkpoint.CheckpointService;
@@ -27,7 +25,6 @@ import xyz.firestige.deploy.domain.task.TaskRuntimeRepository;
 import xyz.firestige.deploy.domain.shared.event.DomainEventPublisher;
 import xyz.firestige.deploy.infrastructure.event.SpringTaskEventSink;
 import xyz.firestige.deploy.facade.DeploymentTaskFacade;
-import xyz.firestige.deploy.domain.plan.PlanFactory;
 import xyz.firestige.deploy.infrastructure.persistence.plan.InMemoryPlanRepository;
 import xyz.firestige.deploy.infrastructure.persistence.task.InMemoryTaskRepository;
 import xyz.firestige.deploy.infrastructure.persistence.task.InMemoryTaskRuntimeRepository;
@@ -171,11 +168,11 @@ public class ExecutorConfiguration {
     // ========== Application Service Bean (DDD 重构新增) ==========
 
     @Bean
-    public xyz.firestige.deploy.application.plan.DeploymentPlanCreator deploymentPlanCreator(
+    public DeploymentPlanCreator deploymentPlanCreator(
             PlanDomainService planDomainService,
             TaskDomainService taskDomainService,
             BusinessValidator businessValidator) {
-        return new xyz.firestige.deploy.application.plan.DeploymentPlanCreator(
+        return new DeploymentPlanCreator(
                 planDomainService,
                 taskDomainService,
                 new DefaultStageFactory(),

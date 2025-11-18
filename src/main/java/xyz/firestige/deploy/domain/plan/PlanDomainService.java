@@ -29,19 +29,13 @@ public class PlanDomainService {
 
     // 核心依赖（简化后：6个）
     private final PlanRepository planRepository;
-    private final TaskStateManager stateManager;
-    private final ExecutorProperties executorProperties;
     // ✅ RF-11 改进版: 使用领域事件发布器接口（支持多种实现）
     private final DomainEventPublisher domainEventPublisher;
 
     public PlanDomainService(
             PlanRepository planRepository,
-            TaskStateManager stateManager,
-            ExecutorProperties executorProperties,
             DomainEventPublisher domainEventPublisher) {
         this.planRepository = planRepository;
-        this.stateManager = stateManager;
-        this.executorProperties = executorProperties;
         this.domainEventPublisher = domainEventPublisher;
     }
 
@@ -53,12 +47,12 @@ public class PlanDomainService {
      * @param tenantCount 租户数量（暂未使用，保留接口兼容）
      * @return Plan 聚合
      */
-    public PlanAggregate createPlan(String planId, int tenantCount) {
+    public PlanAggregate createPlan(String planId, int tenantCount, int maxConcurrency) {
         logger.info("[PlanDomainService] 创建 Plan: {}, 租户数量: {}", planId, tenantCount);
 
         // ✅ 创建 Plan 聚合（业务逻辑在构造函数中）
         PlanAggregate plan = new PlanAggregate(planId);
-        plan.setMaxConcurrency(executorProperties.getMaxConcurrency());
+        plan.setMaxConcurrency(maxConcurrency);
 
         // ✅ 标记为 READY（业务逻辑稍后在应用层调用）
         // 注意：此时 tasks 为空，需要先添加 Task 再 markAsReady()
@@ -128,10 +122,6 @@ public class PlanDomainService {
 
         // 更新状态机并发布事件
         updatePlanStateAndPublishEvent(plan);
-
-        // 更新状态管理器并发布事件
-        stateManager.updateState(planId, TaskStatus.RUNNING);
-        stateManager.publishTaskStartedEvent(planId, plan.getTaskCount());
 
         logger.info("[PlanDomainService] Plan 已启动: {}", planId);
     }

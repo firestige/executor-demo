@@ -4,6 +4,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import xyz.firestige.deploy.application.dto.TenantConfig;
 import xyz.firestige.deploy.application.validation.BusinessValidator;
+import xyz.firestige.deploy.config.ExecutorProperties;
 import xyz.firestige.deploy.domain.plan.PlanAggregate;
 import xyz.firestige.deploy.domain.plan.PlanDomainService;
 import xyz.firestige.deploy.domain.plan.PlanInfo;
@@ -40,16 +41,19 @@ public class DeploymentPlanCreator {
     private final TaskDomainService taskDomainService;
     private final StageFactory stageFactory;
     private final BusinessValidator businessValidator;
+    private final ExecutorProperties executorProperties;
 
     public DeploymentPlanCreator(
             PlanDomainService planDomainService,
             TaskDomainService taskDomainService,
             StageFactory stageFactory,
-            BusinessValidator businessValidator) {
+            BusinessValidator businessValidator,
+            ExecutorProperties executorProperties) {
         this.planDomainService = planDomainService;
         this.taskDomainService = taskDomainService;
         this.stageFactory = stageFactory;
         this.businessValidator = businessValidator;
+        this.executorProperties = executorProperties;
     }
 
     /**
@@ -77,7 +81,7 @@ public class DeploymentPlanCreator {
 
         try {
             // Step 3: 创建 Plan
-            PlanAggregate plan = planDomainService.createPlan(planId, configs.size());
+            PlanAggregate plan = planDomainService.createPlan(planId, configs.size(), executorProperties.getMaxConcurrency());
 
             // Step 4: 为每个租户创建 Task
             List<TaskInfo> tasks = configs.stream().map(this::createAndLinkTask).map(TaskInfo::from).toList();
