@@ -2,6 +2,7 @@ package xyz.firestige.executor.domain.task;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.context.ApplicationEventPublisher;
 import xyz.firestige.executor.application.dto.TenantConfig;
 import xyz.firestige.executor.domain.stage.StageFactory;
 import xyz.firestige.executor.checkpoint.CheckpointService;
@@ -46,6 +47,8 @@ public class TaskDomainService {
     private final CheckpointService checkpointService;
     private final SpringTaskEventSink eventSink;
     private final ConflictRegistry conflictRegistry;
+    // ✅ RF-11: 添加事件发布器
+    private final ApplicationEventPublisher eventPublisher;
 
     public TaskDomainService(
             TaskRepository taskRepository,
@@ -55,7 +58,8 @@ public class TaskDomainService {
             ExecutorProperties executorProperties,
             CheckpointService checkpointService,
             SpringTaskEventSink eventSink,
-            ConflictRegistry conflictRegistry) {
+            ConflictRegistry conflictRegistry,
+            ApplicationEventPublisher eventPublisher) {
         this.taskRepository = taskRepository;
         this.taskRuntimeRepository = taskRuntimeRepository;
         this.stateManager = stateManager;
@@ -64,6 +68,7 @@ public class TaskDomainService {
         this.checkpointService = checkpointService;
         this.eventSink = eventSink;
         this.conflictRegistry = conflictRegistry;
+        this.eventPublisher = eventPublisher;
     }
 
     /**
@@ -89,6 +94,10 @@ public class TaskDomainService {
 
         // 保存到仓储
         taskRepository.save(task);
+
+        // ✅ RF-11: 提取并发布聚合产生的领域事件
+        task.getDomainEvents().forEach(eventPublisher::publishEvent);
+        task.clearDomainEvents();
 
         logger.info("[TaskDomainService] Task 创建成功: {}", taskId);
         return task;
@@ -147,6 +156,10 @@ public class TaskDomainService {
             target.requestPause();
             taskRepository.save(target);
 
+            // ✅ RF-11: 提取并发布聚合产生的领域事件
+            target.getDomainEvents().forEach(eventPublisher::publishEvent);
+            target.clearDomainEvents();
+
             // 更新 RuntimeContext（用于执行器检查）
             taskRuntimeRepository.getContext(target.getTaskId()).ifPresent(TaskRuntimeContext::requestPause);
 
@@ -189,6 +202,10 @@ public class TaskDomainService {
             // ✅ 调用聚合的业务方法（不变式保护在聚合内部）
             target.resume();
             taskRepository.save(target);
+
+            // ✅ RF-11: 提取并发布聚合产生的领域事件
+            target.getDomainEvents().forEach(eventPublisher::publishEvent);
+            target.clearDomainEvents();
 
             // 更新 RuntimeContext
             taskRuntimeRepository.getContext(target.getTaskId()).ifPresent(TaskRuntimeContext::clearPause);

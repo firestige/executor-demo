@@ -39,7 +39,7 @@ public class RetryFromCheckpointTest {
         var svc = new CheckpointService(store);
         var state = new TaskStateManager();
         var sink = new SpringTaskEventSink(state);
-        TaskAggregate t = new TaskAggregate("t-ck", "p", "ten");
+        TaskAggregate t = new TaskAggregate("task-t-ck", "p", "ten");
         TaskRuntimeContext ctx = new TaskRuntimeContext("p","t-ck","ten", null);
         List<TaskStage> stages = List.of(new SuccessStage("s1"), new SuccessStage("s2"), new SuccessStage("s3"));
         // 先执行一次，走到末尾，checkpoint 清理

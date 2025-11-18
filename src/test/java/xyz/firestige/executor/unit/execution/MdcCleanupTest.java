@@ -31,7 +31,7 @@ public class MdcCleanupTest {
     @Test
     void mdcClearedAfterExecute() {
         TaskStateManager sm = new TaskStateManager(e -> {});
-        TaskAggregate agg = new TaskAggregate("t-mdc","p","tenant");
+        TaskAggregate agg = new TaskAggregate("task-t-mdc","p","tenant");
         sm.initializeTask(agg.getTaskId(), TaskStatus.PENDING);
         TaskRuntimeContext ctx = new TaskRuntimeContext("p","t-mdc","tenant", null);
         sm.registerTaskAggregate(agg.getTaskId(), agg, ctx, 1);

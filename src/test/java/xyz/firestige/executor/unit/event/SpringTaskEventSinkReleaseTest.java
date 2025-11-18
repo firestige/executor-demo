@@ -34,7 +34,7 @@ public class SpringTaskEventSinkReleaseTest {
 
     @Test
     void releaseOnCancelledEvent() {
-        String taskId = "t-cancel-evt";
+        String taskId = "task-t-cancel-evt";
         String tenantId = "tenant-A";
         TaskStateManager sm = preparedStateManager(taskId, tenantId);
         SpyConflictRegistry spy = new SpyConflictRegistry();
@@ -47,7 +47,7 @@ public class SpringTaskEventSinkReleaseTest {
 
     @Test
     void releaseOnCompletedEvent() {
-        String taskId = "t-complete-evt";
+        String taskId = "task-t-complete-evt";
         String tenantId = "tenant-B";
         TaskStateManager sm = preparedStateManager(taskId, tenantId);
         SpyConflictRegistry spy = new SpyConflictRegistry();

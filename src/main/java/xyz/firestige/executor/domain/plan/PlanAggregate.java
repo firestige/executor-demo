@@ -1,17 +1,20 @@
 package xyz.firestige.executor.domain.plan;
 
+import xyz.firestige.executor.state.event.plan.*;
+
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
 /**
- * 计划聚合（Plan）- DDD 重构：充血模型 + 修正聚合边界
+ * 计划聚合（Plan）- DDD 重构：充血模型 + 修正聚合边界 + 领域事件（RF-11）
  *
  * 职责：
  * 1. 管理 Plan 生命周期和状态转换
  * 2. 管理 Task ID 列表（聚合间通过 ID 引用）
  * 3. 保护业务不变式
+ * 4. 产生领域事件（RF-11）
  *
  * DDD 原则：聚合间通过 ID 引用，不直接持有其他聚合对象
  */
@@ -32,10 +35,40 @@ public class PlanAggregate {
     private String failureSummary;
     private double progress;
 
+    // ============================================
+    // RF-11: 领域事件收集
+    // ============================================
+    private final List<PlanStatusEvent> domainEvents = new ArrayList<>();
+
     public PlanAggregate(String planId) {
         this.planId = planId;
         this.status = PlanStatus.CREATED;
         this.createdAt = LocalDateTime.now();
+    }
+
+    // ============================================
+    // RF-11: 事件管理方法
+    // ============================================
+
+    /**
+     * 获取聚合产生的领域事件（不可修改）
+     */
+    public List<PlanStatusEvent> getDomainEvents() {
+        return Collections.unmodifiableList(domainEvents);
+    }
+
+    /**
+     * 清空领域事件（发布后调用）
+     */
+    public void clearDomainEvents() {
+        domainEvents.clear();
+    }
+
+    /**
+     * 添加领域事件（私有方法）
+     */
+    private void addDomainEvent(PlanStatusEvent event) {
+        this.domainEvents.add(event);
     }
 
     // ============================================
@@ -88,6 +121,10 @@ public class PlanAggregate {
         }
 
         this.status = PlanStatus.READY;
+
+        // ✅ RF-11: 产生领域事件
+        PlanReadyEvent event = new PlanReadyEvent(planId, taskIds.size());
+        addDomainEvent(event);
     }
 
     /**
@@ -109,6 +146,10 @@ public class PlanAggregate {
 
         this.status = PlanStatus.RUNNING;
         this.startedAt = LocalDateTime.now();
+
+        // ✅ RF-11: 产生领域事件
+        PlanStartedEvent event = new PlanStartedEvent(planId, taskIds.size());
+        addDomainEvent(event);
     }
 
     /**
@@ -122,6 +163,10 @@ public class PlanAggregate {
             );
         }
         this.status = PlanStatus.PAUSED;
+
+        // ✅ RF-11: 产生领域事件
+        PlanPausedEvent event = new PlanPausedEvent(planId);
+        addDomainEvent(event);
     }
 
     /**
@@ -135,6 +180,10 @@ public class PlanAggregate {
             );
         }
         this.status = PlanStatus.RUNNING;
+
+        // ✅ RF-11: 产生领域事件
+        PlanResumedEvent event = new PlanResumedEvent(planId);
+        addDomainEvent(event);
     }
 
     /**
@@ -149,6 +198,10 @@ public class PlanAggregate {
         }
         this.status = PlanStatus.COMPLETED;
         this.endedAt = LocalDateTime.now();
+
+        // ✅ RF-11: 产生领域事件
+        PlanCompletedEvent event = new PlanCompletedEvent(planId, taskIds.size());
+        addDomainEvent(event);
     }
 
     /**
@@ -162,6 +215,10 @@ public class PlanAggregate {
         this.status = PlanStatus.FAILED;
         this.failureSummary = failureSummary;
         this.endedAt = LocalDateTime.now();
+
+        // ✅ RF-11: 产生领域事件
+        PlanFailedEvent event = new PlanFailedEvent(planId, failureSummary);
+        addDomainEvent(event);
     }
 
     // ============================================

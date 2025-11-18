@@ -39,7 +39,7 @@ public class StructuredMdcLoggingTest {
     @Test
     void mdcFieldsPresentDuringStage() {
         TaskStateManager sm = new TaskStateManager(e -> {});
-        TaskAggregate agg = new TaskAggregate("t-log","p","tenant");
+        TaskAggregate agg = new TaskAggregate("task-t-log","p","tenant");
         sm.initializeTask(agg.getTaskId(), TaskStatus.PENDING);
         TaskRuntimeContext ctx = new TaskRuntimeContext("p","t-log","tenant", null);
         sm.registerTaskAggregate(agg.getTaskId(), agg, ctx, 1);

@@ -43,7 +43,7 @@ public class PauseResumeCheckpointTest {
         var sm = new TaskStateManager();
         var sink = new SpringTaskEventSink(sm);
 
-        TaskAggregate task = new TaskAggregate("t-pr", "p", "tenant-1");
+        TaskAggregate task = new TaskAggregate("task-t-pr", "p", "tenant-1");
         TaskRuntimeContext ctx = new TaskRuntimeContext("p", "t-pr", "tenant-1", null);
         List<TaskStage> stages = List.of(new SuccessStage("s1"), new SuccessStage("s2"), new SuccessStage("s3"));
 

@@ -122,7 +122,8 @@ public class ExecutorConfiguration {
             TaskStateManager stateManager,
             ExecutorProperties executorProperties,
             ConflictRegistry conflictRegistry,
-            SpringTaskEventSink eventSink) {
+            SpringTaskEventSink eventSink,
+            ApplicationEventPublisher eventPublisher) {
         return new PlanDomainService(
                 planRepository,
                 stateManager,
@@ -133,7 +134,8 @@ public class ExecutorConfiguration {
                     executorProperties
                 ),
                 eventSink,
-                executorProperties
+                executorProperties,
+                eventPublisher
         );
     }
 
@@ -145,7 +147,8 @@ public class ExecutorConfiguration {
             ExecutorProperties executorProperties,
             CheckpointService checkpointService,
             SpringTaskEventSink eventSink,
-            ConflictRegistry conflictRegistry) {
+            ConflictRegistry conflictRegistry,
+            ApplicationEventPublisher eventPublisher) {
         return new TaskDomainService(
                 taskRepository,
                 taskRuntimeRepository,
@@ -154,7 +157,8 @@ public class ExecutorConfiguration {
                 executorProperties,
                 checkpointService,
                 eventSink,
-                conflictRegistry
+                conflictRegistry,
+                eventPublisher
         );
     }
 

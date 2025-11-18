@@ -187,34 +187,37 @@ public class DeploymentApplicationService {
     }
 
     /**
-     * 根据租户 ID 恢复任务
+     * 根据租户 ID 恢复任务（RF-12: 添加事务管理）
      *
      * @param tenantId 租户 ID
      * @return 操作结果
      */
+    @Transactional  // RF-12: 事务边界
     public TaskOperationResult resumeTaskByTenant(String tenantId) {
         logger.info("[DeploymentApplicationService] 恢复租户任务: {}", tenantId);
         return taskDomainService.resumeTaskByTenant(tenantId);
     }
 
     /**
-     * 根据租户 ID 回滚任务
+     * 根据租户 ID 回滚任务（RF-12: 添加事务管理）
      *
      * @param tenantId 租户 ID
      * @return 操作结果
      */
+    @Transactional  // RF-12: 事务边界
     public TaskOperationResult rollbackTaskByTenant(String tenantId) {
         logger.info("[DeploymentApplicationService] 回滚租户任务: {}", tenantId);
         return taskDomainService.rollbackTaskByTenant(tenantId);
     }
 
     /**
-     * 根据租户 ID 重试任务
+     * 根据租户 ID 重试任务（RF-12: 添加事务管理）
      *
      * @param tenantId 租户 ID
      * @param fromCheckpoint 是否从 checkpoint 恢复
      * @return 操作结果
      */
+    @Transactional  // RF-12: 事务边界
     public TaskOperationResult retryTaskByTenant(String tenantId, boolean fromCheckpoint) {
         logger.info("[DeploymentApplicationService] 重试租户任务: {}, fromCheckpoint: {}",
                     tenantId, fromCheckpoint);
@@ -222,11 +225,12 @@ public class DeploymentApplicationService {
     }
 
     /**
-     * 根据租户 ID 取消任务
+     * 根据租户 ID 取消任务（RF-12: 添加事务管理）
      *
      * @param tenantId 租户 ID
      * @return 操作结果
      */
+    @Transactional  // RF-12: 事务边界
     public TaskOperationResult cancelTaskByTenant(String tenantId) {
         logger.info("[DeploymentApplicationService] 取消租户任务: {}", tenantId);
         return taskDomainService.cancelTaskByTenant(tenantId);

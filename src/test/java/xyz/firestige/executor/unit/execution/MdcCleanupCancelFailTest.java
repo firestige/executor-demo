@@ -39,7 +39,7 @@ public class MdcCleanupCancelFailTest {
     @Test
     void mdcClearedAfterFailure() {
         TaskStateManager sm = new TaskStateManager(e -> {});
-        TaskAggregate agg = new TaskAggregate("t-mdc-f","p","tenant");
+        TaskAggregate agg = new TaskAggregate("task-t-mdc-f","p","tenant");
         sm.initializeTask(agg.getTaskId(), TaskStatus.PENDING);
         TaskRuntimeContext ctx = new TaskRuntimeContext("p","t-mdc-f","tenant", null);
         sm.registerTaskAggregate(agg.getTaskId(), agg, ctx, 1);
@@ -51,7 +51,7 @@ public class MdcCleanupCancelFailTest {
     @Test
     void mdcClearedAfterCancel() {
         TaskStateManager sm = new TaskStateManager(e -> {});
-        TaskAggregate agg = new TaskAggregate("t-mdc-c","p","tenant");
+        TaskAggregate agg = new TaskAggregate("task-t-mdc-c","p","tenant");
         sm.initializeTask(agg.getTaskId(), TaskStatus.PENDING);
         TaskRuntimeContext ctx = new TaskRuntimeContext("p","t-mdc-c","tenant", null);
         sm.registerTaskAggregate(agg.getTaskId(), agg, ctx, 1);

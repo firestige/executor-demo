@@ -47,7 +47,7 @@ public class TaskRollbackStageEventsTest {
     void rollbackEmitsStageEvents() {
         CapturingPublisher pub = new CapturingPublisher();
         TaskStateManager mgr = new TaskStateManager(pub);
-        TaskAggregate agg = new TaskAggregate("taskRB", "planX", "tenant");
+        TaskAggregate agg = new TaskAggregate("task-taskRB", "planX", "tenant");
         mgr.initializeTask(agg.getTaskId(), TaskStatus.PENDING);
         TaskRuntimeContext ctx = new TaskRuntimeContext("planX", agg.getTaskId(), agg.getTenantId(), null);
         List<TaskStage> stages = List.of(new SuccessStage(), new FailingStage());

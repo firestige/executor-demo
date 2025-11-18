@@ -3,8 +3,6 @@ package xyz.firestige.executor.state;
 import org.springframework.context.ApplicationEventPublisher;
 import xyz.firestige.executor.exception.FailureInfo;
 import xyz.firestige.executor.execution.StageResult;
-import xyz.firestige.executor.service.health.AlwaysTrueRollbackHealthVerifier;
-import xyz.firestige.executor.service.health.RollbackHealthVerifier;
 import xyz.firestige.executor.state.event.TaskCancelledEvent;
 import xyz.firestige.executor.domain.state.TaskStateMachine;
 import xyz.firestige.executor.domain.state.ctx.TaskTransitionContext;
@@ -28,23 +26,24 @@ import xyz.firestige.executor.state.event.TaskStartedEvent;
 import xyz.firestige.executor.state.event.TaskStatusEvent;
 import xyz.firestige.executor.state.event.TaskValidatedEvent;
 import xyz.firestige.executor.state.event.TaskValidationFailedEvent;
+import xyz.firestige.executor.state.strategy.*;
 import xyz.firestige.executor.validation.ValidationError;
 
 import java.time.Duration;
-import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * 任务状态管理器
- * 管理任务状态，并在状态转移时发布事件
+ * 任务状态管理器（RF-13 重构版）
+ * 使用策略模式管理状态转换，委托给聚合的业务方法
  */
 public class TaskStateManager {
 
     /**
-     * 任务状态机映射
+     * 任务状态机映射（保留兼容性）
      * Key: taskId, Value: TaskStateMachine
      */
     private final Map<String, TaskStateMachine> stateMachines = new ConcurrentHashMap<>();
@@ -55,18 +54,77 @@ public class TaskStateManager {
     private ApplicationEventPublisher eventPublisher;
 
     private final Map<String, Long> sequences = new ConcurrentHashMap<>();
-    // 新增：保存聚合与运行上下文及总阶段数
+    // RF-13: 保存聚合与运行上下文
     private final Map<String, TaskAggregate> aggregates = new ConcurrentHashMap<>();
     private final Map<String, TaskRuntimeContext> runtimeContexts = new ConcurrentHashMap<>();
     private final Map<String, Integer> totalStagesMap = new ConcurrentHashMap<>();
     private final Map<String, List<String>> stageNamesMap = new ConcurrentHashMap<>();
-    private RollbackHealthVerifier rollbackHealthVerifier = new AlwaysTrueRollbackHealthVerifier();
+
+    /**
+     * RF-13: 状态转换策略注册表
+     */
+    private final Map<StateTransitionKey, StateTransitionStrategy> strategies = new HashMap<>();
+    private Integer globalMaxRetry;
 
     public TaskStateManager() {
+        initializeStrategies();
     }
 
     public TaskStateManager(ApplicationEventPublisher eventPublisher) {
         this.eventPublisher = eventPublisher;
+        initializeStrategies();
+    }
+
+    public TaskStateManager(ApplicationEventPublisher eventPublisher, Integer globalMaxRetry) {
+        this.eventPublisher = eventPublisher;
+        this.globalMaxRetry = globalMaxRetry;
+        initializeStrategies();
+    }
+
+    /**
+     * RF-13: 初始化所有状态转换策略
+     */
+    private void initializeStrategies() {
+        // 1. CREATED -> PENDING
+        registerStrategy(new MarkAsPendingTransitionStrategy());
+        
+        // 2. PENDING -> RUNNING (启动)
+        registerStrategy(new StartTransitionStrategy());
+        
+        // 3. RUNNING -> PAUSED (暂停)
+        registerStrategy(new PauseTransitionStrategy());
+        
+        // 4. PAUSED -> RUNNING (恢复)
+        registerStrategy(new ResumeTransitionStrategy());
+        
+        // 5. RUNNING -> COMPLETED (完成)
+        registerStrategy(new CompleteTransitionStrategy(null)); // totalStages 动态获取
+        
+        // 6. RUNNING -> FAILED (失败)
+        registerStrategy(new FailTransitionStrategy());
+        
+        // 7. FAILED/ROLLED_BACK -> RUNNING (重试)
+        registerStrategy(new RetryTransitionStrategy(globalMaxRetry));
+        
+        // 8. * -> ROLLING_BACK (开始回滚)
+        registerStrategy(new RollbackTransitionStrategy());
+        
+        // 9. ROLLING_BACK -> ROLLED_BACK (回滚完成)
+        registerStrategy(new RollbackCompleteTransitionStrategy());
+        
+        // 10. ROLLING_BACK -> ROLLBACK_FAILED (回滚失败)
+        registerStrategy(new RollbackFailTransitionStrategy());
+        
+        // 11. * -> CANCELLED (取消)
+        registerStrategy(new CancelTransitionStrategy());
+    }
+
+    /**
+     * RF-13: 注册策略
+     */
+    private void registerStrategy(StateTransitionStrategy strategy) {
+        StateTransitionKey key = new StateTransitionKey(strategy.getFromStatus(), strategy.getToStatus());
+        strategies.put(key, strategy);
     }
 
     /**
@@ -78,76 +136,114 @@ public class TaskStateManager {
     }
 
     /**
-     * 注册聚合并配置 Guards/Actions（在聚合可用后）
+     * RF-13: 注册聚合（简化版，不再需要配置 Guards/Actions）
+     * 状态转换逻辑由策略模式接管
      */
     public void registerTaskAggregate(String taskId, TaskAggregate aggregate, TaskRuntimeContext runtimeCtx, int totalStages) {
         aggregates.put(taskId, aggregate);
         runtimeContexts.put(taskId, runtimeCtx);
         totalStagesMap.put(taskId, totalStages);
-        TaskStateMachine sm = stateMachines.get(taskId);
-        if (sm == null) return; // ensure initializeTask called first
-        // Guards
-        sm.registerGuard(TaskStatus.FAILED, TaskStatus.RUNNING, ctx -> ctx.getAggregate().getRetryCount() < (ctx.getAggregate().getMaxRetry() != null ? ctx.getAggregate().getMaxRetry() : 3));
-        sm.registerGuard(TaskStatus.RUNNING, TaskStatus.PAUSED, ctx -> ctx.getContext() != null && ctx.getContext().isPauseRequested());
-        sm.registerGuard(TaskStatus.PAUSED, TaskStatus.RUNNING, ctx -> ctx.getContext() != null && !ctx.getContext().isPauseRequested());
-        sm.registerGuard(TaskStatus.RUNNING, TaskStatus.COMPLETED, ctx -> ctx.getAggregate().getCurrentStageIndex() >= ctx.getTotalStages());
-        // Actions
-        sm.registerAction(TaskStatus.PENDING, TaskStatus.RUNNING, ctx -> ctx.getAggregate().setStartedAt(LocalDateTime.now()));
-        sm.registerAction(TaskStatus.RUNNING, TaskStatus.COMPLETED, ctx -> ctx.getAggregate().setEndedAt(LocalDateTime.now()));
-        sm.registerAction(TaskStatus.RUNNING, TaskStatus.FAILED, ctx -> ctx.getAggregate().setEndedAt(LocalDateTime.now()));
+        // RF-13: 不再需要配置 Guards/Actions，由策略模式接管
     }
 
     /**
-     * 更新状态
+     * RF-13: 更新状态（使用策略模式）
      */
     public void updateState(String taskId, TaskStatus newStatus) {
-        updateState(taskId, newStatus, null, null);
+        updateState(taskId, newStatus, null, null, null);
     }
 
     /**
-     * 更新状态（带失败信息）
+     * RF-13: 更新状态（带失败信息）
      */
     public void updateState(String taskId, TaskStatus newStatus, FailureInfo failureInfo) {
-        updateState(taskId, newStatus, failureInfo, null);
+        updateState(taskId, newStatus, failureInfo, null, null);
     }
 
     /**
-     * 更新状态（完整版）
+     * RF-13: 更新状态（完整版）
      */
     public void updateState(String taskId, TaskStatus newStatus, FailureInfo failureInfo, String message) {
-        TaskStateMachine sm = stateMachines.get(taskId);
-        if (sm == null) {
-            // 如果状态机不存在，创建一个新的
-            initializeTask(taskId, newStatus);
-            return;
-        }
+        updateState(taskId, newStatus, failureInfo, message, null);
+    }
+
+    /**
+     * RF-13: 更新状态（策略模式实现）
+     * 
+     * @param taskId Task ID
+     * @param newStatus 目标状态
+     * @param failureInfo 失败信息（可选）
+     * @param message 消息（可选）
+     * @param additionalData 策略需要的额外数据（可选）
+     */
+    public void updateState(String taskId, TaskStatus newStatus, FailureInfo failureInfo, String message, Object additionalData) {
         TaskAggregate agg = aggregates.get(taskId);
-        TaskRuntimeContext rctx = runtimeContexts.get(taskId);
-        Integer totalStages = totalStagesMap.get(taskId);
-        if (agg == null || totalStages == null) {
-            // 尚未注册聚合，跳过迁移以避免 NPE；后续注册后会再调用
+        if (agg == null) {
+            // 尚未注册聚合，跳过
             return;
         }
-        TaskTransitionContext txCtx = new TaskTransitionContext(agg, rctx, totalStages);
-        TaskStatus old = sm.getCurrent();
-        TaskStatus after = sm.transitionTo(newStatus, txCtx);
-        boolean transitioned = after != null && after != old && after == newStatus;
-        if (transitioned) {
-            applyActionsOnTransition(taskId, old, newStatus);
-            if (eventPublisher != null) {
-                // 根据新状态创建并发布对应的事件
-                TaskStatusEvent event = createEventForStatus(taskId, newStatus, failureInfo, message);
-                if (event != null) eventPublisher.publishEvent(event);
+        
+        TaskStatus oldStatus = agg.getStatus();
+        TaskRuntimeContext rctx = runtimeContexts.get(taskId);
+        
+        // 1. 查找策略
+        StateTransitionKey key = new StateTransitionKey(oldStatus, newStatus);
+        StateTransitionStrategy strategy = strategies.get(key);
+        
+        // 2. 特殊处理：重试策略支持两种源状态
+        if (strategy == null && newStatus == TaskStatus.RUNNING) {
+            if (oldStatus == TaskStatus.FAILED || oldStatus == TaskStatus.ROLLED_BACK) {
+                strategy = strategies.get(new StateTransitionKey(TaskStatus.FAILED, TaskStatus.RUNNING));
+            }
+        }
+        
+        // 3. 特殊处理：任意状态转换（取消和回滚）
+        if (strategy == null) {
+            if (newStatus == TaskStatus.CANCELLED) {
+                strategy = strategies.get(new StateTransitionKey(null, TaskStatus.CANCELLED));
+            } else if (newStatus == TaskStatus.ROLLING_BACK) {
+                strategy = strategies.get(new StateTransitionKey(null, TaskStatus.ROLLING_BACK));
+            }
+        }
+        
+        if (strategy == null) {
+            // 没有找到策略，跳过或抛异常
+            return;
+        }
+        
+        // 4. 检查前置条件
+        if (!strategy.canTransition(agg, rctx, newStatus)) {
+            // 前置条件不满足，跳过
+            return;
+        }
+        
+        // 5. 执行策略（委托给聚合）
+        try {
+            strategy.execute(agg, rctx, additionalData);
+        } catch (Exception e) {
+            // 策略执行失败，记录日志并跳过
+            return;
+        }
+        
+        // 6. 同步状态机（保持兼容性）
+        TaskStateMachine sm = stateMachines.get(taskId);
+        if (sm != null) {
+            Integer totalStages = totalStagesMap.get(taskId);
+            TaskTransitionContext txCtx = new TaskTransitionContext(agg, rctx, totalStages != null ? totalStages : 0);
+            sm.transitionTo(newStatus, txCtx);
+        }
+        
+        // 7. 发布事件
+        if (eventPublisher != null) {
+            TaskStatusEvent event = createEventForStatus(taskId, newStatus, failureInfo, message);
+            if (event != null) {
+                eventPublisher.publishEvent(event);
             }
         }
     }
 
     public void registerStageNames(String taskId, List<String> stageNames) {
         if (stageNames != null) stageNamesMap.put(taskId, new ArrayList<>(stageNames));
-    }
-
-    public void setRollbackHealthVerifier(RollbackHealthVerifier v) {
-        if (v != null) this.rollbackHealthVerifier = v;
     }
 
     /**
@@ -159,44 +255,6 @@ public class TaskStateManager {
      */
     public long nextSequenceId(String taskId) {
         return sequences.compute(taskId, (k, v) -> (v == null ? 0L : v) + 1);
-    }
-
-    private void applyActionsOnTransition(String taskId, TaskStatus from, TaskStatus to) {
-        TaskAggregate agg = aggregates.get(taskId);
-        if (agg == null) return;
-        // keep aggregate status in sync with state machine
-        agg.setStatus(to);
-        if (from == TaskStatus.PENDING && to == TaskStatus.RUNNING) {
-            if (agg.getStartedAt() == null) agg.setStartedAt(LocalDateTime.now());
-        }
-        if (from == TaskStatus.RUNNING && (to == TaskStatus.COMPLETED || to == TaskStatus.FAILED)) {
-            agg.setEndedAt(LocalDateTime.now());
-            if (agg.getStartedAt() != null && agg.getEndedAt() != null) {
-                long ms = Duration.between(agg.getStartedAt(), agg.getEndedAt()).toMillis();
-                agg.setDurationMillis(ms);
-            }
-        }
-        if (from == TaskStatus.ROLLING_BACK && (to == TaskStatus.ROLLED_BACK || to == TaskStatus.ROLLBACK_FAILED)) {
-            agg.setEndedAt(LocalDateTime.now());
-            if (agg.getStartedAt() != null && agg.getEndedAt() != null) {
-                long ms = Duration.between(agg.getStartedAt(), agg.getEndedAt()).toMillis();
-                agg.setDurationMillis(ms);
-            }
-            if (to == TaskStatus.ROLLED_BACK) {
-                // 恢复上一版可用配置
-                TenantDeployConfigSnapshot snap = agg.getPrevConfigSnapshot();
-                if (snap != null) {
-                    agg.setDeployUnitId(snap.getDeployUnitId());
-                    agg.setDeployUnitVersion(snap.getDeployUnitVersion());
-                    agg.setDeployUnitName(snap.getDeployUnitName());
-                    // RB-02：仅在健康确认成功时更新 lastKnownGoodVersion
-                    TaskRuntimeContext ctx = runtimeContexts.get(taskId);
-                    if (rollbackHealthVerifier == null || rollbackHealthVerifier.verify(agg, ctx)) {
-                        agg.setLastKnownGoodVersion(snap.getDeployUnitVersion());
-                    }
-                }
-            }
-        }
     }
 
     /**

@@ -23,7 +23,7 @@ public class DefaultTaskWorkerFactoryTest {
         TaskWorkerFactory f = new DefaultTaskWorkerFactory();
         TaskStateManager sm = new TaskStateManager();
         String planId = "p";
-        TaskAggregate agg = new TaskAggregate("t","p","ten");
+        TaskAggregate agg = new TaskAggregate("task-t","p","ten");
         TaskRuntimeContext ctx = new TaskRuntimeContext("p","t","ten", null);
         sm.initializeTask(agg.getTaskId(), TaskStatus.PENDING);
         sm.registerTaskAggregate(agg.getTaskId(), agg, ctx, 0);

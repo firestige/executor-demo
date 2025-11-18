@@ -44,7 +44,9 @@ public class TaskDurationTest {
     @Test
     void durationSetOnComplete() {
         TaskStateManager mgr = new TaskStateManager((ApplicationEventPublisher) e -> {});
-        TaskAggregate agg = new TaskAggregate("taskDur1", "planX", "tenant");
+        TaskAggregate agg = new TaskAggregate("task-taskDur1", "planX", "tenant");
+        agg.setTotalStages(1); // RF-13: 初始化 stageProgress
+        agg.markAsPending(); // RF-13: 设置为PENDING状态
         mgr.initializeTask(agg.getTaskId(), TaskStatus.PENDING);
         TaskRuntimeContext ctx = new TaskRuntimeContext("planX", agg.getTaskId(), agg.getTenantId(), null);
         mgr.registerTaskAggregate(agg.getTaskId(), agg, ctx, 1);
@@ -57,7 +59,9 @@ public class TaskDurationTest {
     @Test
     void durationSetOnFail() {
         TaskStateManager mgr = new TaskStateManager((ApplicationEventPublisher) e -> {});
-        TaskAggregate agg = new TaskAggregate("taskDur2", "planX", "tenant");
+        TaskAggregate agg = new TaskAggregate("task-taskDur2", "planX", "tenant");
+        agg.setTotalStages(1); // RF-13: 初始化 stageProgress
+        agg.markAsPending(); // RF-13: 设置为PENDING状态
         mgr.initializeTask(agg.getTaskId(), TaskStatus.PENDING);
         TaskRuntimeContext ctx = new TaskRuntimeContext("planX", agg.getTaskId(), agg.getTenantId(), null);
         mgr.registerTaskAggregate(agg.getTaskId(), agg, ctx, 1);
@@ -70,7 +74,9 @@ public class TaskDurationTest {
     @Test
     void durationNotSetOnPauseOrCancel() {
         TaskStateManager mgr = new TaskStateManager((ApplicationEventPublisher) e -> {});
-        TaskAggregate agg = new TaskAggregate("taskDur3", "planX", "tenant");
+        TaskAggregate agg = new TaskAggregate("task-taskDur3", "planX", "tenant");
+        agg.setTotalStages(1); // RF-13: 初始化 stageProgress
+        agg.markAsPending(); // RF-13: 设置为PENDING状态
         mgr.initializeTask(agg.getTaskId(), TaskStatus.PENDING);
         TaskRuntimeContext ctx = new TaskRuntimeContext("planX", agg.getTaskId(), agg.getTenantId(), null);
         mgr.registerTaskAggregate(agg.getTaskId(), agg, ctx, 1);

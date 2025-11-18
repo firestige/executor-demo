@@ -160,7 +160,7 @@ public class TaskExecutor {
                     checkpointService.saveCheckpoint(task, names(completed), i);
                     eventSink.publishTaskStageSucceeded(planId, taskId, stageName, Duration.ofMillis(stageRes.getDurationMillis()), 0);
                     completedCounter.incrementAndGet();
-                    task.setCurrentStageIndex(i + 1); // 更新完成 stage 索引
+                    // RF-13: completeStage() 内部已更新 currentStageIndex，无需外部调用 setter
 
                     // If stage contains ConfigUpdateStep, update version on aggregate
                     s.getSteps().forEach(step -> {
@@ -179,7 +179,10 @@ public class TaskExecutor {
                     completed.add(old);
                     eventSink.publishTaskStageFailed(planId, taskId, stageName, stageRes.getMessage(), 0);
                     eventSink.publishTaskFailed(planId, taskId, stageRes.getMessage(), 0);
-                    if (stateManager != null) stateManager.updateState(taskId, TaskStatus.FAILED); else task.setStatus(TaskStatus.FAILED);
+                    // RF-13: 使用 stateManager (如果有)，不再直接调用 setStatus
+                    if (stateManager != null) {
+                        stateManager.updateState(taskId, TaskStatus.FAILED);
+                    }
                     stopHeartbeat();
                     metrics.incrementCounter("task_failed");
                     // SC-02: release on terminal
@@ -189,14 +192,20 @@ public class TaskExecutor {
 
                 // 暂停检查：仅在 Stage 边界
                 if (context.isPauseRequested()) {
-                    if (stateManager != null) stateManager.updateState(taskId, TaskStatus.PAUSED); else task.setStatus(TaskStatus.PAUSED);
+                    // RF-13: 使用 stateManager
+                    if (stateManager != null) {
+                        stateManager.updateState(taskId, TaskStatus.PAUSED);
+                    }
                     eventSink.publishTaskPaused(planId, taskId, 0);
                     stopHeartbeat();
                     metrics.incrementCounter("task_paused");
                     return TaskExecutionResult.ok(planId, taskId, task.getStatus(), Duration.between(start, LocalDateTime.now()), completed);
                 }
                 if (context.isCancelRequested()) {
-                    if (stateManager != null) stateManager.updateState(taskId, TaskStatus.CANCELLED); else task.setStatus(TaskStatus.CANCELLED);
+                    // RF-13: 使用 stateManager
+                    if (stateManager != null) {
+                        stateManager.updateState(taskId, TaskStatus.CANCELLED);
+                    }
                     eventSink.publishTaskCancelled(planId, taskId, 0);
                     stopHeartbeat();
                     metrics.incrementCounter("task_cancelled");
@@ -204,7 +213,10 @@ public class TaskExecutor {
                 }
             }
 
-            if (stateManager != null) stateManager.updateState(taskId, TaskStatus.COMPLETED); else task.setStatus(TaskStatus.COMPLETED);
+            // RF-13: 使用 stateManager
+            if (stateManager != null) {
+                stateManager.updateState(taskId, TaskStatus.COMPLETED);
+            }
             Duration d = Duration.between(start, LocalDateTime.now());
             eventSink.publishTaskCompleted(planId, taskId, d, names(completed), 0);
             checkpointService.clearCheckpoint(task);
@@ -230,7 +242,10 @@ public class TaskExecutor {
     public TaskExecutionResult rollback() {
         String taskId = task.getTaskId();
         eventSink.publishTaskRollingBack(planId, taskId, 0);
-        if (stateManager != null) stateManager.updateState(taskId, TaskStatus.ROLLING_BACK); else task.setStatus(TaskStatus.ROLLING_BACK);
+        // RF-13: 使用 stateManager
+        if (stateManager != null) {
+            stateManager.updateState(taskId, TaskStatus.ROLLING_BACK);
+        }
         List<StageResult> rollbackStages = new ArrayList<>();
         List<TaskStage> copy = new ArrayList<>(stages);
         for (int i = copy.size() - 1; i >= 0; i--) {
@@ -264,8 +279,10 @@ public class TaskExecutor {
             }
         }
         boolean anyFailed = rollbackStages.stream().anyMatch(r -> !r.isSuccess());
-        if (stateManager != null) stateManager.updateState(taskId, anyFailed ? TaskStatus.ROLLBACK_FAILED : TaskStatus.ROLLED_BACK);
-        else task.setStatus(anyFailed ? TaskStatus.ROLLBACK_FAILED : TaskStatus.ROLLED_BACK);
+        // RF-13: 使用 stateManager
+        if (stateManager != null) {
+            stateManager.updateState(taskId, anyFailed ? TaskStatus.ROLLBACK_FAILED : TaskStatus.ROLLED_BACK);
+        }
         if (anyFailed) {
             List<String> partial = new ArrayList<>();
             for (StageResult r : rollbackStages) if (r.isSuccess()) partial.add(r.getStageName());
@@ -286,8 +303,11 @@ public class TaskExecutor {
         if (fromCheckpoint) {
             result = execute();
         } else {
-            task.setCurrentStageIndex(0);
-            if (stateManager != null) stateManager.updateState(taskId, TaskStatus.PENDING); else task.setStatus(TaskStatus.PENDING);
+            // RF-13: 不再直接设置 currentStageIndex，由 retry() 业务方法处理
+            // 注意：这里应该调用 task.retry(fromCheckpoint, globalMaxRetry) 来重置
+            if (stateManager != null) {
+                stateManager.updateState(taskId, TaskStatus.PENDING);
+            }
             checkpointService.clearCheckpoint(task);
             // 重试前确保心跳可重新启动
             if (heartbeatScheduler != null) heartbeatScheduler.stop();

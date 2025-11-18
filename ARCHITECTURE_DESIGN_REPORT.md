@@ -1,8 +1,8 @@
 # Executor Demo 架构设计报告
 
 **项目名称：** Multi-Tenant Blue/Green Configuration Switch Executor  
-**文档版本：** 2.0  
-**最后更新：** 2025-11-18 (RF-10 Complete)  
+**文档版本：** 2.1  
+**最后更新：** 2025-11-18 (RF-13 Complete - Value Objects & Strategy Pattern)  
 
 ---
 
@@ -18,7 +18,7 @@
 - **状态管理**：严格的状态机模型，确保状态转换的合法性和一致性
 - **可观测性**：事件驱动架构，所有状态变更、进度更新均发布事件
 - **可扩展性**：提供多个扩展点（StageFactory、TaskWorkerFactory、CheckpointStore 等）
-- **DDD 合规性**：通过 Phase 17 重构达到 80% DDD 符合度，富领域模型、值对象、清晰聚合边界
+- **DDD 合规性**：通过 Phase 17-18 重构达到 85% DDD 符合度，富领域模型、值对象、策略模式、清晰聚合边界
 
 ### 1.3 关键特性
 - **Plan/Task/Stage 三层模型**：Plan 管理一组租户任务，Task 是租户级执行单元，Stage 是原子执行阶段

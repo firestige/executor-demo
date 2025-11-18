@@ -1,49 +1,49 @@
 package xyz.firestige.executor.domain.task;
 
+import xyz.firestige.executor.domain.shared.vo.*;
+import xyz.firestige.executor.domain.value.*;
 import xyz.firestige.executor.execution.StageResult;
 import xyz.firestige.executor.state.TaskStatus;
 import xyz.firestige.executor.state.event.*;
 
-import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
 /**
- * 单租户 Task 聚合（DDD 重构：充血模型）
+ * 单租户 Task 聚合（DDD 重构：充血模型 + 值对象 RF-13）
  *
  * 职责：
  * 1. 管理任务生命周期和状态转换
  * 2. 保护业务不变式
  * 3. 封装业务行为
+ * 4. 使用值对象增强类型安全（RF-13）
  */
 public class TaskAggregate {
 
-    private String taskId;
-    private String planId;
-    private String tenantId;
+    // ============================================
+    // RF-13: 使用值对象替换原始类型
+    // ============================================
+    private TaskId taskId;
+    private PlanId planId;
+    private TenantId tenantId;
 
-    private Long deployUnitId;
-    private Long deployUnitVersion;
+    private DeployVersion deployVersion;
     private String deployUnitName;
 
     private TaskStatus status;
-    private int currentStageIndex;
-    private int retryCount;
-    private Integer maxRetry; // null 表示使用全局
-    private int totalStages; // Stage 总数
+    private StageProgress stageProgress;
+    private RetryPolicy retryPolicy;
 
     private TaskCheckpoint checkpoint;
     private List<StageResult> stageResults = new ArrayList<>();
 
-    private LocalDateTime createdAt = LocalDateTime.now();
-    private LocalDateTime startedAt;
-    private LocalDateTime endedAt;
+    private TimeRange timeRange;
 
     private TenantDeployConfigSnapshot prevConfigSnapshot; // 上一次可用配置快照
     private Long lastKnownGoodVersion; // 上一次成功切换完成的版本号
-    private Long durationMillis; // 任务持续时长（毫秒）
+    private TaskDuration duration;
 
     // 运行时标志
     private boolean pauseRequested;
@@ -55,10 +55,12 @@ public class TaskAggregate {
     private final List<TaskStatusEvent> domainEvents = new ArrayList<>();
 
     public TaskAggregate(String taskId, String planId, String tenantId) {
-        this.taskId = taskId;
-        this.planId = planId;
-        this.tenantId = tenantId;
+        this.taskId = TaskId.of(taskId);
+        this.planId = PlanId.of(planId);
+        this.tenantId = TenantId.of(tenantId);
         this.status = TaskStatus.CREATED;
+        this.timeRange = TimeRange.notStarted();
+        this.duration = TaskDuration.notStarted();
     }
 
     // ============================================
@@ -97,7 +99,7 @@ public class TaskAggregate {
     public void markAsPending() {
         if (status != TaskStatus.CREATED) {
             throw new IllegalStateException(
-                String.format("只有 CREATED 状态可以标记为 PENDING，当前状态: %s, taskId: %s", status, taskId)
+                String.format("只有 CREATED 状态可以标记为 PENDING，当前状态: %s, taskId: %s", status, taskId.getValue())
             );
         }
         this.status = TaskStatus.PENDING;
@@ -110,14 +112,14 @@ public class TaskAggregate {
     public void start() {
         if (status != TaskStatus.PENDING) {
             throw new IllegalStateException(
-                String.format("只有 PENDING 状态的任务可以启动，当前状态: %s, taskId: %s", status, taskId)
+                String.format("只有 PENDING 状态的任务可以启动，当前状态: %s, taskId: %s", status, taskId.getValue())
             );
         }
         this.status = TaskStatus.RUNNING;
-        this.startedAt = LocalDateTime.now();
+        this.timeRange = timeRange.start();
 
         // ✅ 产生领域事件
-        TaskStartedEvent event = new TaskStartedEvent(taskId, totalStages);
+        TaskStartedEvent event = new TaskStartedEvent(taskId.getValue(), stageProgress.getTotalStages());
         addDomainEvent(event);
     }
 
@@ -128,7 +130,7 @@ public class TaskAggregate {
     public void requestPause() {
         if (status != TaskStatus.RUNNING) {
             throw new IllegalStateException(
-                String.format("只有 RUNNING 状态可以请求暂停，当前状态: %s, taskId: %s", status, taskId)
+                String.format("只有 RUNNING 状态可以请求暂停，当前状态: %s, taskId: %s", status, taskId.getValue())
             );
         }
         this.pauseRequested = true;
@@ -156,7 +158,7 @@ public class TaskAggregate {
     public void resume() {
         if (status != TaskStatus.PAUSED) {
             throw new IllegalStateException(
-                String.format("只有 PAUSED 状态可以恢复，当前状态: %s, taskId: %s", status, taskId)
+                String.format("只有 PAUSED 状态可以恢复，当前状态: %s, taskId: %s", status, taskId.getValue())
             );
         }
         this.status = TaskStatus.RUNNING;
@@ -174,16 +176,16 @@ public class TaskAggregate {
     public void cancel(String cancelledBy) {
         if (status.isTerminal()) {
             throw new IllegalStateException(
-                String.format("终态任务无法取消，当前状态: %s, taskId: %s", status, taskId)
+                String.format("终态任务无法取消，当前状态: %s, taskId: %s", status, taskId.getValue())
             );
         }
         this.status = TaskStatus.CANCELLED;
         this.cancelledBy = cancelledBy;
-        this.endedAt = LocalDateTime.now();
+        this.timeRange = timeRange.end();
         calculateDuration();
 
         // ✅ 产生领域事件
-        TaskCancelledEvent event = new TaskCancelledEvent(taskId);
+        TaskCancelledEvent event = new TaskCancelledEvent(taskId.getValue());
         event.setCancelledBy(cancelledBy);
         addDomainEvent(event);
     }
@@ -196,10 +198,10 @@ public class TaskAggregate {
         validateCanCompleteStage();
 
         this.stageResults.add(result);
-        this.currentStageIndex++;
+        this.stageProgress = stageProgress.advance();
 
         // 检查是否所有 Stage 完成
-        if (isAllStagesCompleted()) {
+        if (stageProgress.isCompleted()) {
             complete();
         }
     }
@@ -213,7 +215,7 @@ public class TaskAggregate {
 
         this.stageResults.add(result);
         this.status = TaskStatus.FAILED;
-        this.endedAt = LocalDateTime.now();
+        this.timeRange = timeRange.end();
         calculateDuration();
 
         // ✅ 产生领域事件
@@ -222,18 +224,11 @@ public class TaskAggregate {
     }
 
     /**
-     * 判断是否所有 Stage 完成
-     */
-    public boolean isAllStagesCompleted() {
-        return currentStageIndex >= totalStages;
-    }
-
-    /**
      * 完成任务
      */
     private void complete() {
         this.status = TaskStatus.COMPLETED;
-        this.endedAt = LocalDateTime.now();
+        this.timeRange = timeRange.end();
         calculateDuration();
 
         // ✅ 产生领域事件
@@ -248,31 +243,31 @@ public class TaskAggregate {
     public void retry(boolean fromCheckpoint, Integer globalMaxRetry) {
         if (status != TaskStatus.FAILED && status != TaskStatus.ROLLED_BACK) {
             throw new IllegalStateException(
-                String.format("只有 FAILED 或 ROLLED_BACK 状态可以重试，当前状态: %s, taskId: %s", status, taskId)
+                String.format("只有 FAILED 或 ROLLED_BACK 状态可以重试，当前状态: %s, taskId: %s", status, taskId.getValue())
             );
         }
 
-        // 检查重试次数限制
-        int effectiveMaxRetry = maxRetry != null ? maxRetry : (globalMaxRetry != null ? globalMaxRetry : Integer.MAX_VALUE);
-        if (retryCount >= effectiveMaxRetry) {
+        // RF-13: 使用 RetryPolicy 判断
+        if (!retryPolicy.canRetry(globalMaxRetry)) {
+            int effectiveMaxRetry = retryPolicy.getEffectiveMaxRetry(globalMaxRetry);
             throw new IllegalStateException(
-                String.format("已达最大重试次数 %d，taskId: %s", effectiveMaxRetry, taskId)
+                String.format("已达最大重试次数 %d，taskId: %s", effectiveMaxRetry, taskId.getValue())
             );
         }
 
         this.status = TaskStatus.RUNNING;
-        this.retryCount++;
-        this.endedAt = null;
-        this.durationMillis = null;
+        this.retryPolicy = retryPolicy.incrementRetryCount();
+        this.timeRange = timeRange.resetEnd();
+        this.duration = TaskDuration.notStarted();
 
         // 如果不是从 checkpoint 重试，清空进度
         if (!fromCheckpoint) {
-            this.currentStageIndex = 0;
+            this.stageProgress = stageProgress.reset();
             this.stageResults.clear();
         }
 
         // ✅ 产生领域事件
-        TaskRetryStartedEvent event = new TaskRetryStartedEvent(taskId, fromCheckpoint);
+        TaskRetryStartedEvent event = new TaskRetryStartedEvent(taskId.getValue(), fromCheckpoint);
         addDomainEvent(event);
     }
 
@@ -283,13 +278,13 @@ public class TaskAggregate {
     public void startRollback(String reason) {
         if (prevConfigSnapshot == null) {
             throw new IllegalStateException(
-                String.format("无可用的回滚快照，taskId: %s", taskId)
+                String.format("无可用的回滚快照，taskId: %s", taskId.getValue())
             );
         }
         this.status = TaskStatus.ROLLING_BACK;
 
         // ✅ 产生领域事件
-        TaskRollingBackEvent event = new TaskRollingBackEvent(taskId, reason, null);
+        TaskRollingBackEvent event = new TaskRollingBackEvent(taskId.getValue(), reason, null);
         addDomainEvent(event);
     }
 
@@ -300,15 +295,15 @@ public class TaskAggregate {
     public void completeRollback() {
         if (status != TaskStatus.ROLLING_BACK) {
             throw new IllegalStateException(
-                String.format("非 ROLLING_BACK 状态无法完成回滚，当前状态: %s, taskId: %s", status, taskId)
+                String.format("非 ROLLING_BACK 状态无法完成回滚，当前状态: %s, taskId: %s", status, taskId.getValue())
             );
         }
         this.status = TaskStatus.ROLLED_BACK;
-        this.endedAt = LocalDateTime.now();
+        this.timeRange = timeRange.end();
         calculateDuration();
 
         // ✅ 产生领域事件
-        TaskRolledBackEvent event = new TaskRolledBackEvent(taskId, null);
+        TaskRolledBackEvent event = new TaskRolledBackEvent(taskId.getValue(), null);
         if (prevConfigSnapshot != null) {
             event.setPrevDeployUnitVersion(prevConfigSnapshot.getDeployUnitVersion());
         }
@@ -322,11 +317,11 @@ public class TaskAggregate {
     public void failRollback(String reason) {
         if (status != TaskStatus.ROLLING_BACK) {
             throw new IllegalStateException(
-                String.format("非 ROLLING_BACK 状态无法标记回滚失败，当前状态: %s, taskId: %s", status, taskId)
+                String.format("非 ROLLING_BACK 状态无法标记回滚失败，当前状态: %s, taskId: %s", status, taskId.getValue())
             );
         }
         this.status = TaskStatus.ROLLBACK_FAILED;
-        this.endedAt = LocalDateTime.now();
+        this.timeRange = timeRange.end();
         calculateDuration();
 
         // ✅ 产生领域事件
@@ -344,7 +339,7 @@ public class TaskAggregate {
             return;
         }
         this.status = TaskStatus.FAILED;
-        this.endedAt = LocalDateTime.now();
+        this.timeRange = timeRange.end();
         calculateDuration();
     }
 
@@ -358,7 +353,7 @@ public class TaskAggregate {
     private void validateCanCompleteStage() {
         if (status != TaskStatus.RUNNING) {
             throw new IllegalStateException(
-                String.format("非 RUNNING 状态无法完成 Stage，当前状态: %s, taskId: %s", status, taskId)
+                String.format("非 RUNNING 状态无法完成 Stage，当前状态: %s, taskId: %s", status, taskId.getValue())
             );
         }
     }
@@ -367,83 +362,89 @@ public class TaskAggregate {
      * 计算任务持续时长
      */
     private void calculateDuration() {
-        if (startedAt != null && endedAt != null) {
-            this.durationMillis = Duration.between(startedAt, endedAt).toMillis();
+        if (timeRange.getStartedAt() != null && timeRange.getEndedAt() != null) {
+            this.duration = TaskDuration.between(timeRange.getStartedAt(), timeRange.getEndedAt());
         }
     }
 
     // ============================================
-    // Getter/Setter（保留必要的）
+    // Getter/Setter（RF-13 重构：返回值对象）
     // ============================================
 
-    public String getTaskId() { return taskId; }
-    public String getPlanId() { return planId; }
-    public String getTenantId() { return tenantId; }
+    public String getTaskId() { return taskId.getValue(); }
+    public TaskId getTaskIdVO() { return taskId; }
+    
+    public String getPlanId() { return planId.getValue(); }
+    public PlanId getPlanIdVO() { return planId; }
+    
+    public String getTenantId() { return tenantId.getValue(); }
+    public TenantId getTenantIdVO() { return tenantId; }
 
-    public Long getDeployUnitId() { return deployUnitId; }
-    public void setDeployUnitId(Long deployUnitId) { this.deployUnitId = deployUnitId; }
-    public Long getDeployUnitVersion() { return deployUnitVersion; }
-    public void setDeployUnitVersion(Long deployUnitVersion) { this.deployUnitVersion = deployUnitVersion; }
+    public Long getDeployUnitId() { 
+        return deployVersion != null ? deployVersion.getDeployUnitId() : null; 
+    }
+    public void setDeployUnitId(Long deployUnitId) { 
+        if (deployVersion == null) {
+            this.deployVersion = DeployVersion.of(deployUnitId, null);
+        } else {
+            this.deployVersion = DeployVersion.of(deployUnitId, deployVersion.getDeployUnitVersion());
+        }
+    }
+    
+    public Long getDeployUnitVersion() { 
+        return deployVersion != null ? deployVersion.getDeployUnitVersion() : null; 
+    }
+    public void setDeployUnitVersion(Long deployUnitVersion) { 
+        if (deployVersion == null) {
+            this.deployVersion = DeployVersion.of(null, deployUnitVersion);
+        } else {
+            this.deployVersion = DeployVersion.of(deployVersion.getDeployUnitId(), deployUnitVersion);
+        }
+    }
+    
+    public DeployVersion getDeployVersion() { return deployVersion; }
+    public void setDeployVersion(DeployVersion deployVersion) { this.deployVersion = deployVersion; }
+    
     public String getDeployUnitName() { return deployUnitName; }
     public void setDeployUnitName(String deployUnitName) { this.deployUnitName = deployUnitName; }
 
     public TaskStatus getStatus() { return status; }
 
-    /**
-     * 直接设置状态（内部使用，逐步淘汰）
-     * @deprecated 请使用业务方法：start(), pause(), resume(), cancel() 等
-     */
-    @Deprecated
-    public void setStatus(TaskStatus status) {
-        this.status = status;
+    public int getCurrentStageIndex() { 
+        return stageProgress != null ? stageProgress.getCurrentStageIndex() : 0; 
     }
 
-    public int getCurrentStageIndex() { return currentStageIndex; }
-
-    /**
-     * 直接设置 Stage 索引（内部使用，逐步淘汰）
-     * @deprecated 请使用 completeStage() 或 failStage()
-     */
-    @Deprecated
-    public void setCurrentStageIndex(int currentStageIndex) {
-        this.currentStageIndex = currentStageIndex;
+    public int getRetryCount() { 
+        return retryPolicy != null ? retryPolicy.getRetryCount() : 0; 
     }
 
-    public int getRetryCount() { return retryCount; }
+    public Integer getMaxRetry() { 
+        return retryPolicy != null ? retryPolicy.getMaxRetry() : null; 
+    }
+    public void setMaxRetry(Integer maxRetry) { 
+        if (retryPolicy == null) {
+            this.retryPolicy = RetryPolicy.initial(maxRetry);
+        } else {
+            this.retryPolicy = RetryPolicy.of(retryPolicy.getRetryCount(), maxRetry);
+        }
+    }
 
-    public Integer getMaxRetry() { return maxRetry; }
-    public void setMaxRetry(Integer maxRetry) { this.maxRetry = maxRetry; }
-
-    public int getTotalStages() { return totalStages; }
-    public void setTotalStages(int totalStages) { this.totalStages = totalStages; }
+    public int getTotalStages() { 
+        return stageProgress != null ? stageProgress.getTotalStages() : 0; 
+    }
+    public void setTotalStages(int totalStages) { 
+        this.stageProgress = StageProgress.initial(totalStages);
+        this.retryPolicy = RetryPolicy.initial(null);
+    }
 
     public TaskCheckpoint getCheckpoint() { return checkpoint; }
     public void setCheckpoint(TaskCheckpoint checkpoint) { this.checkpoint = checkpoint; }
 
     public List<StageResult> getStageResults() { return stageResults; }
 
-    public LocalDateTime getCreatedAt() { return createdAt; }
-    public LocalDateTime getStartedAt() { return startedAt; }
-
-    /**
-     * 直接设置开始时间（内部使用，逐步淘汰）
-     * @deprecated 由 start() 方法自动设置
-     */
-    @Deprecated
-    public void setStartedAt(LocalDateTime startedAt) {
-        this.startedAt = startedAt;
-    }
-
-    public LocalDateTime getEndedAt() { return endedAt; }
-
-    /**
-     * 直接设置结束时间（内部使用，逐步淘汰）
-     * @deprecated 由 complete()、cancel() 等方法自动设置
-     */
-    @Deprecated
-    public void setEndedAt(LocalDateTime endedAt) {
-        this.endedAt = endedAt;
-    }
+    public LocalDateTime getCreatedAt() { return timeRange != null ? timeRange.getCreatedAt() : null; }
+    public LocalDateTime getStartedAt() { return timeRange != null ? timeRange.getStartedAt() : null; }
+    public LocalDateTime getEndedAt() { return timeRange != null ? timeRange.getEndedAt() : null; }
 
     public TenantDeployConfigSnapshot getPrevConfigSnapshot() { return prevConfigSnapshot; }
     public void setPrevConfigSnapshot(TenantDeployConfigSnapshot prevConfigSnapshot) {
@@ -455,19 +456,18 @@ public class TaskAggregate {
         this.lastKnownGoodVersion = lastKnownGoodVersion;
     }
 
-    public Long getDurationMillis() { return durationMillis; }
-
-    /**
-     * 直接设置持续时长（内部使用，逐步淘汰）
-     * @deprecated 由 calculateDuration() 自动计算
-     */
-    @Deprecated
-    public void setDurationMillis(Long durationMillis) {
-        this.durationMillis = durationMillis;
+    public Long getDurationMillis() { 
+        return duration != null ? duration.getDurationMillis() : null; 
     }
 
     public boolean isPauseRequested() { return pauseRequested; }
     public String getCancelledBy() { return cancelledBy; }
+    
+    // RF-13: 值对象访问方法
+    public StageProgress getStageProgress() { return stageProgress; }
+    public RetryPolicy getRetryPolicy() { return retryPolicy; }
+    public TimeRange getTimeRange() { return timeRange; }
+    public TaskDuration getDuration() { return duration; }
 }
 
 

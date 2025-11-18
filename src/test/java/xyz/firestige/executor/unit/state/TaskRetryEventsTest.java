@@ -50,7 +50,7 @@ public class TaskRetryEventsTest {
     void retryEventsEmittedAndSequenceIncrements() {
         CapturingPublisher pub = new CapturingPublisher();
         TaskStateManager mgr = new TaskStateManager(pub);
-        TaskAggregate agg = new TaskAggregate("taskR", "planX", "tenant");
+        TaskAggregate agg = new TaskAggregate("task-taskR", "planX", "tenant");
         mgr.initializeTask(agg.getTaskId(), TaskStatus.PENDING);
         TaskRuntimeContext ctx = new TaskRuntimeContext("planX", agg.getTaskId(), agg.getTenantId(), null);
         List<TaskStage> stages = List.of(new SingleStage("stage1"));
