@@ -18,13 +18,13 @@ import xyz.firestige.deploy.state.TaskStatus;
 
 /**
  * Task 领域服务 (RF-15: 执行层解耦版)
- *
+ * <p>
  * 职责（RF-15 重构）：
  * 1. Task 聚合的创建和生命周期管理
  * 2. Task 业务状态转换（pause、resume、cancel）
  * 3. 为执行操作准备聚合和上下文数据
  * 4. 只关注领域逻辑，不涉及执行器创建和调度
- *
+ * <p>
  * 改进点：
  * - 移除了 TaskWorkerFactory、CheckpointService、ExecutorProperties、TenantConflictManager
  * - rollback/retry 方法改为准备方法，返回 TaskExecutionContext

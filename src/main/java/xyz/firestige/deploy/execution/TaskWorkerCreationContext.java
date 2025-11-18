@@ -8,15 +8,15 @@ import xyz.firestige.deploy.domain.task.TaskRuntimeContext;
 
 /**
  * TaskWorker 创建上下文
- *
+ * <p>
  * 封装 TaskExecutor 创建所需的领域数据，使用 Builder 模式提升可读性和可维护性。
- *
+ * <p>
  * 设计目标（RF-02）：
  * - 减少方法参数数量（9个 → 1个）
  * - 提升代码可读性（Builder 模式 + 命名参数风格）
  * - 便于扩展（新增参数不影响现有调用）
  * - 参数验证集中化
- *
+ * <p>
  * RF-17 重构：
  * - 只保留领域数据（planId, task, stages, runtimeContext）
  * - 基础设施依赖通过 DefaultTaskWorkerFactory 构造器注入

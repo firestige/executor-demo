@@ -41,7 +41,7 @@ import xyz.firestige.deploy.validation.validator.TenantIdValidator;
 
 /**
  * 执行器配置类（DDD 重构版）
- *
+ * <p>
  * 重构说明：
  * - 新增 Repository Bean (InMemoryPlanRepository, InMemoryTaskRepository)
  * - 新增 DomainService Bean (PlanDomainService, TaskDomainService)

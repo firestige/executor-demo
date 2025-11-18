@@ -3,6 +3,7 @@ package xyz.firestige.deploy.application;
 import java.util.List;
 import java.util.stream.Collectors;
 
+import jakarta.validation.constraints.NotNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.transaction.annotation.Transactional;
@@ -29,7 +30,7 @@ import xyz.firestige.deploy.support.conflict.TenantConflictManager;
 
 /**
  * 部署应用服务（RF-17: 依赖注入优化版）
- *
+ * <p>
  * 职责：
  * 1. 协调各种部署操作（创建、暂停、恢复等）
  * 2. 委托具体逻辑给专门的组件（DeploymentPlanCreator、DomainService）
@@ -38,7 +39,7 @@ import xyz.firestige.deploy.support.conflict.TenantConflictManager;
  * 5. 事务边界管理（RF-12）
  * 6. 租户冲突检测（RF-14：合并策略）
  * 7. 执行器创建协调（RF-17：通过工厂封装）
- *
+ * <p>
  * 设计说明：
  * - RF-10 重构：提取 DeploymentPlanCreator，简化职责
  * - RF-12 重构：添加 @Transactional，集成调度策略
@@ -86,7 +87,7 @@ public class DeploymentApplicationService {
      * @return Plan 创建结果
      */
     @Transactional  // RF-12: 事务边界
-    public PlanCreationResult createDeploymentPlan(List<TenantConfig> configs) {
+    public PlanCreationResult createDeploymentPlan(@NotNull List<TenantConfig> configs) {
         logger.info("[DeploymentApplicationService] 创建部署计划，租户数量: {}",
                 configs != null ? configs.size() : 0);
 

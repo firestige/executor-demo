@@ -1,6 +1,11 @@
 package xyz.firestige.deploy.unit.execution;
 
+import java.util.List;
+
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import org.junit.jupiter.api.Test;
+
 import xyz.firestige.deploy.checkpoint.CheckpointService;
 import xyz.firestige.deploy.checkpoint.InMemoryCheckpointStore;
 import xyz.firestige.deploy.domain.task.TaskAggregate;
@@ -12,11 +17,6 @@ import xyz.firestige.deploy.execution.TaskWorkerCreationContext;
 import xyz.firestige.deploy.execution.TaskWorkerFactory;
 import xyz.firestige.deploy.state.TaskStateManager;
 import xyz.firestige.deploy.state.TaskStatus;
-
-import java.util.List;
-
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertNull;
 
 public class DefaultTaskWorkerFactoryTest {
     @Test

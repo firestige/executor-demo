@@ -9,13 +9,13 @@ import java.util.List;
 
 /**
  * 计划聚合（Plan）- DDD 重构：充血模型 + 修正聚合边界 + 领域事件（RF-11）
- *
+ * <p>
  * 职责：
  * 1. 管理 Plan 生命周期和状态转换
  * 2. 管理 Task ID 列表（聚合间通过 ID 引用）
  * 3. 保护业务不变式
  * 4. 产生领域事件（RF-11）
- *
+ * <p>
  * DDD 原则：聚合间通过 ID 引用，不直接持有其他聚合对象
  */
 public class PlanAggregate {

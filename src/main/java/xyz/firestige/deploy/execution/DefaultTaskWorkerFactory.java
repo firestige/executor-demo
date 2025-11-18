@@ -1,11 +1,6 @@
 package xyz.firestige.deploy.execution;
 
-import java.util.List;
-
 import xyz.firestige.deploy.checkpoint.CheckpointService;
-import xyz.firestige.deploy.domain.stage.TaskStage;
-import xyz.firestige.deploy.domain.task.TaskAggregate;
-import xyz.firestige.deploy.domain.task.TaskRuntimeContext;
 import xyz.firestige.deploy.event.TaskEventSink;
 import xyz.firestige.deploy.metrics.MetricsRegistry;
 import xyz.firestige.deploy.metrics.NoopMetricsRegistry;
