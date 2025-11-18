@@ -15,6 +15,7 @@ import xyz.firestige.deploy.domain.task.event.TaskRetryStartedEvent;
 import xyz.firestige.deploy.domain.task.event.TaskRollbackFailedEvent;
 import xyz.firestige.deploy.domain.task.event.TaskRolledBackEvent;
 import xyz.firestige.deploy.domain.task.event.TaskRollingBackEvent;
+import xyz.firestige.deploy.domain.task.event.TaskStageCompletedEvent;
 import xyz.firestige.deploy.domain.task.event.TaskStartedEvent;
 import xyz.firestige.deploy.domain.task.event.TaskStatusEvent;
 
@@ -250,8 +251,7 @@ public class TaskAggregate {
         this.stageProgress = stageProgress.advance();
 
         // ✅ 产生领域事件（包含进度信息）
-        xyz.firestige.deploy.domain.task.event.TaskStageCompletedEvent event = 
-            new xyz.firestige.deploy.domain.task.event.TaskStageCompletedEvent(
+        TaskStageCompletedEvent event = new TaskStageCompletedEvent(
                 taskId.getValue(),
                 stageName,
                 stageProgress.getCurrentStageIndex(),  // 已完成的 Stage 数
