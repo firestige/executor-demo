@@ -12,10 +12,7 @@ public class ExecutorProperties {
     
     // RF-14: 冲突检测策略（合并 PlanSchedulingStrategy）
     private TenantConflictManager.ConflictPolicy conflictPolicy = TenantConflictManager.ConflictPolicy.FINE_GRAINED;
-    
-    // 向后兼容：保留旧配置字段（已废弃）
-    @Deprecated
-    private String schedulingStrategy = "fine-grained";
+
     private int healthCheckIntervalSeconds = 3;
     private int healthCheckMaxAttempts = 10;
     private int taskProgressIntervalSeconds = 10;
@@ -47,28 +44,5 @@ public class ExecutorProperties {
     public TenantConflictManager.ConflictPolicy getConflictPolicy() { return conflictPolicy; }
     public void setConflictPolicy(TenantConflictManager.ConflictPolicy conflictPolicy) { 
         this.conflictPolicy = conflictPolicy; 
-    }
-
-    /**
-     * 向后兼容：从旧配置映射到新策略
-     * @deprecated 使用 {@link #setConflictPolicy(TenantConflictManager.ConflictPolicy)} 替代
-     */
-    @Deprecated
-    public void setSchedulingStrategy(String strategy) {
-        this.schedulingStrategy = strategy;
-        // 自动映射旧配置到新枚举
-        if ("coarse-grained".equals(strategy)) {
-            this.conflictPolicy = TenantConflictManager.ConflictPolicy.COARSE_GRAINED;
-        } else {
-            this.conflictPolicy = TenantConflictManager.ConflictPolicy.FINE_GRAINED;
-        }
-    }
-
-    /**
-     * @deprecated 使用 {@link #getConflictPolicy()} 替代
-     */
-    @Deprecated
-    public String getSchedulingStrategy() {
-        return schedulingStrategy;
     }
 }

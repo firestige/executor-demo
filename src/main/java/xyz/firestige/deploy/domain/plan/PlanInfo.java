@@ -47,21 +47,6 @@ public class PlanInfo {
         );
     }
 
-    /**
-     * 静态工厂方法：不包含 Task 信息（向后兼容）
-     * @deprecated 请使用 from(PlanAggregate, List<TaskInfo>)
-     */
-    @Deprecated
-    public static PlanInfo from(PlanAggregate plan) {
-        return new PlanInfo(
-            plan.getPlanId(),
-            plan.getMaxConcurrency(),
-            plan.getStatus(),
-            Collections.emptyList(),  // 空列表
-            plan.getCreatedAt()
-        );
-    }
-
     // Getters only (值对象不可变，无 Setters)
 
     public String getPlanId() {

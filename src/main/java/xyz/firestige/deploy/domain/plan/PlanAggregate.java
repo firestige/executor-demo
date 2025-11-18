@@ -280,15 +280,6 @@ public class PlanAggregate {
         return status;
     }
 
-    /**
-     * 直接设置状态（内部使用，逐步淘汰）
-     * @deprecated 请使用业务方法：start(), pause(), resume(), complete() 等
-     */
-    @Deprecated
-    public void setStatus(PlanStatus status) {
-        this.status = status;
-    }
-
     public Integer getMaxConcurrency() {
         return maxConcurrency;
     }
@@ -304,15 +295,6 @@ public class PlanAggregate {
      */
     public List<String> getTaskIds() {
         return Collections.unmodifiableList(taskIds);
-    }
-
-    /**
-     * 获取任务列表（向后兼容，逐步淘汰）
-     * @deprecated 请使用 getTaskIds()，然后通过 Repository 查询 Task 对象
-     */
-    @Deprecated
-    public List<String> getTasks() {
-        return getTaskIds();
     }
 
     public LocalDateTime getCreatedAt() {

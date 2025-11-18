@@ -25,21 +25,5 @@ public interface TaskWorkerFactory {
      * @return configured TaskExecutor instance
      */
     TaskExecutor create(TaskWorkerCreationContext context);
-
-    /**
-     * Create TaskExecutor with individual parameters (legacy method, kept for backward compatibility)
-     *
-     * @deprecated Use {@link #create(TaskWorkerCreationContext)} instead for better readability
-     */
-    @Deprecated
-    TaskExecutor create(String planId,
-                        TaskAggregate task,
-                        List<TaskStage> stages,
-                        TaskRuntimeContext ctx,
-                        CheckpointService checkpointService,
-                        TaskEventSink eventSink,
-                        int progressIntervalSeconds,
-                        TaskStateManager stateManager,
-                        TenantConflictManager conflictManager);
 }
 

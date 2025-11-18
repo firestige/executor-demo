@@ -57,16 +57,6 @@ public class PlanOrchestrator {
         }
     }
 
-    /**
-     * 提交计划执行（向后兼容，逐步淘汰）
-     * @deprecated 请使用 submitPlan(PlanAggregate, List<TaskAggregate>, TaskWorkerFactory)
-     */
-    @Deprecated
-    public void submitPlan(PlanAggregate plan, TaskWorkerFactory workerFactory) {
-        // 为了向后兼容，暂时保留空实现
-        log.warn("使用了已废弃的 submitPlan 方法，请使用新方法传入 taskAggregates");
-    }
-
     public void releaseTenantLock(String tenantId) {
         if (tenantId != null) conflictManager.releaseTask(tenantId);
     }

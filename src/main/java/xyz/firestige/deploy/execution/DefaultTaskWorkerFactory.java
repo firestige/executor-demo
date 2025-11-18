@@ -84,32 +84,4 @@ public class DefaultTaskWorkerFactory implements TaskWorkerFactory {
         executor.setHeartbeatScheduler(heartbeat);
         return executor;
     }
-
-    /**
-     * Create TaskExecutor with individual parameters (legacy method for backward compatibility)
-     * RF-17: Infrastructure dependencies ignored (use constructor-injected ones instead)
-     *
-     * @deprecated Use {@link #create(TaskWorkerCreationContext)} instead
-     */
-    @Deprecated
-    @Override
-    public TaskExecutor create(String planId,
-                               TaskAggregate task,
-                               List<TaskStage> stages,
-                               TaskRuntimeContext ctx,
-                               CheckpointService checkpointService,
-                               TaskEventSink eventSink,
-                               int progressIntervalSeconds,
-                               TaskStateManager stateManager,
-                               TenantConflictManager conflictManager) {
-        // Delegate to context-based method (ignore passed infrastructure dependencies)
-        TaskWorkerCreationContext context = TaskWorkerCreationContext.builder()
-            .planId(planId)
-            .task(task)
-            .stages(stages)
-            .runtimeContext(ctx)
-            .build();
-
-        return create(context);
-    }
 }

@@ -202,42 +202,6 @@ public class TenantConflictManager {
         return entry != null ? entry.taskId : null;
     }
 
-    /**
-     * 返回当前租户对应的任务ID，若无则 null
-     * @deprecated 使用 {@link #getConflictingTaskId(String)} 替代
-     */
-    @Deprecated
-    public String getRunningTaskId(String tenantId) {
-        return getConflictingTaskId(tenantId);
-    }
-
-    /**
-     * 注册租户，如果已在运行则返回 false
-     * @deprecated 使用 {@link #registerTask(String, String)} 替代
-     */
-    @Deprecated
-    public boolean register(String tenantId, String taskId) {
-        return registerTask(tenantId, taskId);
-    }
-
-    /**
-     * 释放租户占用
-     * @deprecated 使用 {@link #releaseTask(String)} 替代
-     */
-    @Deprecated
-    public void release(String tenantId) {
-        releaseTask(tenantId);
-    }
-
-    /**
-     * 是否在运行中
-     * @deprecated 使用 {@link #hasConflict(String)} 替代
-     */
-    @Deprecated
-    public boolean isRunning(String tenantId) {
-        return hasConflict(tenantId);
-    }
-
     // ========== Plan 级操作（原 PlanSchedulingStrategy 能力）==========
 
     /**

@@ -8,6 +8,7 @@ import xyz.firestige.deploy.domain.task.TaskRuntimeContext;
 import xyz.firestige.deploy.event.SpringTaskEventSink;
 import xyz.firestige.deploy.execution.DefaultTaskWorkerFactory;
 import xyz.firestige.deploy.execution.TaskExecutor;
+import xyz.firestige.deploy.execution.TaskWorkerCreationContext;
 import xyz.firestige.deploy.execution.TaskWorkerFactory;
 import xyz.firestige.deploy.state.TaskStateManager;
 import xyz.firestige.deploy.state.TaskStatus;
@@ -41,7 +42,14 @@ public class DefaultTaskWorkerFactoryTest {
         sm.registerTaskAggregate(agg.getTaskId(), agg, ctx, 0);
         
         // RF-17: Context 只包含领域数据
-        TaskExecutor exec = f.create(planId, agg, List.of(), ctx, checkpointService, eventSink, 5, sm, null);
+        TaskWorkerCreationContext c = TaskWorkerCreationContext.builder()
+            .planId(planId)
+            .task(agg)
+            .stages(List.of())
+            .runtimeContext(ctx)
+            .existingExecutor(null)
+            .build();
+        TaskExecutor exec = f.create(c);
         assertNotNull(exec);
         assertNull(exec.getCurrentStageName());
         // heartbeat is injected; cannot easily assert running state here without starting execution
