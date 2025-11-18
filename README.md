@@ -1,6 +1,24 @@
 # Executor Demo — Plan/Task/Stage 设计与使用
 
-概述
+## 🎉 最新更新 (2025-11-19)
+
+**✅ Stage Factory 动态编排框架已完成！**
+
+- ✨ 新增配置驱动的动态 Stage/Step 框架
+- 🏗️ 实现防腐层工厂模式（TenantConfig → ServiceConfig）
+- 🔄 支持 3 种服务类型：蓝绿网关、Portal、ASBC网关
+- 📦 4 种可组合 Step：Redis写入、Pub/Sub广播、健康检查、HTTP请求
+- 🛡️ 服务降级：Nacos 不可用时自动降级到固定 IP
+- ✅ 集成测试：5/5 通过，BUILD SUCCESS
+
+**📖 快速开始**:
+- [完整实现报告](./STAGE_FACTORY_IMPLEMENTATION_COMPLETE.md)
+- [使用指南](./STAGE_FACTORY_USAGE_GUIDE.md)
+- [设计方案](./STAGE_FACTORY_IMPLEMENTATION_PLAN.md)
+
+---
+
+## 概述
 - 本项目是一个多租户的蓝绿切换执行器，实现 Plan → Task → Stage 的分层编排。
 - 目标：异步执行、租户隔离（FIFO）、跨租户并发、checkpoint 式暂停/恢复、严格状态机、事件驱动可观察性。
 
