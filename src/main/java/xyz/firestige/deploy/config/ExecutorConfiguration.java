@@ -1,11 +1,12 @@
 package xyz.firestige.deploy.config;
 
-import jakarta.validation.Validation;
-import jakarta.validation.Validator;
-import jakarta.validation.ValidatorFactory;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+
+import jakarta.validation.Validation;
+import jakarta.validation.Validator;
+import jakarta.validation.ValidatorFactory;
 import xyz.firestige.deploy.application.DeploymentApplicationService;
 import xyz.firestige.deploy.application.plan.DeploymentPlanCreator;
 import xyz.firestige.deploy.application.validation.BusinessValidator;
@@ -13,13 +14,14 @@ import xyz.firestige.deploy.checkpoint.CheckpointService;
 import xyz.firestige.deploy.checkpoint.InMemoryCheckpointStore;
 import xyz.firestige.deploy.domain.plan.PlanDomainService;
 import xyz.firestige.deploy.domain.plan.PlanRepository;
+import xyz.firestige.deploy.domain.stage.DefaultStageFactory;
 import xyz.firestige.deploy.domain.task.TaskDomainService;
 import xyz.firestige.deploy.domain.task.TaskRepository;
-import xyz.firestige.deploy.domain.stage.DefaultStageFactory;
 import xyz.firestige.deploy.domain.task.TaskRuntimeRepository;
 import xyz.firestige.deploy.event.DomainEventPublisher;
 import xyz.firestige.deploy.event.SpringTaskEventSink;
 import xyz.firestige.deploy.execution.DefaultTaskWorkerFactory;
+import xyz.firestige.deploy.execution.TaskWorkerFactory;
 import xyz.firestige.deploy.facade.DeploymentTaskFacade;
 import xyz.firestige.deploy.factory.PlanFactory;
 import xyz.firestige.deploy.infrastructure.repository.memory.InMemoryPlanRepository;
@@ -30,7 +32,6 @@ import xyz.firestige.deploy.orchestration.TaskScheduler;
 import xyz.firestige.deploy.service.health.HealthCheckClient;
 import xyz.firestige.deploy.service.health.MockHealthCheckClient;
 import xyz.firestige.deploy.state.TaskStateManager;
-import xyz.firestige.deploy.support.conflict.ConflictRegistry;
 import xyz.firestige.deploy.support.conflict.TenantConflictManager;
 import xyz.firestige.deploy.validation.ValidationChain;
 import xyz.firestige.deploy.validation.validator.BusinessRuleValidator;
@@ -103,6 +104,11 @@ public class ExecutorConfiguration {
         return new SpringTaskEventSink(stateManager, conflictManager);
     }
 
+    @Bean
+    public TaskWorkerFactory taskWorkerFactory() {
+        return new DefaultTaskWorkerFactory();
+    }
+
     // ========== Repository Bean (DDD 重构新增) ==========
 
     @Bean
@@ -150,18 +156,11 @@ public class ExecutorConfiguration {
             TaskRepository taskRepository,
             xyz.firestige.deploy.domain.task.TaskRuntimeRepository taskRuntimeRepository,
             TaskStateManager stateManager,
-            ExecutorProperties executorProperties,
-            CheckpointService checkpointService,
-            TenantConflictManager conflictManager,
             DomainEventPublisher domainEventPublisher) {
         return new TaskDomainService(
                 taskRepository,
                 taskRuntimeRepository,
                 stateManager,
-                new DefaultTaskWorkerFactory(),
-                executorProperties,
-                checkpointService,
-                conflictManager,
                 domainEventPublisher
         );
     }
@@ -186,12 +185,22 @@ public class ExecutorConfiguration {
             DeploymentPlanCreator deploymentPlanCreator,
             PlanDomainService planDomainService,
             TaskDomainService taskDomainService,
-            TenantConflictManager conflictManager) {
+            TenantConflictManager conflictManager,
+            xyz.firestige.deploy.execution.TaskWorkerFactory taskWorkerFactory,
+            CheckpointService checkpointService,
+            SpringTaskEventSink eventSink,
+            ExecutorProperties executorProperties,
+            TaskStateManager stateManager) {
         return new DeploymentApplicationService(
                 deploymentPlanCreator,
                 planDomainService,
                 taskDomainService,
-                conflictManager
+                conflictManager,
+                taskWorkerFactory,
+                checkpointService,
+                eventSink,
+                executorProperties,
+                stateManager
         );
     }
 

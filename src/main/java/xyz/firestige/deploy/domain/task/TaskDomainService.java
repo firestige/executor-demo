@@ -1,67 +1,55 @@
 package xyz.firestige.deploy.domain.task;
 
+import java.util.List;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
 import xyz.firestige.deploy.application.dto.TenantConfig;
-import xyz.firestige.deploy.event.DomainEventPublisher;
-import xyz.firestige.deploy.checkpoint.CheckpointService;
-import xyz.firestige.deploy.config.ExecutorProperties;
 import xyz.firestige.deploy.domain.stage.TaskStage;
-import xyz.firestige.deploy.event.SpringTaskEventSink;
+import xyz.firestige.deploy.event.DomainEventPublisher;
 import xyz.firestige.deploy.exception.ErrorType;
 import xyz.firestige.deploy.exception.FailureInfo;
 import xyz.firestige.deploy.execution.TaskExecutor;
-import xyz.firestige.deploy.execution.TaskWorkerCreationContext;
-import xyz.firestige.deploy.execution.TaskWorkerFactory;
 import xyz.firestige.deploy.facade.TaskStatusInfo;
 import xyz.firestige.deploy.state.TaskStateManager;
 import xyz.firestige.deploy.state.TaskStatus;
-import xyz.firestige.deploy.support.conflict.TenantConflictManager;
-
-import java.util.List;
 
 /**
- * Task 领域服务 (DDD 重构完成版)
+ * Task 领域服务 (RF-15: 执行层解耦版)
  *
- * 职责（重新定义）：
- * 1. Task 聚合的创建和管理
- * 2. Task 状态管理
- * 3. Task 执行管理
- * 4. 只关注 Task 单聚合的业务逻辑
+ * 职责（RF-15 重构）：
+ * 1. Task 聚合的创建和生命周期管理
+ * 2. Task 业务状态转换（pause、resume、cancel）
+ * 3. 为执行操作准备聚合和上下文数据
+ * 4. 只关注领域逻辑，不涉及执行器创建和调度
  *
- * @since DDD 重构 Phase 2.2 - 完成版
+ * 改进点：
+ * - 移除了 TaskWorkerFactory、CheckpointService、ExecutorProperties、TenantConflictManager
+ * - rollback/retry 方法改为准备方法，返回 TaskExecutionContext
+ * - 应用层负责创建和执行 TaskExecutor
+ *
+ * @since RF-15: TaskDomainService 执行层解耦
  */
 public class TaskDomainService {
 
     private static final Logger logger = LoggerFactory.getLogger(TaskDomainService.class);
 
-    // 核心依赖（DDD 重构后简化 + RF-09 添加 RuntimeRepository）
+    // 核心依赖（RF-15: 移除执行层依赖）
     private final TaskRepository taskRepository;
     private final TaskRuntimeRepository taskRuntimeRepository;
     private final TaskStateManager stateManager;
-    private final TaskWorkerFactory workerFactory;
-    private final ExecutorProperties executorProperties;
-    private final CheckpointService checkpointService;
-    private final TenantConflictManager conflictManager;
-    // ✅ RF-11 改进版: 使用领域事件发布器接口（支持多种实现）
+    // ✅ RF-11: 使用领域事件发布器接口（支持多种实现）
     private final DomainEventPublisher domainEventPublisher;
 
     public TaskDomainService(
             TaskRepository taskRepository,
             TaskRuntimeRepository taskRuntimeRepository,
             TaskStateManager stateManager,
-            TaskWorkerFactory workerFactory,
-            ExecutorProperties executorProperties,
-            CheckpointService checkpointService,
-            TenantConflictManager conflictManager,
             DomainEventPublisher domainEventPublisher) {
         this.taskRepository = taskRepository;
         this.taskRuntimeRepository = taskRuntimeRepository;
         this.stateManager = stateManager;
-        this.workerFactory = workerFactory;
-        this.executorProperties = executorProperties;
-        this.checkpointService = checkpointService;
-        this.conflictManager = conflictManager;
         this.domainEventPublisher = domainEventPublisher;
     }
 
@@ -213,82 +201,50 @@ public class TaskDomainService {
     }
 
     /**
-     * 根据租户 ID 回滚任务
+     * 准备回滚任务（RF-15: 只做准备，不执行）
+     * 应用层负责创建 TaskExecutor 并执行回滚
+     *
      * @param tenantId 租户 ID
-     * @return TaskOperationResult
+     * @return TaskExecutionContext 包含执行所需的聚合和运行时数据，null 表示未找到任务
      */
-    public TaskOperationResult rollbackTaskByTenant(String tenantId) {
-        logger.info("[TaskDomainService] 回滚租户任务: {}", tenantId);
+    public TaskExecutionContext prepareRollbackByTenant(String tenantId) {
+        logger.info("[TaskDomainService] 准备回滚租户任务: {}", tenantId);
 
         TaskAggregate target = findTaskByTenantId(tenantId);
         if (target == null) {
-            return TaskOperationResult.failure(
-                null,
-                FailureInfo.of(ErrorType.VALIDATION_ERROR, "未找到租户任务"),
-                "未找到租户任务"
-            );
+            logger.warn("[TaskDomainService] 未找到租户任务: {}", tenantId);
+            return null;
         }
-
-        // 获取或创建 Executor
-        TaskExecutor exec = taskRuntimeRepository.getExecutor(target.getTaskId()).orElseGet(() -> {
-            List<TaskStage> stages = taskRuntimeRepository.getStages(target.getTaskId()).orElseGet(List::of);
-            // 由于上面对租户进行查询，所以下面的 getContext 一定存在，不应该抛异常
-            TaskRuntimeContext ctx = taskRuntimeRepository.getContext(target.getTaskId()).orElseThrow();
-            return getTaskExecutor(target, stages, ctx);
-        });
 
         // 发布回滚开始事件
         domainEventPublisher.publishAll(target.getDomainEvents());
+        target.clearDomainEvents();
 
-        // 执行回滚
-        var res = exec.invokeRollback();
+        // 获取运行时数据
+        List<TaskStage> stages = taskRuntimeRepository.getStages(target.getTaskId()).orElseGet(List::of);
+        TaskRuntimeContext ctx = taskRuntimeRepository.getContext(target.getTaskId()).orElse(null);
+        TaskExecutor executor = taskRuntimeRepository.getExecutor(target.getTaskId()).orElse(null);
 
-        // 发布回滚结果事件
-        if (target.getStatus() == TaskStatus.ROLLED_BACK) {
-            domainEventPublisher.publishAll(target.getDomainEvents());
-        } else if (target.getStatus() == TaskStatus.ROLLBACK_FAILED) {
-            stateManager.publishTaskRollbackFailedEvent(
-                target.getTaskId(),
-                FailureInfo.of(ErrorType.SYSTEM_ERROR, "rollback failed"),
-                null
-            );
-        }
-
-        logger.info("[TaskApplicationService] 租户任务回滚结束: {}, status: {}", tenantId, res.getFinalStatus());
-        return TaskOperationResult.success(
-            target.getTaskId(),
-            target.getStatus(),
-            "租户任务回滚结束: " + res.getFinalStatus()
-        );
+        logger.info("[TaskDomainService] 任务准备完成，等待应用层执行回滚: {}", target.getTaskId());
+        return new TaskExecutionContext(target, stages, ctx, executor);
     }
 
     /**
-     * 根据租户 ID 重试任务
+     * 准备重试任务（RF-15: 只做准备，不执行）
+     * 应用层负责创建 TaskExecutor 并执行重试
+     *
      * @param tenantId 租户 ID
      * @param fromCheckpoint 是否从检查点恢复
-     * @return TaskOperationResult
+     * @return TaskExecutionContext 包含执行所需的聚合和运行时数据，null 表示未找到任务
      */
-    public TaskOperationResult retryTaskByTenant(String tenantId, boolean fromCheckpoint) {
-        logger.info("[TaskDomainService] 重试租户任务: {}, fromCheckpoint: {}", tenantId, fromCheckpoint);
+    public TaskExecutionContext prepareRetryByTenant(String tenantId, boolean fromCheckpoint) {
+        logger.info("[TaskDomainService] 准备重试租户任务: {}, fromCheckpoint: {}", tenantId, fromCheckpoint);
 
         TaskAggregate target = findTaskByTenantId(tenantId);
         if (target == null) {
-            return TaskOperationResult.failure(
-                null,
-                FailureInfo.of(ErrorType.VALIDATION_ERROR, "未找到租户任务"),
-                "未找到租户任务"
-            );
+            logger.warn("[TaskDomainService] 未找到租户任务: {}", tenantId);
+            return null;
         }
-
-        // 获取或创建 Executor
-        TaskExecutor exec = taskRuntimeRepository.getExecutor(target.getTaskId()).orElseGet(() -> {
-            List<TaskStage> stages = taskRuntimeRepository.getStages(target.getTaskId()).orElseGet(List::of);
-            // 由于上面对租户进行查询，所以下面的 getContext 一定存在，不应该抛异常
-            TaskRuntimeContext ctx = taskRuntimeRepository.getContext(target.getTaskId()).orElseThrow();
-            TaskExecutor exec0 = getTaskExecutor(target, stages, ctx);
-            taskRuntimeRepository.saveExecutor(target.getTaskId(), exec0);
-            return exec0;
-        });
 
         // 补偿进度事件（checkpoint retry）
         if (fromCheckpoint) {
@@ -297,15 +253,13 @@ public class TaskDomainService {
             stateManager.publishTaskProgressEvent(target.getTaskId(), null, completed, total);
         }
 
-        // 执行重试
-        var res = exec.retry(fromCheckpoint);
+        // 获取运行时数据
+        List<TaskStage> stages = taskRuntimeRepository.getStages(target.getTaskId()).orElseGet(List::of);
+        TaskRuntimeContext ctx = taskRuntimeRepository.getContext(target.getTaskId()).orElse(null);
+        TaskExecutor executor = taskRuntimeRepository.getExecutor(target.getTaskId()).orElse(null);
 
-        logger.info("[TaskApplicationService] 租户任务重试启动: {}, status: {}", tenantId, res.getFinalStatus());
-        return TaskOperationResult.success(
-            target.getTaskId(),
-            res.getFinalStatus(),
-            "租户任务重试启动"
-        );
+        logger.info("[TaskDomainService] 任务准备完成，等待应用层执行重试: {}", target.getTaskId());
+        return new TaskExecutionContext(target, stages, ctx, executor);
     }
 
 
@@ -440,25 +394,6 @@ public class TaskDomainService {
                 .orElseGet(List::of);
         stateManager.registerStageNames(task.getTaskId(), stageNames);
         return stageNames;
-    }
-
-
-    private TaskExecutor getTaskExecutor(TaskAggregate target, List<TaskStage> stages, TaskRuntimeContext ctx) {
-        TaskExecutor exec;
-        exec = workerFactory.create(
-                TaskWorkerCreationContext.builder()
-                        .planId(target.getPlanId())
-                        .task(target)
-                        .stages(stages)
-                        .runtimeContext(ctx)
-                        .checkpointService(checkpointService)
-                        .eventSink(eventSink)
-                        .progressIntervalSeconds(executorProperties.getTaskProgressIntervalSeconds())
-                        .stateManager(stateManager)
-                        .conflictManager(conflictManager)
-                        .build()
-        );
-        return exec;
     }
 }
 

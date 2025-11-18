@@ -1,24 +1,30 @@
 package xyz.firestige.deploy.unit.event;
 
+import java.time.Duration;
+import java.util.List;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import org.junit.jupiter.api.Test;
+
 import xyz.firestige.deploy.domain.task.TaskAggregate;
 import xyz.firestige.deploy.domain.task.TaskRuntimeContext;
 import xyz.firestige.deploy.event.SpringTaskEventSink;
 import xyz.firestige.deploy.state.TaskStateManager;
-import xyz.firestige.deploy.support.conflict.ConflictRegistry;
-
-import java.time.Duration;
-import java.util.List;
-
-import static org.junit.jupiter.api.Assertions.*;
+import xyz.firestige.deploy.support.conflict.TenantConflictManager;
 
 public class SpringTaskEventSinkReleaseTest {
 
-    static class SpyConflictRegistry extends ConflictRegistry {
+    static class SpyConflictManager extends TenantConflictManager {
         volatile String lastReleasedTenant;
+        
+        public SpyConflictManager() {
+            super(ConflictPolicy.FINE_GRAINED);
+        }
+        
         @Override
-        public void release(String tenantId) {
-            super.release(tenantId);
+        public void releaseTask(String tenantId) {
+            super.releaseTask(tenantId);
             lastReleasedTenant = tenantId;
         }
     }
@@ -37,9 +43,9 @@ public class SpringTaskEventSinkReleaseTest {
         String taskId = "task-t-cancel-evt";
         String tenantId = "tenant-A";
         TaskStateManager sm = preparedStateManager(taskId, tenantId);
-        SpyConflictRegistry spy = new SpyConflictRegistry();
+        SpyConflictManager spy = new SpyConflictManager();
         // simulate tenant lock is held
-        assertTrue(spy.register(tenantId, taskId));
+        assertTrue(spy.registerTask(tenantId, taskId));
         SpringTaskEventSink sink = new SpringTaskEventSink(sm, spy);
         sink.publishTaskCancelled("p", taskId, 0L);
         assertEquals(tenantId, spy.lastReleasedTenant, "should release tenant lock on cancelled event");
@@ -50,8 +56,8 @@ public class SpringTaskEventSinkReleaseTest {
         String taskId = "task-t-complete-evt";
         String tenantId = "tenant-B";
         TaskStateManager sm = preparedStateManager(taskId, tenantId);
-        SpyConflictRegistry spy = new SpyConflictRegistry();
-        assertTrue(spy.register(tenantId, taskId));
+        SpyConflictManager spy = new SpyConflictManager();
+        assertTrue(spy.registerTask(tenantId, taskId));
         SpringTaskEventSink sink = new SpringTaskEventSink(sm, spy);
         sink.publishTaskCompleted("p", taskId, Duration.ZERO, List.of("s1"), 0L);
         assertEquals(tenantId, spy.lastReleasedTenant, "should release tenant lock on completed event");
