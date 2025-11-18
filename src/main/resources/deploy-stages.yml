@@ -1,0 +1,102 @@
+# Deployment Stage Configuration
+# Defines infrastructure settings and service-type stage/step combinations
+
+# ========== Infrastructure Configuration (Fixed Configuration) ==========
+infrastructure:
+  # Redis Configuration
+  redis:
+    hashKeyPrefix: "deploy:config:"
+    pubsubTopic: "deploy.config.notify"
+  
+  # Nacos Service Discovery Configuration
+  nacos:
+    services:
+      blueGreenGatewayService: "blue-green-gateway-service"
+      portalService: "portal-service"
+  
+  # Service Discovery Fallback Configuration: Use fixed IPs when Nacos unavailable
+  fallbackInstances:
+    blueGreenGateway:
+      - "192.168.1.10:8080"
+      - "192.168.1.11:8080"
+    portal:
+      - "192.168.1.20:8080"
+      - "192.168.1.21:8080"
+  
+  # ASBC Gateway Configuration (Fixed instances, no service discovery)
+  asbc:
+    fixedInstances:
+      - "192.168.1.100:8080"
+      - "192.168.1.101:8080"
+    configEndpoint: "/api/v1/config"
+  
+  # Health Check Configuration
+  healthCheck:
+    defaultPath: "/actuator/health"
+    intervalSeconds: 3
+    maxAttempts: 10
+
+# ========== Service Type Definitions (Business Flow Configuration) ==========
+serviceTypes:
+  # Blue-Green Gateway: Redis Write → Pub/Sub Broadcast → Health Check
+  blue-green-gateway:
+    stages:
+      - name: deploy-stage
+        steps:
+          # Step 1: Redis Hash Write
+          - type: key-value-write
+            config:
+              hashField: "blue-green-gateway"
+          
+          # Step 2: Redis Pub/Sub Broadcast
+          - type: message-broadcast
+            config:
+              message: "blue-green-gateway"
+          
+          # Step 3: Health Check Polling
+          - type: endpoint-polling
+            config:
+              nacosServiceNameKey: "blueGreenGatewayService"
+              validationType: "json-path"
+              validationRule: "$.status"
+              expectedValue: "UP"
+            retryPolicy:
+              maxAttempts: 10
+              intervalSeconds: 3
+  
+  # Portal: Same flow as Blue-Green Gateway, but different service identifier
+  portal:
+    stages:
+      - name: deploy-stage
+        steps:
+          - type: key-value-write
+            config:
+              hashField: "portal"
+          
+          - type: message-broadcast
+            config:
+              message: "portal"
+          
+          - type: endpoint-polling
+            config:
+              nacosServiceNameKey: "portalService"
+              validationType: "json-path"
+              validationRule: "$.status"
+              expectedValue: "UP"
+            retryPolicy:
+              maxAttempts: 10
+              intervalSeconds: 3
+  
+  # ASBC Gateway: HTTP POST config request (no health check, no retry)
+  asbc-gateway:
+    stages:
+      - name: deploy-stage
+        steps:
+          - type: asbc-config-request
+            config:
+              httpMethod: "POST"
+              validationType: "http-status"
+              expectedStatus: 200
+            retryPolicy:
+              maxAttempts: 1
+              intervalSeconds: 0
