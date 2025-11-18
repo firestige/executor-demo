@@ -164,6 +164,27 @@ public class TaskAggregate {
     }
 
     /**
+     * 暂停任务（RF-18: 新方法，立即暂停）
+     * 不变式：只有 RUNNING 状态可以暂停
+     */
+    public void pause() {
+        if (status != TaskStatus.RUNNING) {
+            throw new IllegalStateException(
+                String.format("只有 RUNNING 状态才能暂停，当前状态: %s, taskId: %s", status, taskId.getValue())
+            );
+        }
+
+        this.status = TaskStatus.PAUSED;
+        this.pauseRequested = false;  // 清除标志
+
+        // ✅ 产生领域事件
+        TaskPausedEvent event = new TaskPausedEvent();
+        event.setTaskId(taskId.getValue());
+        event.setStatus(TaskStatus.PAUSED);
+        addDomainEvent(event);
+    }
+
+    /**
      * 恢复执行
      * 不变式：只有 PAUSED 状态可以恢复
      */
@@ -203,7 +224,7 @@ public class TaskAggregate {
     }
 
     /**
-     * 完成当前 Stage
+     * 完成当前 Stage（原有方法，保持兼容）
      * 不变式：必须处于 RUNNING 状态
      */
     public void completeStage(StageResult result) {
@@ -211,6 +232,34 @@ public class TaskAggregate {
 
         this.stageResults.add(result);
         this.stageProgress = stageProgress.advance();
+
+        // 检查是否所有 Stage 完成
+        if (stageProgress.isCompleted()) {
+            complete();
+        }
+    }
+
+    /**
+     * 完成当前 Stage（RF-18: 新方法，带进度信息）
+     * 不变式：必须处于 RUNNING 状态
+     */
+    public void completeStage(String stageName, java.time.Duration duration) {
+        validateCanCompleteStage();
+
+        // 推进进度
+        this.stageProgress = stageProgress.advance();
+
+        // ✅ 产生领域事件（包含进度信息）
+        xyz.firestige.deploy.domain.task.event.TaskStageCompletedEvent event = 
+            new xyz.firestige.deploy.domain.task.event.TaskStageCompletedEvent(
+                taskId.getValue(),
+                stageName,
+                stageProgress.getCurrentStageIndex(),  // 已完成的 Stage 数
+                stageProgress.getTotalStages(),
+                duration,
+                LocalDateTime.now()
+            );
+        addDomainEvent(event);
 
         // 检查是否所有 Stage 完成
         if (stageProgress.isCompleted()) {
@@ -236,15 +285,29 @@ public class TaskAggregate {
     }
 
     /**
-     * 完成任务
+     * 完成任务（RF-18: 改为 public，支持外部调用）
      */
-    private void complete() {
+    public void complete() {
+        if (status != TaskStatus.RUNNING) {
+            throw new IllegalStateException(
+                String.format("只有 RUNNING 状态才能完成，当前状态: %s, taskId: %s", status, taskId.getValue())
+            );
+        }
+
+        if (stageProgress != null && !stageProgress.isCompleted()) {
+            throw new IllegalStateException(
+                String.format("还有未完成的 Stage，无法完成任务，taskId: %s", taskId.getValue())
+            );
+        }
+
         this.status = TaskStatus.COMPLETED;
         this.timeRange = timeRange.end();
         calculateDuration();
 
         // ✅ 产生领域事件
         TaskCompletedEvent event = new TaskCompletedEvent();
+        event.setTaskId(taskId.getValue());
+        event.setStatus(TaskStatus.COMPLETED);
         addDomainEvent(event);
     }
 
@@ -284,6 +347,33 @@ public class TaskAggregate {
     }
 
     /**
+     * 重试任务（RF-18: 新方法，无参数简化版）
+     * 不变式：只有 FAILED 或 ROLLED_BACK 状态可以重试
+     */
+    public void retry() {
+        if (status != TaskStatus.FAILED && status != TaskStatus.ROLLED_BACK) {
+            throw new IllegalStateException(
+                String.format("只有 FAILED 或 ROLLED_BACK 状态可以重试，当前状态: %s, taskId: %s", status, taskId.getValue())
+            );
+        }
+
+        // 重置进度和重试计数
+        if (retryPolicy != null) {
+            this.retryPolicy = retryPolicy.incrementRetryCount();
+        }
+
+        if (stageProgress != null) {
+            this.stageProgress = stageProgress.reset();
+        }
+
+        this.status = TaskStatus.RUNNING;
+
+        // ✅ 产生领域事件
+        TaskRetryStartedEvent event = new TaskRetryStartedEvent(taskId.getValue(), false);
+        addDomainEvent(event);
+    }
+
+    /**
      * 开始回滚
      * 不变式：必须有可用的回滚快照
      */
@@ -297,6 +387,24 @@ public class TaskAggregate {
 
         // ✅ 产生领域事件
         TaskRollingBackEvent event = new TaskRollingBackEvent(taskId.getValue(), reason, null);
+        addDomainEvent(event);
+    }
+
+    /**
+     * 回滚任务（RF-18: 新方法，无参数简化版）
+     * 不变式：终态任务无法回滚
+     */
+    public void rollback() {
+        if (status.isTerminal()) {
+            throw new IllegalStateException(
+                String.format("终态任务无法回滚，当前状态: %s, taskId: %s", status, taskId.getValue())
+            );
+        }
+
+        this.status = TaskStatus.ROLLING_BACK;
+
+        // ✅ 产生领域事件
+        TaskRollingBackEvent event = new TaskRollingBackEvent(taskId.getValue(), "系统触发回滚", null);
         addDomainEvent(event);
     }
 
@@ -353,6 +461,27 @@ public class TaskAggregate {
         this.status = TaskStatus.FAILED;
         this.timeRange = timeRange.end();
         calculateDuration();
+    }
+
+    /**
+     * 任务失败（RF-18: 新方法，接受 FailureInfo）
+     * 不变式：终态任务不能再次失败
+     */
+    public void fail(xyz.firestige.deploy.domain.shared.exception.FailureInfo failure) {
+        if (status.isTerminal()) {
+            return;
+        }
+
+        this.status = TaskStatus.FAILED;
+        this.timeRange = timeRange.end();
+        calculateDuration();
+
+        // ✅ 产生领域事件
+        TaskFailedEvent event = new TaskFailedEvent();
+        event.setTaskId(taskId.getValue());
+        event.setStatus(TaskStatus.FAILED);
+        event.setMessage(failure.getErrorMessage());
+        addDomainEvent(event);
     }
 
     // ============================================

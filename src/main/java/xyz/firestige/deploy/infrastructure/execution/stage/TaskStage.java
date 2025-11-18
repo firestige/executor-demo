@@ -1,6 +1,7 @@
 package xyz.firestige.deploy.infrastructure.execution.stage;
 
 import xyz.firestige.deploy.domain.task.TaskRuntimeContext;
+import xyz.firestige.deploy.infrastructure.execution.StageResult;
 
 import java.util.List;
 
@@ -10,7 +11,7 @@ import java.util.List;
 public interface TaskStage {
     String getName();
     boolean canSkip(TaskRuntimeContext ctx);
-    StageExecutionResult execute(TaskRuntimeContext ctx);
+    StageResult execute(TaskRuntimeContext ctx);
     void rollback(TaskRuntimeContext ctx);
     List<StageStep> getSteps();
 }

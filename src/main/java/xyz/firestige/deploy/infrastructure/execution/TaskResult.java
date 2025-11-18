@@ -9,7 +9,7 @@ import java.util.List;
 /**
  * 新 TaskExecutor 的汇总结果（暂不接线）。
  */
-public class TaskExecutionResult {
+public class TaskResult {
     private boolean success;
     private String message;
     private final List<StageResult> completedStages = new ArrayList<>();
@@ -18,8 +18,8 @@ public class TaskExecutionResult {
     private TaskStatus finalStatus;
     private Duration duration;
 
-    public static TaskExecutionResult ok(String planId, String taskId, TaskStatus status, Duration duration, List<StageResult> stages) {
-        TaskExecutionResult r = new TaskExecutionResult();
+    public static TaskResult ok(String planId, String taskId, TaskStatus status, Duration duration, List<StageResult> stages) {
+        TaskResult r = new TaskResult();
         r.success = true;
         r.planId = planId;
         r.taskId = taskId;
@@ -29,8 +29,8 @@ public class TaskExecutionResult {
         return r;
     }
 
-    public static TaskExecutionResult fail(String planId, String taskId, TaskStatus status, String msg, Duration duration, List<StageResult> stages) {
-        TaskExecutionResult r = new TaskExecutionResult();
+    public static TaskResult fail(String planId, String taskId, TaskStatus status, String msg, Duration duration, List<StageResult> stages) {
+        TaskResult r = new TaskResult();
         r.success = false;
         r.message = msg;
         r.planId = planId;

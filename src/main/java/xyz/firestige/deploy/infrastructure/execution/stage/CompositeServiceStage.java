@@ -2,7 +2,10 @@ package xyz.firestige.deploy.infrastructure.execution.stage;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import xyz.firestige.deploy.domain.shared.exception.ErrorType;
+import xyz.firestige.deploy.domain.shared.exception.FailureInfo;
 import xyz.firestige.deploy.domain.task.TaskRuntimeContext;
+import xyz.firestige.deploy.infrastructure.execution.StageResult;
 import xyz.firestige.deploy.infrastructure.execution.stage.rollback.RollbackStrategy;
 
 import java.util.ArrayList;
@@ -36,10 +39,10 @@ public class CompositeServiceStage implements TaskStage {
     public boolean canSkip(TaskRuntimeContext ctx) { return false; }
 
     @Override
-    public StageExecutionResult execute(TaskRuntimeContext ctx) {
-        StageExecutionResult result = StageExecutionResult.start(name);
+    public StageResult execute(TaskRuntimeContext ctx) {
+        StageResult result = StageResult.start(name);
         for (StageStep step : steps) {
-            var stepRes = StepExecutionResult.start(step.getStepName());
+            var stepRes = StepResult.start(step.getStepName());
             try {
                 ctx.injectMdc(step.getStepName());
                 step.execute(ctx);
@@ -47,13 +50,14 @@ public class CompositeServiceStage implements TaskStage {
                 result.addStepResult(stepRes);
             } catch (Exception ex) {
                 log.error("Stage step failed: stage={}, step={}, err={}", name, step.getStepName(), ex.getMessage(), ex);
+                FailureInfo failureInfo = FailureInfo.fromException(ex, ErrorType.SYSTEM_ERROR, name);
                 stepRes.finishFailure(ex.getMessage());
                 result.addStepResult(stepRes);
-                result.finishFailure(ex.getMessage());
+                result.failure(failureInfo);
                 return result;
             }
         }
-        result.finishSuccess();
+        result.success();
         return result;
     }
 

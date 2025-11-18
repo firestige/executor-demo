@@ -2,24 +2,21 @@ package xyz.firestige.deploy.infrastructure.execution.stage;
 
 import java.time.Duration;
 import java.time.LocalDateTime;
-import java.util.ArrayList;
-import java.util.List;
 
 /**
- * TaskStage 执行结果
+ * 单个步骤执行结果
  */
-public class StageExecutionResult {
-    private String stageName;
+public class StepResult {
+    private String stepName;
     private boolean success;
     private String message;
     private LocalDateTime startTime;
     private LocalDateTime endTime;
     private long durationMillis;
-    private final List<StepExecutionResult> stepResults = new ArrayList<>();
 
-    public static StageExecutionResult start(String stageName) {
-        StageExecutionResult r = new StageExecutionResult();
-        r.stageName = stageName;
+    public static StepResult start(String stepName) {
+        StepResult r = new StepResult();
+        r.stepName = stepName;
         r.startTime = LocalDateTime.now();
         return r;
     }
@@ -30,21 +27,18 @@ public class StageExecutionResult {
         this.durationMillis = Duration.between(startTime, endTime).toMillis();
     }
 
-    public void finishFailure(String message) {
+    public void finishFailure(String msg) {
         this.success = false;
-        this.message = message;
+        this.message = msg;
         this.endTime = LocalDateTime.now();
         this.durationMillis = Duration.between(startTime, endTime).toMillis();
     }
 
-    public void addStepResult(StepExecutionResult r) { this.stepResults.add(r); }
-
-    public String getStageName() { return stageName; }
+    public String getStepName() { return stepName; }
     public boolean isSuccess() { return success; }
     public String getMessage() { return message; }
     public LocalDateTime getStartTime() { return startTime; }
     public LocalDateTime getEndTime() { return endTime; }
     public long getDurationMillis() { return durationMillis; }
-    public List<StepExecutionResult> getStepResults() { return stepResults; }
 }
 

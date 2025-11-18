@@ -1,7 +1,10 @@
 package xyz.firestige.deploy.infrastructure.event;
 
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.stereotype.Component;
 import xyz.firestige.deploy.domain.shared.event.DomainEventPublisher;
+
+import java.util.List;
 
 /**
  * Spring 本地事件总线实现（单机部署）
@@ -17,7 +20,9 @@ import xyz.firestige.deploy.domain.shared.event.DomainEventPublisher;
  * - 无需外部中间件
  *
  * @since RF-11 改进版
+ * @updated RF-18: 添加 publishAll 批量发布方法
  */
+@Component
 public class SpringDomainEventPublisher implements DomainEventPublisher {
 
     private final ApplicationEventPublisher applicationEventPublisher;
@@ -28,7 +33,19 @@ public class SpringDomainEventPublisher implements DomainEventPublisher {
 
     @Override
     public void publish(Object event) {
-        applicationEventPublisher.publishEvent(event);
+        if (event != null) {
+            applicationEventPublisher.publishEvent(event);
+        }
+    }
+
+    /**
+     * RF-18: 批量发布领域事件
+     */
+    @Override
+    public void publishAll(List<?> events) {
+        if (events != null && !events.isEmpty()) {
+            events.forEach(this::publish);
+        }
     }
 }
 

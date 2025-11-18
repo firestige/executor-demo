@@ -2,8 +2,12 @@ package xyz.firestige.deploy.infrastructure.execution;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.context.ApplicationEventPublisher;
 import xyz.firestige.deploy.application.checkpoint.CheckpointService;
-import xyz.firestige.deploy.domain.task.TaskRepository;
+import xyz.firestige.deploy.domain.shared.exception.FailureInfo;
+import xyz.firestige.deploy.domain.shared.exception.ErrorType;
+import xyz.firestige.deploy.domain.task.TaskDomainService;
+import xyz.firestige.deploy.domain.task.StateTransitionService;
 import xyz.firestige.deploy.infrastructure.execution.stage.TaskStage;
 import xyz.firestige.deploy.domain.task.TaskAggregate;
 import xyz.firestige.deploy.domain.task.TaskRuntimeContext;
@@ -11,23 +15,38 @@ import xyz.firestige.deploy.domain.task.TaskStatus;
 import xyz.firestige.deploy.infrastructure.metrics.MetricsRegistry;
 import xyz.firestige.deploy.infrastructure.metrics.NoopMetricsRegistry;
 import xyz.firestige.deploy.infrastructure.scheduling.TenantConflictManager;
+import xyz.firestige.deploy.infrastructure.execution.stage.steps.ConfigUpdateStep;
 
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.atomic.AtomicInteger;
-
-import xyz.firestige.deploy.infrastructure.execution.stage.CompositeServiceStage;
-import xyz.firestige.deploy.infrastructure.execution.stage.rollback.RollbackStrategy;
-import xyz.firestige.deploy.infrastructure.execution.stage.steps.ConfigUpdateStep;
-import xyz.firestige.deploy.infrastructure.state.TaskStateManager;
 
 /**
- * 新 TaskExecutor（不接线旧流程）：
- * - 注入 MDC（通过 TaskRuntimeContext 提供）
- * - 每 10 秒发布 TaskProgressEvent（由上层注入的事件下沉处理）
- * - 在 Stage 边界使用 CheckpointService 保存/恢复检查点
+ * TaskExecutor（RF-18: 基于方案C的事件驱动架构重构）
+ * 
+ * <p>核心架构：
+ * <pre>
+ * TaskExecutor (Infrastructure Layer)
+ *     ↓ 调用
+ * StateTransitionService.canTransition()  // ✅ 低成本前置检查（内存操作）
+ *     ↓ 检查通过
+ * TaskDomainService.startTask()           // ✅ 高成本操作（DB + 事件）
+ *     ↓ 内部调用
+ * TaskAggregate.start()                   // ✅ 业务逻辑 + 事件产生
+ * </pre>
+ * 
+ * <p>职责：
+ * <ul>
+ *   <li>编排 Stage 执行流程</li>
+ *   <li>通过 StateTransitionService 进行低成本前置检查</li>
+ *   <li>通过 TaskDomainService 执行高成本状态转换</li>
+ *   <li>管理 HeartbeatScheduler 心跳</li>
+ *   <li>处理 Checkpoint 保存/恢复</li>
+ *   <li>处理租户冲突管理</li>
+ * </ul>
+ * 
+ * @since RF-18: 事件驱动架构重构
  */
 public class TaskExecutor {
 
@@ -38,54 +57,45 @@ public class TaskExecutor {
     private final List<TaskStage> stages;
     private final TaskRuntimeContext context;
 
-    private final TaskRepository taskRepository;
+    // ✅ RF-18: 核心依赖
+    private final TaskDomainService taskDomainService;
+    private final StateTransitionService stateTransitionService;
+
+    // 基础设施依赖
+    private final ApplicationEventPublisher technicalEventPublisher;
     private final CheckpointService checkpointService;
-    private final TaskStateManager stateManager; // new
-    private final TenantConflictManager conflictManager; // RF-14: 统一冲突管理
+    private final TenantConflictManager conflictManager;
     private final MetricsRegistry metrics;
 
+    // 心跳调度器
     private final int progressIntervalSeconds;
-    private volatile HeartbeatScheduler heartbeatScheduler; // 允许后置注入
+    private volatile HeartbeatScheduler heartbeatScheduler;
 
-    public TaskExecutor(String planId,
-                        TaskAggregate task,
-                        List<TaskStage> stages,
-                        TaskRuntimeContext context,
-                        CheckpointService checkpointService,
-                        int progressIntervalSeconds,
-                        TaskStateManager stateManager) {
-        this(planId, task, stages, context, checkpointService, progressIntervalSeconds, stateManager, null, new NoopMetricsRegistry());
-    }
-
-    public TaskExecutor(String planId,
-                        TaskAggregate task,
-                        List<TaskStage> stages,
-                        TaskRuntimeContext context,
-                        CheckpointService checkpointService,
-                        int progressIntervalSeconds,
-                        TaskStateManager stateManager,
-                        TenantConflictManager conflictManager) {
-        this(planId, task, stages, context, checkpointService, progressIntervalSeconds, stateManager, conflictManager, new NoopMetricsRegistry());
-    }
-
-    public TaskExecutor(String planId,
-                        TaskAggregate task,
-                        List<TaskStage> stages,
-                        TaskRuntimeContext context,
-                        CheckpointService checkpointService,
-                        int progressIntervalSeconds,
-                        TaskStateManager stateManager,
-                        TenantConflictManager conflictManager,
-                        MetricsRegistry metrics) {
-        // ...existing assigns...
+    /**
+     * RF-18: 新构造函数（完整依赖）
+     */
+    public TaskExecutor(
+            String planId,
+            TaskAggregate task,
+            List<TaskStage> stages,
+            TaskRuntimeContext context,
+            TaskDomainService taskDomainService,
+            StateTransitionService stateTransitionService,
+            ApplicationEventPublisher technicalEventPublisher,
+            CheckpointService checkpointService,
+            TenantConflictManager conflictManager,
+            int progressIntervalSeconds,
+            MetricsRegistry metrics) {
         this.planId = planId;
         this.task = task;
         this.stages = stages != null ? stages : new ArrayList<>();
         this.context = context;
+        this.taskDomainService = taskDomainService;
+        this.stateTransitionService = stateTransitionService;
+        this.technicalEventPublisher = technicalEventPublisher;
         this.checkpointService = checkpointService;
-        this.progressIntervalSeconds = progressIntervalSeconds <= 0 ? 10 : progressIntervalSeconds;
-        this.stateManager = stateManager;
         this.conflictManager = conflictManager;
+        this.progressIntervalSeconds = progressIntervalSeconds <= 0 ? 10 : progressIntervalSeconds;
         this.metrics = metrics != null ? metrics : new NoopMetricsRegistry();
     }
 
@@ -99,230 +109,436 @@ public class TaskExecutor {
         return null;
     }
 
-    public TaskExecutionResult execute() {
+    /**
+     * RF-18: 执行任务（基于方案C架构）
+     */
+    public TaskResult execute() {
         String taskId = task.getTaskId();
-        context.injectMdc(null);
-        metrics.incrementCounter("task_active");
-        LocalDateTime start = LocalDateTime.now();
-        eventSink.publishTaskStarted(planId, taskId, stages.size(), 0);
-        if (stateManager != null) {
-            TaskStatus cur = stateManager.getState(taskId);
-            if (cur == TaskStatus.PAUSED) {
-                stateManager.updateState(taskId, TaskStatus.RESUMING);
-            }
-            stateManager.updateState(taskId, TaskStatus.RUNNING);
-        } else {
-            task.start();
-        }
-
-        List<StageResult> completed = new ArrayList<>();
-
-        // 从检查点恢复
-        var cp = checkpointService.loadCheckpoint(task);
-        int startIndex = (cp != null) ? cp.getLastCompletedStageIndex() + 1 : 0;
-        completedCounter.set(startIndex); // 已完成数量初始化
-
-        if (heartbeatScheduler != null && !heartbeatScheduler.isRunning()) {
-            heartbeatScheduler.start();
-        }
-
+        LocalDateTime startTime = LocalDateTime.now();
+        List<StageResult> completedStages = new ArrayList<>();
+        
         try {
+            // 注入 MDC
+            context.injectMdc(null);
+            metrics.incrementCounter("task_active");
+            
+            // 1. ✅ 前置检查：是否可以启动/恢复
+            TaskStatus currentStatus = task.getStatus();
+            TaskStatus targetStatus = TaskStatus.RUNNING;
+            
+            if (!stateTransitionService.canTransition(task, targetStatus, context)) {
+                log.error("状态转换不允许: {} -> {}, taskId: {}", currentStatus, targetStatus, taskId);
+                return TaskResult.fail(
+                    planId,
+                    taskId,
+                    currentStatus,
+                    "状态转换验证失败: " + currentStatus + " -> " + targetStatus,
+                    Duration.between(startTime, LocalDateTime.now()),
+                    completedStages
+                );
+            }
+            
+            // 2. ✅ 通过检查后才执行高成本操作
+            if (currentStatus == TaskStatus.PAUSED) {
+                taskDomainService.resumeTask(task, context);
+                log.info("任务恢复执行, taskId: {}", taskId);
+            } else if (currentStatus == TaskStatus.PENDING) {
+                taskDomainService.startTask(task, context);
+                log.info("任务开始执行, taskId: {}", taskId);
+            } else {
+                log.warn("任务状态异常: {}, 尝试继续执行, taskId: {}", currentStatus, taskId);
+            }
+            
+            // 3. 启动心跳
+            startHeartbeat();
+            
+            // 4. 从检查点恢复
+            var checkpoint = checkpointService.loadCheckpoint(task);
+            int startIndex = (checkpoint != null) ? checkpoint.getLastCompletedStageIndex() + 1 : 0;
+            log.info("从 Stage 索引 {} 开始执行, taskId: {}", startIndex, taskId);
+            
+            // 5. 执行 Stages
             for (int i = startIndex; i < stages.size(); i++) {
-                TaskStage s = stages.get(i);
-                String stageName = s.getName();
-
-                if (s.canSkip(context)) {
-                    log.info("跳过 Stage: {}", stageName);
-                    var sr = StageResult.skipped(stageName, "条件不满足，跳过执行");
-                    completed.add(sr);
-                    checkpointService.saveCheckpoint(task, names(completed), i);
-                    completedCounter.incrementAndGet();
-                    continue;
-                }
-
-                // 开始 Stage
-                eventSink.publishTaskStageStarted(planId, taskId, stageName, 0);
+                TaskStage stage = stages.get(i);
+                String stageName = stage.getName();
+                
+                // 执行 Stage
+                log.info("开始执行 Stage: {}, taskId: {}", stageName, taskId);
                 context.injectMdc(stageName);
-                log.info("开始执行 Stage: {}", stageName);
-
-                var stageRes = s.execute(context);
-                // 将新域结果映射为旧 StageResult 以复用结构（或保留域内结果并行）
-                // 这里简单标注成功/失败
-                if (stageRes.isSuccess()) {
-                    // 旧 StageResult 结构复用：标记 COMPLETED
-                    StageResult old = new StageResult();
-                    old.setStageName(stageName);
-                    old.setSuccess(true);
-                    completed.add(old);
-                    checkpointService.saveCheckpoint(task, names(completed), i);
-                    eventSink.publishTaskStageSucceeded(planId, taskId, stageName, Duration.ofMillis(stageRes.getDurationMillis()), 0);
-                    completedCounter.incrementAndGet();
-                    // RF-13: completeStage() 内部已更新 currentStageIndex，无需外部调用 setter
-
-                    // If stage contains ConfigUpdateStep, update version on aggregate
-                    s.getSteps().forEach(step -> {
-                        if (step instanceof ConfigUpdateStep) {
-                            Long v = ((ConfigUpdateStep) step).getTargetVersion();
-                            if (v != null) {
-                                task.setDeployUnitVersion(v);
-                                task.setLastKnownGoodVersion(v); // mark as good after health check succeeds in this stage
-                            }
-                        }
-                    });
+                
+                StageResult stageResult = stage.execute(context);
+                
+                if (stageResult.isSuccess()) {
+                    // ✅ Stage 成功
+                    Duration duration =stageResult.getDuration();
+                    taskDomainService.completeStage(task, stageName, duration, context);
+                    
+                    completedStages.add(stageResult);
+                    checkpointService.saveCheckpoint(task, extractStageNames(completedStages), i);
+                    
+                    // 更新版本信息（如果有 ConfigUpdateStep）
+                    updateVersionIfNeeded(stage);
+                    
+                    log.info("Stage 执行成功: {}, 耗时: {}ms, taskId: {}", 
+                        stageName, stageResult.getDuration().toMillis(), taskId);
                 } else {
-                    StageResult old = new StageResult();
-                    old.setStageName(stageName);
-                    old.setSuccess(false);
-                    completed.add(old);
-                    eventSink.publishTaskStageFailed(planId, taskId, stageName, stageRes.getMessage(), 0);
-                    eventSink.publishTaskFailed(planId, taskId, stageRes.getMessage(), 0);
-                    // RF-13: 使用 stateManager (如果有)，不再直接调用 setStatus
-                    if (stateManager != null) {
-                        stateManager.updateState(taskId, TaskStatus.FAILED);
+                    // ✅ Stage 失败：前置检查
+                    log.error("Stage 执行失败: {}, 原因: {}, taskId: {}", 
+                        stageName, stageResult.getFailureInfo().getErrorMessage(), taskId);
+                    
+                    if (stateTransitionService.canTransition(task, TaskStatus.FAILED, context)) {
+                        taskDomainService.failTask(task, stageResult.getFailureInfo(), context);
                     }
+                    
                     stopHeartbeat();
+                    releaseTenantLock();
                     metrics.incrementCounter("task_failed");
-                    // SC-02: release on terminal
-                    if (conflictManager != null) conflictManager.releaseTask(task.getTenantId());
-                    return TaskExecutionResult.fail(planId, taskId, task.getStatus(), stageRes.getMessage(), Duration.between(start, LocalDateTime.now()), completed);
+                    
+                    return TaskResult.fail(
+                        planId,
+                        taskId,
+                        task.getStatus(),
+                        stageResult.getFailureInfo().getErrorMessage(),
+                        Duration.between(startTime, LocalDateTime.now()),
+                        completedStages
+                    );
                 }
-
-                // 暂停检查：仅在 Stage 边界
+                
+                // 检查暂停请求
                 if (context.isPauseRequested()) {
-                    // RF-13: 使用 stateManager
-                    if (stateManager != null) {
-                        stateManager.updateState(taskId, TaskStatus.PAUSED);
+                    if (stateTransitionService.canTransition(task, TaskStatus.PAUSED, context)) {
+                        taskDomainService.pauseTask(task, context);
+                        log.info("任务暂停, taskId: {}", taskId);
+                        
+                        stopHeartbeat();
+                        metrics.incrementCounter("task_paused");
+                        
+                        return TaskResult.ok(
+                            planId,
+                            taskId,
+                            task.getStatus(),
+                            Duration.between(startTime, LocalDateTime.now()),
+                            completedStages
+                        );
                     }
-                    eventSink.publishTaskPaused(planId, taskId, 0);
-                    stopHeartbeat();
-                    metrics.incrementCounter("task_paused");
-                    return TaskExecutionResult.ok(planId, taskId, task.getStatus(), Duration.between(start, LocalDateTime.now()), completed);
                 }
+                
+                // 检查取消请求
                 if (context.isCancelRequested()) {
-                    // RF-13: 使用 stateManager
-                    if (stateManager != null) {
-                        stateManager.updateState(taskId, TaskStatus.CANCELLED);
+                    if (stateTransitionService.canTransition(task, TaskStatus.CANCELLED, context)) {
+                        taskDomainService.cancelTask(task, "用户取消", context);
+                        log.info("任务取消, taskId: {}", taskId);
+                        
+                        stopHeartbeat();
+                        releaseTenantLock();
+                        metrics.incrementCounter("task_cancelled");
+                        
+                        return TaskResult.ok(
+                            planId,
+                            taskId,
+                            task.getStatus(),
+                            Duration.between(startTime, LocalDateTime.now()),
+                            completedStages
+                        );
                     }
-                    eventSink.publishTaskCancelled(planId, taskId, 0);
-                    stopHeartbeat();
-                    metrics.incrementCounter("task_cancelled");
-                    return TaskExecutionResult.ok(planId, taskId, task.getStatus(), Duration.between(start, LocalDateTime.now()), completed);
                 }
             }
-
-            // RF-13: 使用 stateManager
-            if (stateManager != null) {
-                stateManager.updateState(taskId, TaskStatus.COMPLETED);
+            
+            // 6. 完成任务
+            if (stateTransitionService.canTransition(task, TaskStatus.COMPLETED, context)) {
+                taskDomainService.completeTask(task, context);
+                log.info("任务完成, taskId: {}", taskId);
             }
-            Duration d = Duration.between(start, LocalDateTime.now());
-            eventSink.publishTaskCompleted(planId, taskId, d, names(completed), 0);
-            checkpointService.clearCheckpoint(task);
+            
             stopHeartbeat();
+            releaseTenantLock();
+            checkpointService.clearCheckpoint(task);
             metrics.incrementCounter("task_completed");
-            // SC-02: release on terminal
-            if (conflictManager != null) conflictManager.releaseTask(task.getTenantId());
-            return TaskExecutionResult.ok(planId, taskId, task.getStatus(), d, completed);
+            
+            return TaskResult.ok(
+                planId,
+                taskId,
+                task.getStatus(),
+                Duration.between(startTime, LocalDateTime.now()),
+                completedStages
+            );
+            
+        } catch (Exception e) {
+            log.error("任务执行异常, taskId: {}, error: {}", taskId, e.getMessage(), e);
+            
+            // 异常处理也前置检查
+            if (stateTransitionService.canTransition(task, TaskStatus.FAILED, context)) {
+                FailureInfo failure = FailureInfo.of(ErrorType.BUSINESS_ERROR , e.getMessage());
+                taskDomainService.failTask(task, failure, context);
+            }
+            
+            stopHeartbeat();
+            releaseTenantLock();
+            metrics.incrementCounter("task_failed");
+            
+            return TaskResult.fail(
+                planId,
+                taskId,
+                task.getStatus(),
+                e.getMessage(),
+                Duration.between(startTime, LocalDateTime.now()),
+                completedStages
+            );
         } finally {
             context.clearMdc();
         }
     }
 
-    private void stopHeartbeat() {
-        if (heartbeatScheduler != null) heartbeatScheduler.stop();
+    /**
+     * 启动心跳调度器
+     */
+    private void startHeartbeat() {
+        if (heartbeatScheduler == null) {
+            // 创建心跳调度器
+            heartbeatScheduler = new HeartbeatScheduler(
+                task,
+                technicalEventPublisher,
+                progressIntervalSeconds,
+                metrics
+            );
+        }
+        
+        if (!heartbeatScheduler.isRunning()) {
+            heartbeatScheduler.start();
+            log.debug("心跳调度器已启动, taskId: {}", task.getTaskId());
+        }
     }
-
-    public int getCompletedStageCount() { return completedCounter.get(); }
 
     /**
-     * 回滚执行：逆序执行各 Stage 的 rollback，并发布事件。仅示例，不接线旧流。
+     * 停止心跳调度器
      */
-    public TaskExecutionResult rollback() {
-        String taskId = task.getTaskId();
-        eventSink.publishTaskRollingBack(planId, taskId, 0);
-        // RF-13: 使用 stateManager
-        if (stateManager != null) {
-            stateManager.updateState(taskId, TaskStatus.ROLLING_BACK);
+    private void stopHeartbeat() {
+        if (heartbeatScheduler != null && heartbeatScheduler.isRunning()) {
+            heartbeatScheduler.stop();
+            log.debug("心跳调度器已停止, taskId: {}", task.getTaskId());
         }
-        List<StageResult> rollbackStages = new ArrayList<>();
-        List<TaskStage> copy = new ArrayList<>(stages);
-        for (int i = copy.size() - 1; i >= 0; i--) {
-            TaskStage s = copy.get(i);
-            String name = s.getName();
-            eventSink.publishTaskStageRollingBack(planId, taskId, name, 0);
-            boolean success = true;
-            try {
-                boolean invoked = false;
-                if (s instanceof CompositeServiceStage) {
-                    RollbackStrategy rs = ((CompositeServiceStage) s).getRollbackStrategy();
-                    if (rs != null) {
-                        rs.rollback(task, context);
-                        invoked = true;
-                    }
+    }
+
+    /**
+     * 释放租户锁
+     */
+    private void releaseTenantLock() {
+        if (conflictManager != null) {
+            conflictManager.releaseTask(task.getTenantId());
+            log.debug("租户锁已释放, tenantId: {}", task.getTenantId());
+        }
+    }
+
+    /**
+     * 更新版本信息（如果 Stage 包含 ConfigUpdateStep）
+     */
+    private void updateVersionIfNeeded(TaskStage stage) {
+        stage.getSteps().forEach(step -> {
+            if (step instanceof ConfigUpdateStep) {
+                Long version = ((ConfigUpdateStep) step).getTargetVersion();
+                if (version != null) {
+                    task.setDeployUnitVersion(version);
+                    task.setLastKnownGoodVersion(version);
+                    log.debug("更新版本信息: {}, taskId: {}", version, task.getTaskId());
                 }
-                if (!invoked) {
-                    // 调用通用 Stage 回滚
-                    s.rollback(context);
-                }
-            } catch (Exception ex) {
-                success = false;
-                eventSink.publishTaskStageRollbackFailed(planId, taskId, name, ex.getMessage(), 0);
             }
-            StageResult sr = new StageResult();
-            sr.setStageName(name);
-            sr.setSuccess(success);
-            rollbackStages.add(sr);
-            if (success) {
-                eventSink.publishTaskStageRolledBack(planId, taskId, name, 0);
-            }
-        }
-        boolean anyFailed = rollbackStages.stream().anyMatch(r -> !r.isSuccess());
-        // RF-13: 使用 stateManager
-        if (stateManager != null) {
-            stateManager.updateState(taskId, anyFailed ? TaskStatus.ROLLBACK_FAILED : TaskStatus.ROLLED_BACK);
-        }
-        if (anyFailed) {
-            List<String> partial = new ArrayList<>();
-            for (StageResult r : rollbackStages) if (r.isSuccess()) partial.add(r.getStageName());
-            eventSink.publishTaskRollbackFailed(planId, taskId, partial, "one or more stages failed to rollback", 0);
-        } else {
-            eventSink.publishTaskRolledBack(planId, taskId, 0);
-        }
-        // SC-02: release on terminal
-        if (conflictManager != null) conflictManager.releaseTask(task.getTenantId());
-        metrics.incrementCounter("rollback_count");
-        return TaskExecutionResult.ok(planId, taskId, task.getStatus(), Duration.ZERO, rollbackStages);
+        });
     }
 
-    public TaskExecutionResult retry(boolean fromCheckpoint) {
-        String taskId = task.getTaskId();
-        eventSink.publishTaskRetryStarted(planId, taskId, fromCheckpoint);
-        TaskExecutionResult result;
-        if (fromCheckpoint) {
-            result = execute();
-        } else {
-            // RF-13: 不再直接设置 currentStageIndex，由 retry() 业务方法处理
-            // 注意：这里应该调用 task.retry(fromCheckpoint, globalMaxRetry) 来重置
-            if (stateManager != null) {
-                stateManager.updateState(taskId, TaskStatus.PENDING);
-            }
-            checkpointService.clearCheckpoint(task);
-            // 重试前确保心跳可重新启动
-            if (heartbeatScheduler != null) heartbeatScheduler.stop();
-            result = execute();
-        }
-        eventSink.publishTaskRetryCompleted(planId, taskId, fromCheckpoint);
-        return result;
-    }
-
-    public TaskExecutionResult invokeRollback() {
-        return rollback();
-    }
-
-    private List<String> names(List<StageResult> results) {
+    /**
+     * 提取 Stage 名称列表
+     */
+    private List<String> extractStageNames(List<StageResult> results) {
         List<String> names = new ArrayList<>();
         for (StageResult r : results) {
             names.add(r.getStageName());
         }
         return names;
+    }
+
+    public int getCompletedStageCount() {
+        return task.getCurrentStageIndex();
+    }
+
+    /**
+     * RF-18: 回滚执行（基于方案C架构）
+     * 
+     * <p>流程：
+     * <ol>
+     *   <li>前置检查：canTransition(ROLLING_BACK)</li>
+     *   <li>开始回滚：taskDomainService.startRollback()</li>
+     *   <li>逆序执行各 Stage 的 rollback</li>
+     *   <li>完成回滚：taskDomainService.completeRollback() 或 failRollback()</li>
+     * </ol>
+     */
+    public TaskResult rollback() {
+        String taskId = task.getTaskId();
+        LocalDateTime startTime = LocalDateTime.now();
+        List<StageResult> rollbackStages = new ArrayList<>();
+        
+        try {
+            // 1. ✅ 前置检查：是否可以回滚
+            if (!stateTransitionService.canTransition(task, TaskStatus.ROLLING_BACK, context)) {
+                log.error("状态转换不允许回滚: {}, taskId: {}", task.getStatus(), taskId);
+                return TaskResult.fail(
+                    planId,
+                    taskId,
+                    task.getStatus(),
+                    "当前状态不允许回滚: " + task.getStatus(),
+                    Duration.between(startTime, LocalDateTime.now()),
+                    rollbackStages
+                );
+            }
+            
+            // 2. ✅ 开始回滚
+            taskDomainService.startRollback(task, context);
+            log.info("开始回滚任务, taskId: {}", taskId);
+            
+            // 3. 逆序执行各 Stage 的 rollback
+            List<TaskStage> reversedStages = new ArrayList<>(stages);
+            java.util.Collections.reverse(reversedStages);
+            
+            boolean anyFailed = false;
+            for (TaskStage stage : reversedStages) {
+                String stageName = stage.getName();
+                log.info("回滚 Stage: {}, taskId: {}", stageName, taskId);
+                
+                StageResult stageResult = new StageResult(stageName);
+                
+                try {
+                    // 调用 Stage 的回滚方法
+                    stage.rollback(context);
+                    stageResult.setSuccess(true);
+                    log.info("Stage 回滚成功: {}, taskId: {}", stageName, taskId);
+                } catch (Exception ex) {
+                    stageResult.setSuccess(false);
+                    anyFailed = true;
+                    log.error("Stage 回滚失败: {}, taskId: {}, error: {}", 
+                        stageName, taskId, ex.getMessage(), ex);
+                }
+                
+                rollbackStages.add(stageResult);
+            }
+            
+            // 4. ✅ 完成回滚或标记失败
+            if (anyFailed) {
+                if (stateTransitionService.canTransition(task, TaskStatus.ROLLBACK_FAILED, context)) {
+                    FailureInfo failure = FailureInfo.of(ErrorType.BUSINESS_ERROR, "部分 Stage 回滚失败");
+                    taskDomainService.failRollback(task, failure, context);
+                }
+                log.error("回滚失败, taskId: {}", taskId);
+            } else {
+                if (stateTransitionService.canTransition(task, TaskStatus.ROLLED_BACK, context)) {
+                    taskDomainService.completeRollback(task, context);
+                }
+                log.info("回滚成功, taskId: {}", taskId);
+            }
+            
+            releaseTenantLock();
+            metrics.incrementCounter("rollback_count");
+            
+            return TaskResult.ok(
+                planId,
+                taskId,
+                task.getStatus(),
+                Duration.between(startTime, LocalDateTime.now()),
+                rollbackStages
+            );
+            
+        } catch (Exception e) {
+            log.error("回滚异常, taskId: {}, error: {}", taskId, e.getMessage(), e);
+            
+            if (stateTransitionService.canTransition(task, TaskStatus.ROLLBACK_FAILED, context)) {
+                FailureInfo failure = FailureInfo.of(ErrorType.SYSTEM_ERROR, e.getMessage());
+                taskDomainService.failRollback(task, failure, context);
+            }
+            
+            releaseTenantLock();
+            metrics.incrementCounter("rollback_failed");
+            
+            return TaskResult.fail(
+                planId,
+                taskId,
+                task.getStatus(),
+                e.getMessage(),
+                Duration.between(startTime, LocalDateTime.now()),
+                rollbackStages
+            );
+        }
+    }
+
+    /**
+     * RF-18: 重试任务（基于方案C架构）
+     * 
+     * <p>流程：
+     * <ol>
+     *   <li>前置检查：canTransition(RUNNING)</li>
+     *   <li>执行重试：taskDomainService.retryTask()</li>
+     *   <li>清理检查点（如果需要）</li>
+     *   <li>重新执行：execute()</li>
+     * </ol>
+     * 
+     * @param fromCheckpoint 是否从检查点重试
+     * @return 执行结果
+     */
+    public TaskResult retry(boolean fromCheckpoint) {
+        String taskId = task.getTaskId();
+        LocalDateTime startTime = LocalDateTime.now();
+        
+        try {
+            log.info("开始重试任务, fromCheckpoint: {}, taskId: {}", fromCheckpoint, taskId);
+            
+            // 1. ✅ 前置检查：是否可以重试
+            if (!stateTransitionService.canTransition(task, TaskStatus.RUNNING, context)) {
+                log.error("状态转换不允许重试: {}, taskId: {}", task.getStatus(), taskId);
+                return TaskResult.fail(
+                    planId,
+                    taskId,
+                    task.getStatus(),
+                    "当前状态不允许重试: " + task.getStatus(),
+                    Duration.between(startTime, LocalDateTime.now()),
+                    new ArrayList<>()
+                );
+            }
+            
+            // 2. ✅ 执行重试（会重置进度和状态）
+            taskDomainService.retryTask(task, context);
+            log.info("任务重试状态已更新, taskId: {}", taskId);
+            
+            // 3. 清理检查点（如果不从检查点重试）
+            if (!fromCheckpoint) {
+                checkpointService.clearCheckpoint(task);
+                log.info("检查点已清除, taskId: {}", taskId);
+            }
+            
+            // 4. 停止旧的心跳（如果存在）
+            stopHeartbeat();
+            
+            // 5. 重新执行任务
+            log.info("重新执行任务, taskId: {}", taskId);
+            TaskResult result = execute();
+            
+            log.info("重试完成, taskId: {}", taskId);
+            return result;
+            
+        } catch (Exception e) {
+            log.error("重试异常, taskId: {}, error: {}", taskId, e.getMessage(), e);
+            
+            return TaskResult.fail(
+                planId,
+                taskId,
+                task.getStatus(),
+                "重试失败: " + e.getMessage(),
+                Duration.between(startTime, LocalDateTime.now()),
+                new ArrayList<>()
+            );
+        }
+    }
+
+    /**
+     * 调用回滚（对外接口）
+     */
+    public TaskResult invokeRollback() {
+        return rollback();
     }
 }

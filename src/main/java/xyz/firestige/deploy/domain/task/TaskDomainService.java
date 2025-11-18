@@ -35,21 +35,20 @@ public class TaskDomainService {
 
     private static final Logger logger = LoggerFactory.getLogger(TaskDomainService.class);
 
-    // 核心依赖（RF-15: 移除执行层依赖）
+    // 核心依赖（RF-18: 方案C架构）
     private final TaskRepository taskRepository;
     private final TaskRuntimeRepository taskRuntimeRepository;
-    private final TaskStateManager stateManager;
-    // ✅ RF-11: 使用领域事件发布器接口（支持多种实现）
+    private final StateTransitionService stateTransitionService;  // ✅ 状态转换服务（依赖倒置）
     private final DomainEventPublisher domainEventPublisher;
 
     public TaskDomainService(
             TaskRepository taskRepository,
             TaskRuntimeRepository taskRuntimeRepository,
-            TaskStateManager stateManager,
+            StateTransitionService stateTransitionService,
             DomainEventPublisher domainEventPublisher) {
         this.taskRepository = taskRepository;
         this.taskRuntimeRepository = taskRuntimeRepository;
-        this.stateManager = stateManager;
+        this.stateTransitionService = stateTransitionService;
         this.domainEventPublisher = domainEventPublisher;
     }
 
@@ -98,6 +97,166 @@ public class TaskDomainService {
 
         logger.debug("[TaskDomainService] Task Stages 构建完成: {}, stage数量: {}", task.getTaskId(), stages.size());
     }
+
+    // ========== 方案C: 执行生命周期方法（封装save+publish逻辑）==========
+
+    /**
+     * 启动任务（内部前置检查）
+     */
+    public void startTask(TaskAggregate task, TaskRuntimeContext context) {
+        logger.info("[TaskDomainService] 启动任务: {}", task.getTaskId());
+        
+        if (!stateTransitionService.canTransition(task, TaskStatus.RUNNING, context)) {
+            throw new IllegalStateException("任务当前状态不允许启动: " + task.getStatus());
+        }
+        
+        task.start();
+        saveAndPublishEvents(task);
+    }
+
+    /**
+     * 恢复任务
+     */
+    public void resumeTask(TaskAggregate task, TaskRuntimeContext context) {
+        logger.info("[TaskDomainService] 恢复任务: {}", task.getTaskId());
+        
+        if (!stateTransitionService.canTransition(task, TaskStatus.RUNNING, context)) {
+            throw new IllegalStateException("任务当前状态不允许恢复: " + task.getStatus());
+        }
+        
+        task.resume();
+        saveAndPublishEvents(task);
+        
+        // 更新 RuntimeContext
+        taskRuntimeRepository.getContext(task.getTaskId()).ifPresent(TaskRuntimeContext::clearPause);
+    }
+
+    /**
+     * 完成 Stage
+     */
+    public void completeStage(TaskAggregate task, String stageName, java.time.Duration duration, TaskRuntimeContext context) {
+        logger.debug("[TaskDomainService] 完成 Stage: {}, stage: {}", task.getTaskId(), stageName);
+        
+        if (task.getStatus() != TaskStatus.RUNNING) {
+            throw new IllegalStateException("只有运行中的任务才能完成 Stage，当前状态: " + task.getStatus());
+        }
+        
+        task.completeStage(stageName, duration);
+        saveAndPublishEvents(task);
+    }
+
+    /**
+     * 任务失败
+     */
+    public void failTask(TaskAggregate task, FailureInfo failure, TaskRuntimeContext context) {
+        logger.warn("[TaskDomainService] 任务失败: {}, reason: {}", task.getTaskId(), failure.getErrorMessage());
+        
+        task.fail(failure);
+        saveAndPublishEvents(task);
+    }
+
+    /**
+     * 暂停任务
+     */
+    public void pauseTask(TaskAggregate task, TaskRuntimeContext context) {
+        logger.info("[TaskDomainService] 暂停任务: {}", task.getTaskId());
+        
+        if (!stateTransitionService.canTransition(task, TaskStatus.PAUSED, context)) {
+            throw new IllegalStateException("任务当前状态不允许暂停: " + task.getStatus());
+        }
+        
+        task.pause();
+        saveAndPublishEvents(task);
+    }
+
+    /**
+     * 取消任务
+     */
+    public void cancelTask(TaskAggregate task, String reason, TaskRuntimeContext context) {
+        logger.info("[TaskDomainService] 取消任务: {}, reason: {}", task.getTaskId(), reason);
+        
+        if (!stateTransitionService.canTransition(task, TaskStatus.CANCELLED, context)) {
+            throw new IllegalStateException("任务当前状态不允许取消: " + task.getStatus());
+        }
+        
+        task.cancel(reason);
+        saveAndPublishEvents(task);
+    }
+
+    /**
+     * 完成任务
+     */
+    public void completeTask(TaskAggregate task, TaskRuntimeContext context) {
+        logger.info("[TaskDomainService] 完成任务: {}", task.getTaskId());
+        
+        if (!stateTransitionService.canTransition(task, TaskStatus.COMPLETED, context)) {
+            throw new IllegalStateException("任务当前状态不允许完成: " + task.getStatus());
+        }
+        
+        task.complete();
+        saveAndPublishEvents(task);
+    }
+
+    /**
+     * 开始回滚
+     */
+    public void startRollback(TaskAggregate task, TaskRuntimeContext context) {
+        logger.info("[TaskDomainService] 开始回滚: {}", task.getTaskId());
+        
+        if (!stateTransitionService.canTransition(task, TaskStatus.ROLLING_BACK, context)) {
+            throw new IllegalStateException("任务当前状态不允许回滚: " + task.getStatus());
+        }
+        
+        task.rollback();
+        saveAndPublishEvents(task);
+    }
+
+    /**
+     * 回滚完成
+     */
+    public void completeRollback(TaskAggregate task, TaskRuntimeContext context) {
+        logger.info("[TaskDomainService] 回滚完成: {}", task.getTaskId());
+        
+        task.completeRollback();
+        saveAndPublishEvents(task);
+    }
+
+    /**
+     * 回滚失败
+     */
+    public void failRollback(TaskAggregate task, FailureInfo failure, TaskRuntimeContext context) {
+        logger.error("[TaskDomainService] 回滚失败: {}, reason: {}", task.getTaskId(), failure.getErrorMessage());
+        
+        task.failRollback(failure.getErrorMessage());
+        saveAndPublishEvents(task);
+    }
+
+    /**
+     * 重试任务
+     */
+    public void retryTask(TaskAggregate task, TaskRuntimeContext context) {
+        logger.info("[TaskDomainService] 重试任务: {}", task.getTaskId());
+        
+        if (!stateTransitionService.canTransition(task, TaskStatus.RUNNING, context)) {
+            throw new IllegalStateException("任务当前状态不允许重试: " + task.getStatus());
+        }
+        
+        task.retry();
+        saveAndPublishEvents(task);
+    }
+
+    // ========== 私有辅助方法 ==========
+
+    /**
+     * 保存聚合并发布事件（封装重复逻辑）
+     */
+    private void saveAndPublishEvents(TaskAggregate task) {
+        taskRepository.save(task);
+        domainEventPublisher.publishAll(task.getDomainEvents());
+        task.clearDomainEvents();
+    }
+
+    // ========== 原有的租户级别操作方法（保持兼容）==========
 
     /**
      * 根据租户 ID 暂停任务

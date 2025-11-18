@@ -1,11 +1,13 @@
 package xyz.firestige.deploy.infrastructure.execution;
 
 import xyz.firestige.deploy.domain.shared.exception.FailureInfo;
+import xyz.firestige.deploy.infrastructure.execution.stage.StepResult;
 
 import java.time.Duration;
 import java.time.LocalDateTime;
-import java.util.HashMap;
-import java.util.Map;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.function.Consumer;
 
 /**
  * Stage 执行结果
@@ -28,9 +30,9 @@ public class StageResult {
     private boolean success;
 
     /**
-     * 输出数据（传递给下一个 Stage）
+     * Step 结果输出
      */
-    private Map<String, Object> output;
+    private final List<StepResult> stepResults = new ArrayList<>();
 
     /**
      * 失败信息（如果失败）
@@ -52,15 +54,22 @@ public class StageResult {
      */
     private LocalDateTime endTime;
 
-    public StageResult() {
-        this.output = new HashMap<>();
+    public StageResult(String stageName) {
+        this.stageName = stageName;
+        this.startTime = LocalDateTime.now();
     }
 
     public StageResult(String stageName, StageStatus status, boolean success) {
         this.stageName = stageName;
         this.status = status;
         this.success = success;
-        this.output = new HashMap<>();
+    }
+
+    /**
+     * 创建结果占位符
+     */
+    public static StageResult start(String stageName) {
+        return new StageResult(stageName);
     }
 
     /**
@@ -68,15 +77,6 @@ public class StageResult {
      */
     public static StageResult success(String stageName) {
         return new StageResult(stageName, StageStatus.COMPLETED, true);
-    }
-
-    /**
-     * 创建成功结果（带输出）
-     */
-    public static StageResult success(String stageName, Map<String, Object> output) {
-        StageResult result = success(stageName);
-        result.setOutput(output);
-        return result;
     }
 
     /**
@@ -89,28 +89,27 @@ public class StageResult {
     }
 
     /**
-     * 创建跳过结果
-     */
-    public static StageResult skipped(String stageName, String reason) {
-        StageResult result = new StageResult(stageName, StageStatus.SKIPPED, true);
-        result.addOutput("skipReason", reason);
-        return result;
-    }
-
-    /**
-     * 添加输出数据
-     */
-    public void addOutput(String key, Object value) {
-        this.output.put(key, value);
-    }
-
-    /**
      * 计算耗时
      */
     public void calculateDuration() {
         if (startTime != null && endTime != null) {
             this.duration = Duration.between(startTime, endTime);
         }
+    }
+
+    public void success() {
+        this.success = true;
+        this.status = StageStatus.COMPLETED;
+        this.endTime = LocalDateTime.now();
+        calculateDuration();
+    }
+
+    public void failure(FailureInfo failureInfo) {
+        this.success = false;
+        this.status = StageStatus.FAILED;
+        this.endTime = LocalDateTime.now();
+        this.failureInfo = failureInfo;
+        calculateDuration();
     }
 
     // Getters and Setters
@@ -139,12 +138,20 @@ public class StageResult {
         this.success = success;
     }
 
-    public Map<String, Object> getOutput() {
-        return output;
+    public List<StepResult> getStepResults() {
+        return stepResults;
     }
 
-    public void setOutput(Map<String, Object> output) {
-        this.output = output;
+    public void addStepResult(StepResult stepResult) {
+        this.stepResults.add(stepResult);
+    }
+
+    public void addStepResults(List<StepResult> stepResults) {
+        this.stepResults.addAll(stepResults);
+    }
+
+    public void consumeStepResults(Consumer<List<StepResult>> consumer) {
+        consumer.accept(stepResults);
     }
 
     public FailureInfo getFailureInfo() {

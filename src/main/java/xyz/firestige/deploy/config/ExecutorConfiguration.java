@@ -61,6 +61,19 @@ public class ExecutorConfiguration {
         return new TaskStateManager();
     }
 
+    /**
+     * RF-18: StateTransitionService Bean（方案C架构 - 依赖反转）
+     * 
+     * <p>Domain Layer 定义接口，Infrastructure Layer 实现
+     * <p>TaskStateManager 实现 StateTransitionService 接口
+     */
+    @Bean
+    public xyz.firestige.deploy.domain.task.StateTransitionService stateTransitionService(
+            TaskStateManager taskStateManager) {
+        // TaskStateManager 实现了 StateTransitionService 接口
+        return taskStateManager;
+    }
+
     @Bean
     public ValidationChain validationChain() {
         ValidationChain chain = new ValidationChain(false);
@@ -92,15 +105,29 @@ public class ExecutorConfiguration {
         return new CheckpointService(new InMemoryCheckpointRepository());
     }
 
+    /**
+     * RF-18: TaskWorkerFactory Bean（方案C架构）
+     * 
+     * <p>注入依赖：
+     * <ul>
+     *   <li>TaskDomainService - 封装 save + publish 逻辑</li>
+     *   <li>StateTransitionService - 前置检查</li>
+     *   <li>ApplicationEventPublisher - 监控事件</li>
+     * </ul>
+     */
     @Bean
     public TaskWorkerFactory taskWorkerFactory(
+            TaskDomainService taskDomainService,
+            xyz.firestige.deploy.domain.task.StateTransitionService stateTransitionService,
+            org.springframework.context.ApplicationEventPublisher applicationEventPublisher,
             CheckpointService checkpointService,
-            TaskStateManager stateManager,
             TenantConflictManager conflictManager,
             ExecutorProperties executorProperties) {
         return new DefaultTaskWorkerFactory(
+                taskDomainService,
+                stateTransitionService,
+                applicationEventPublisher,
                 checkpointService,
-                stateManager,
                 conflictManager,
                 executorProperties.getTaskProgressIntervalSeconds(),
                 null  // metrics: 使用默认的 NoopMetricsRegistry
@@ -136,16 +163,21 @@ public class ExecutorConfiguration {
         );
     }
 
+    /**
+     * RF-18: TaskDomainService Bean（方案C架构）
+     * 
+     * <p>注入 StateTransitionService 接口而不是 TaskStateManager 实现
+     */
     @Bean
     public TaskDomainService taskDomainService(
             TaskRepository taskRepository,
             xyz.firestige.deploy.domain.task.TaskRuntimeRepository taskRuntimeRepository,
-            TaskStateManager stateManager,
+            xyz.firestige.deploy.domain.task.StateTransitionService stateTransitionService,
             DomainEventPublisher domainEventPublisher) {
         return new TaskDomainService(
                 taskRepository,
                 taskRuntimeRepository,
-                stateManager,
+                stateTransitionService,
                 domainEventPublisher
         );
     }
