@@ -145,19 +145,10 @@ public class ExecutorConfiguration {
             PlanRepository planRepository,
             TaskStateManager stateManager,
             ExecutorProperties executorProperties,
-            TenantConflictManager conflictManager,
-            SpringTaskEventSink eventSink,
             DomainEventPublisher domainEventPublisher) {
         return new PlanDomainService(
                 planRepository,
                 stateManager,
-                new PlanFactory(),
-                new PlanOrchestrator(
-                    new TaskScheduler(Runtime.getRuntime().availableProcessors()),
-                    conflictManager,
-                    executorProperties
-                ),
-                eventSink,
                 executorProperties,
                 domainEventPublisher
         );

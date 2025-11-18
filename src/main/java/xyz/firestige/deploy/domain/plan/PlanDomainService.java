@@ -2,11 +2,9 @@ package xyz.firestige.deploy.domain.plan;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import xyz.firestige.deploy.application.orchestration.PlanOrchestrator;
 import xyz.firestige.deploy.config.ExecutorProperties;
 import xyz.firestige.deploy.domain.shared.event.DomainEventPublisher;
 import xyz.firestige.deploy.domain.state.PlanStateMachine;
-import xyz.firestige.deploy.infrastructure.event.SpringTaskEventSink;
 import xyz.firestige.deploy.domain.task.TaskStatus;
 import xyz.firestige.deploy.infrastructure.state.TaskStateManager;
 
@@ -33,9 +31,6 @@ public class PlanDomainService {
     // 核心依赖（简化后：6个）
     private final PlanRepository planRepository;
     private final TaskStateManager stateManager;
-    private final PlanFactory planFactory;
-    private final PlanOrchestrator planOrchestrator;
-    private final SpringTaskEventSink eventSink;
     private final ExecutorProperties executorProperties;
     // ✅ RF-11 改进版: 使用领域事件发布器接口（支持多种实现）
     private final DomainEventPublisher domainEventPublisher;
@@ -43,16 +38,10 @@ public class PlanDomainService {
     public PlanDomainService(
             PlanRepository planRepository,
             TaskStateManager stateManager,
-            PlanFactory planFactory,
-            PlanOrchestrator planOrchestrator,
-            SpringTaskEventSink eventSink,
             ExecutorProperties executorProperties,
             DomainEventPublisher domainEventPublisher) {
         this.planRepository = planRepository;
         this.stateManager = stateManager;
-        this.planFactory = planFactory;
-        this.planOrchestrator = planOrchestrator;
-        this.eventSink = eventSink;
         this.executorProperties = executorProperties;
         this.domainEventPublisher = domainEventPublisher;
     }
@@ -125,16 +114,7 @@ public class PlanDomainService {
         plan.markAsReady();
 
         // 更新状态机
-        PlanStateMachine sm = planRepository.getStateMachine(planId).orElse(null);
-        if (sm != null) {
-            sm.transitionTo(PlanStatus.READY, new PlanContext(planId));
-        }
-
-        planRepository.save(plan);
-
-        // ✅ RF-11: 提取并发布聚合产生的领域事件
-        plan.getDomainEvents().forEach(domainEventPublisher::publish);
-        plan.clearDomainEvents();
+        updatePlanState(planId, PlanStatus.READY, plan);
 
         logger.info("[PlanDomainService] Plan 已标记为 READY: {}", planId);
     }
@@ -155,16 +135,7 @@ public class PlanDomainService {
         plan.start();
 
         // 更新状态机
-        PlanStateMachine sm = planRepository.getStateMachine(planId).orElse(null);
-        if (sm != null) {
-            sm.transitionTo(PlanStatus.RUNNING, new PlanContext(planId));
-        }
-
-        planRepository.save(plan);
-
-        // ✅ RF-11: 提取并发布聚合产生的领域事件
-        plan.getDomainEvents().forEach(domainEventPublisher::publish);
-        plan.clearDomainEvents();
+        updatePlanState(planId, PlanStatus.RUNNING, plan);
 
         // 更新状态管理器并发布事件
         stateManager.updateState(planId, TaskStatus.RUNNING);
@@ -189,16 +160,7 @@ public class PlanDomainService {
         plan.pause();
 
         // 更新状态机
-        PlanStateMachine sm = planRepository.getStateMachine(planId).orElse(null);
-        if (sm != null) {
-            sm.transitionTo(PlanStatus.PAUSED, new PlanContext(planId));
-        }
-
-        planRepository.save(plan);
-
-        // ✅ RF-11: 提取并发布聚合产生的领域事件
-        plan.getDomainEvents().forEach(domainEventPublisher::publish);
-        plan.clearDomainEvents();
+        updatePlanState(planId, PlanStatus.PAUSED, plan);
 
         logger.info("[PlanDomainService] Plan 已暂停: {}", planId);
     }
@@ -219,18 +181,20 @@ public class PlanDomainService {
         plan.resume();
 
         // 更新状态机
-        PlanStateMachine sm = planRepository.getStateMachine(planId).orElse(null);
-        if (sm != null) {
-            sm.transitionTo(PlanStatus.RUNNING, new PlanContext(planId));
-        }
+        updatePlanState(planId, PlanStatus.RUNNING, plan);
+
+        logger.info("[PlanDomainService] Plan 已恢复: {}", planId);
+    }
+
+    private void updatePlanState(String planId, PlanStatus running, PlanAggregate plan) {
+        planRepository.getStateMachine(planId)
+                .ifPresent(sm -> sm.transitionTo(running, new PlanContext(planId)));
 
         planRepository.save(plan);
 
         // ✅ RF-11: 提取并发布聚合产生的领域事件
-        plan.getDomainEvents().forEach(domainEventPublisher::publish);
+        domainEventPublisher.publishAll(plan.getDomainEvents());
         plan.clearDomainEvents();
-
-        logger.info("[PlanDomainService] Plan 已恢复: {}", planId);
     }
 
     /**
