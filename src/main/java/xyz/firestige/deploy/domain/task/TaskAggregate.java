@@ -579,7 +579,75 @@ public class TaskAggregate {
     }
 
     public TaskCheckpoint getCheckpoint() { return checkpoint; }
-    public void setCheckpoint(TaskCheckpoint checkpoint) { this.checkpoint = checkpoint; }
+
+    /**
+     * 记录检查点（在 Stage 左边界）
+     * 
+     * 业务规则：
+     * 1. 只有 RUNNING 状态才能记录检查点
+     * 2. 一个 Task 最多保留 1 个检查点（覆盖旧的）
+     * 3. 检查点记录当前已完成的 Stage 列表和索引
+     * 
+     * @param completedStageNames 已完成的 Stage 名称列表
+     * @param lastCompletedIndex 最后完成的 Stage 索引
+     */
+    public void recordCheckpoint(List<String> completedStageNames, int lastCompletedIndex) {
+        if (status != TaskStatus.RUNNING) {
+            throw new IllegalStateException(
+                String.format("只有 RUNNING 状态才能记录检查点，当前状态: %s, taskId: %s", status, taskId.getValue())
+            );
+        }
+        
+        if (lastCompletedIndex < 0 || lastCompletedIndex >= getTotalStages()) {
+            throw new IllegalArgumentException(
+                String.format("无效的 Stage 索引: %d, 总 Stage 数: %d", lastCompletedIndex, getTotalStages())
+            );
+        }
+        
+        // 创建新的检查点（覆盖旧的）
+        TaskCheckpoint newCheckpoint = new TaskCheckpoint();
+        newCheckpoint.getCompletedStageNames().addAll(completedStageNames);
+        newCheckpoint.setLastCompletedStageIndex(lastCompletedIndex);
+        newCheckpoint.setTimestamp(java.time.LocalDateTime.now());
+        
+        this.checkpoint = newCheckpoint;
+    }
+    
+    /**
+     * 恢复到检查点
+     * 
+     * 业务规则：
+     * 1. 必须有有效的检查点
+     * 2. 只能在 retry 时调用（FAILED/ROLLED_BACK 状态）
+     * 
+     * @param checkpoint 要恢复的检查点
+     */
+    public void restoreFromCheckpoint(TaskCheckpoint checkpoint) {
+        if (checkpoint == null) {
+            throw new IllegalArgumentException("检查点不能为空");
+        }
+        
+        if (status != TaskStatus.FAILED && status != TaskStatus.ROLLED_BACK) {
+            throw new IllegalStateException(
+                String.format("只有 FAILED/ROLLED_BACK 状态才能恢复检查点，当前状态: %s, taskId: %s", status, taskId.getValue())
+            );
+        }
+        
+        this.checkpoint = checkpoint;
+        // 注意：不改变 status，由 retry() 方法负责状态转换
+    }
+    
+    /**
+     * 清除检查点
+     * 
+     * 使用场景：
+     * 1. Task 完成后清理
+     * 2. Task 失败且不需要恢复
+     * 3. 重新开始（不从检查点恢复）
+     */
+    public void clearCheckpoint() {
+        this.checkpoint = null;
+    }
 
     public List<StageResult> getStageResults() { return stageResults; }
 
