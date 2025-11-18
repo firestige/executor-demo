@@ -2,7 +2,7 @@ package xyz.firestige.deploy.execution;
 
 /**
  * Encapsulate TaskExecutor creation and wiring.
- *
+ * <p>
  * RF-02: Added context-based create method to simplify parameter passing.
  */
 public interface TaskWorkerFactory {
