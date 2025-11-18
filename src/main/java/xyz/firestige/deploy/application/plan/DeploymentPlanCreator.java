@@ -7,22 +7,22 @@ import xyz.firestige.deploy.application.validation.BusinessValidator;
 import xyz.firestige.deploy.domain.plan.PlanDomainService;
 import xyz.firestige.deploy.domain.plan.PlanInfo;
 import xyz.firestige.deploy.domain.stage.StageFactory;
+import xyz.firestige.deploy.domain.stage.TaskStage;
 import xyz.firestige.deploy.domain.task.TaskAggregate;
 import xyz.firestige.deploy.domain.task.TaskDomainService;
-import xyz.firestige.deploy.service.health.HealthCheckClient;
 import xyz.firestige.deploy.validation.ValidationSummary;
 
 import java.util.List;
 
 /**
  * 部署计划创建器（RF-10 重构：提取职责）
- *
+ * <p>
  * 职责：
  * 1. 负责部署计划的创建流程编排
  * 2. 协调 Plan 和 Task 的创建
  * 3. 业务规则校验
  * 4. Stage 构建
- *
+ * <p>
  * 设计说明：
  * - 从 DeploymentApplicationService 中提取
  * - 单一职责：只负责创建流程
@@ -37,19 +37,16 @@ public class DeploymentPlanCreator {
     private final PlanDomainService planDomainService;
     private final TaskDomainService taskDomainService;
     private final StageFactory stageFactory;
-    private final HealthCheckClient healthCheckClient;
     private final BusinessValidator businessValidator;
 
     public DeploymentPlanCreator(
             PlanDomainService planDomainService,
             TaskDomainService taskDomainService,
             StageFactory stageFactory,
-            HealthCheckClient healthCheckClient,
             BusinessValidator businessValidator) {
         this.planDomainService = planDomainService;
         this.taskDomainService = taskDomainService;
         this.stageFactory = stageFactory;
-        this.healthCheckClient = healthCheckClient;
         this.businessValidator = businessValidator;
     }
 
@@ -81,9 +78,7 @@ public class DeploymentPlanCreator {
             planDomainService.createPlan(planId, configs.size());
 
             // Step 4: 为每个租户创建 Task
-            for (TenantConfig config : configs) {
-                createAndLinkTask(planId, config);
-            }
+            configs.forEach(this::createAndLinkTask);
 
             // Step 5: 标记 Plan 为 READY
             planDomainService.markPlanAsReady(planId);
@@ -106,20 +101,30 @@ public class DeploymentPlanCreator {
     /**
      * 创建并关联 Task 到 Plan
      *
-     * @param planId Plan ID
      * @param config 租户配置
      */
-    private void createAndLinkTask(String planId, TenantConfig config) {
+    private void createAndLinkTask(TenantConfig config) {
+        String planId = String.valueOf(config.getPlanId());
         // 创建 Task 聚合
         TaskAggregate task = taskDomainService.createTask(planId, config);
 
         // 构建 Task 的 Stages
-        taskDomainService.buildTaskStages(task, config, stageFactory, healthCheckClient);
+        List<TaskStage> stages = buildStagesForTask(task, config);
+        taskDomainService.attacheStages(task, stages);
 
         // 关联 Task 到 Plan（聚合间通过 ID 引用）
         planDomainService.addTaskToPlan(planId, task.getTaskId());
 
         logger.debug("[DeploymentPlanCreator] Task 创建并关联成功: {}", task.getTaskId());
+    }
+
+    private List<TaskStage> buildStagesForTask(TaskAggregate task, TenantConfig config) {
+        logger.debug("[DeploymentPlanCreator] 构建 Task Stages: {}", task.getTaskId());
+
+        List<TaskStage> stages = stageFactory.buildStages(config);
+
+        logger.debug("[DeploymentPlanCreator] Task Stages 构建完成: {}, stage数量: {}", task.getTaskId(), stages.size());
+        return stages;
     }
 
     /**

@@ -15,12 +15,15 @@ import xyz.firestige.deploy.domain.plan.PlanRepository;
 import xyz.firestige.deploy.domain.task.TaskDomainService;
 import xyz.firestige.deploy.domain.task.TaskRepository;
 import xyz.firestige.deploy.domain.stage.DefaultStageFactory;
+import xyz.firestige.deploy.domain.task.TaskRuntimeRepository;
+import xyz.firestige.deploy.event.DomainEventPublisher;
 import xyz.firestige.deploy.event.SpringTaskEventSink;
 import xyz.firestige.deploy.execution.DefaultTaskWorkerFactory;
 import xyz.firestige.deploy.facade.DeploymentTaskFacade;
 import xyz.firestige.deploy.factory.PlanFactory;
 import xyz.firestige.deploy.infrastructure.repository.memory.InMemoryPlanRepository;
 import xyz.firestige.deploy.infrastructure.repository.memory.InMemoryTaskRepository;
+import xyz.firestige.deploy.infrastructure.repository.memory.InMemoryTaskRuntimeRepository;
 import xyz.firestige.deploy.orchestration.PlanOrchestrator;
 import xyz.firestige.deploy.orchestration.TaskScheduler;
 import xyz.firestige.deploy.service.health.HealthCheckClient;
@@ -110,8 +113,8 @@ public class ExecutorConfiguration {
     }
 
     @Bean
-    public xyz.firestige.deploy.domain.task.TaskRuntimeRepository taskRuntimeRepository() {
-        return new xyz.firestige.deploy.infrastructure.repository.memory.InMemoryTaskRuntimeRepository();
+    public TaskRuntimeRepository taskRuntimeRepository() {
+        return new InMemoryTaskRuntimeRepository();
     }
 
     // ========== Domain Service Bean (DDD 重构新增) ==========
@@ -123,7 +126,7 @@ public class ExecutorConfiguration {
             ExecutorProperties executorProperties,
             ConflictRegistry conflictRegistry,
             SpringTaskEventSink eventSink,
-            xyz.firestige.deploy.event.DomainEventPublisher domainEventPublisher) {
+            DomainEventPublisher domainEventPublisher) {
         return new PlanDomainService(
                 planRepository,
                 stateManager,
@@ -146,9 +149,8 @@ public class ExecutorConfiguration {
             TaskStateManager stateManager,
             ExecutorProperties executorProperties,
             CheckpointService checkpointService,
-            SpringTaskEventSink eventSink,
             ConflictRegistry conflictRegistry,
-            xyz.firestige.deploy.event.DomainEventPublisher domainEventPublisher) {
+            DomainEventPublisher domainEventPublisher) {
         return new TaskDomainService(
                 taskRepository,
                 taskRuntimeRepository,
@@ -156,7 +158,6 @@ public class ExecutorConfiguration {
                 new DefaultTaskWorkerFactory(),
                 executorProperties,
                 checkpointService,
-                eventSink,
                 conflictRegistry,
                 domainEventPublisher
         );
@@ -168,13 +169,11 @@ public class ExecutorConfiguration {
     public xyz.firestige.deploy.application.plan.DeploymentPlanCreator deploymentPlanCreator(
             PlanDomainService planDomainService,
             TaskDomainService taskDomainService,
-            HealthCheckClient healthCheckClient,
             BusinessValidator businessValidator) {
         return new xyz.firestige.deploy.application.plan.DeploymentPlanCreator(
                 planDomainService,
                 taskDomainService,
                 new DefaultStageFactory(),
-                healthCheckClient,
                 businessValidator
         );
     }

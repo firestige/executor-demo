@@ -4,7 +4,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import xyz.firestige.deploy.application.dto.TenantConfig;
 import xyz.firestige.deploy.event.DomainEventPublisher;
-import xyz.firestige.deploy.domain.stage.StageFactory;
 import xyz.firestige.deploy.checkpoint.CheckpointService;
 import xyz.firestige.deploy.config.ExecutorProperties;
 import xyz.firestige.deploy.domain.stage.TaskStage;
@@ -15,7 +14,6 @@ import xyz.firestige.deploy.execution.TaskExecutor;
 import xyz.firestige.deploy.execution.TaskWorkerCreationContext;
 import xyz.firestige.deploy.execution.TaskWorkerFactory;
 import xyz.firestige.deploy.facade.TaskStatusInfo;
-import xyz.firestige.deploy.service.health.HealthCheckClient;
 import xyz.firestige.deploy.state.TaskStateManager;
 import xyz.firestige.deploy.state.TaskStatus;
 import xyz.firestige.deploy.support.conflict.ConflictRegistry;
@@ -44,7 +42,6 @@ public class TaskDomainService {
     private final TaskWorkerFactory workerFactory;
     private final ExecutorProperties executorProperties;
     private final CheckpointService checkpointService;
-    private final SpringTaskEventSink eventSink;
     private final ConflictRegistry conflictRegistry;
     // ✅ RF-11 改进版: 使用领域事件发布器接口（支持多种实现）
     private final DomainEventPublisher domainEventPublisher;
@@ -56,7 +53,6 @@ public class TaskDomainService {
             TaskWorkerFactory workerFactory,
             ExecutorProperties executorProperties,
             CheckpointService checkpointService,
-            SpringTaskEventSink eventSink,
             ConflictRegistry conflictRegistry,
             DomainEventPublisher domainEventPublisher) {
         this.taskRepository = taskRepository;
@@ -65,7 +61,6 @@ public class TaskDomainService {
         this.workerFactory = workerFactory;
         this.executorProperties = executorProperties;
         this.checkpointService = checkpointService;
-        this.eventSink = eventSink;
         this.conflictRegistry = conflictRegistry;
         this.domainEventPublisher = domainEventPublisher;
     }
@@ -95,7 +90,7 @@ public class TaskDomainService {
         taskRepository.save(task);
 
         // ✅ RF-11: 提取并发布聚合产生的领域事件
-        task.getDomainEvents().forEach(eventPublisher::publishEvent);
+        domainEventPublisher.publishAll(task.getDomainEvents());
         task.clearDomainEvents();
 
         logger.info("[TaskDomainService] Task 创建成功: {}", taskId);
@@ -106,19 +101,12 @@ public class TaskDomainService {
      * 构建 Task 的 Stages（需要配置信息）
      *
      * @param task Task 聚合
-     * @param config 租户配置（内部 DTO）
-     * @param stageFactory Stage 工厂
-     * @param healthCheckClient 健康检查客户端
-     * @return Stage 列表
+     * @param stages Stage 列表
      */
-    public List<TaskStage> buildTaskStages(
+    public void attacheStages(
             TaskAggregate task,
-            TenantConfig config,
-            StageFactory stageFactory,
-            HealthCheckClient healthCheckClient) {
+            List<TaskStage> stages) {
         logger.debug("[TaskDomainService] 构建 Task Stages: {}", task.getTaskId());
-
-        List<TaskStage> stages = stageFactory.buildStages(task, config, executorProperties, healthCheckClient);
 
         // 保存到仓储
         taskRuntimeRepository.saveStages(task.getTaskId(), stages);
@@ -128,7 +116,6 @@ public class TaskDomainService {
         stateManager.registerStageNames(task.getTaskId(), stageNames);
 
         logger.debug("[TaskDomainService] Task Stages 构建完成: {}, stage数量: {}", task.getTaskId(), stages.size());
-        return stages;
     }
 
     /**
@@ -156,7 +143,7 @@ public class TaskDomainService {
             taskRepository.save(target);
 
             // ✅ RF-11: 提取并发布聚合产生的领域事件
-            target.getDomainEvents().forEach(eventPublisher::publishEvent);
+            domainEventPublisher.publishAll(target.getDomainEvents());
             target.clearDomainEvents();
 
             // 更新 RuntimeContext（用于执行器检查）
@@ -203,7 +190,7 @@ public class TaskDomainService {
             taskRepository.save(target);
 
             // ✅ RF-11: 提取并发布聚合产生的领域事件
-            target.getDomainEvents().forEach(eventPublisher::publishEvent);
+            domainEventPublisher.publishAll(target.getDomainEvents());
             target.clearDomainEvents();
 
             // 更新 RuntimeContext
@@ -251,15 +238,14 @@ public class TaskDomainService {
         });
 
         // 发布回滚开始事件
-        List<String> stageNames = getAndRegStageNames(target);
-        eventSink.publishTaskRollingBack(target.getPlanId(), target.getTaskId(), stageNames, 0);
+        domainEventPublisher.publishAll(target.getDomainEvents());
 
         // 执行回滚
         var res = exec.invokeRollback();
 
         // 发布回滚结果事件
         if (target.getStatus() == TaskStatus.ROLLED_BACK) {
-            eventSink.publishTaskRolledBack(target.getPlanId(), target.getTaskId(), stageNames, 0);
+            domainEventPublisher.publishAll(target.getDomainEvents());
         } else if (target.getStatus() == TaskStatus.ROLLBACK_FAILED) {
             stateManager.publishTaskRollbackFailedEvent(
                 target.getTaskId(),

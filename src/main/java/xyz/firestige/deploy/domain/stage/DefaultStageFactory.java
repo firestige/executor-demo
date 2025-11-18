@@ -1,21 +1,14 @@
 package xyz.firestige.deploy.domain.stage;
 
 import xyz.firestige.deploy.application.dto.TenantConfig;
-import xyz.firestige.deploy.config.ExecutorProperties;
 import xyz.firestige.deploy.domain.stage.steps.BroadcastStep;
 import xyz.firestige.deploy.domain.stage.steps.ConfigUpdateStep;
-import xyz.firestige.deploy.domain.stage.steps.HealthCheckStep;
-import xyz.firestige.deploy.domain.task.TaskAggregate;
-import xyz.firestige.deploy.service.health.HealthCheckClient;
 
 import java.util.List;
 
 public class DefaultStageFactory implements StageFactory {
     @Override
-    public List<TaskStage> buildStages(TaskAggregate task,
-                                       TenantConfig cfg,
-                                       ExecutorProperties props,
-                                       HealthCheckClient healthClient) {
+    public List<TaskStage> buildStages(TenantConfig cfg) {
         // todo: 根据不同服务的配置生成对应的 Stage 列表，
         //  这里简化为固定的三个步骤，实际上ASBC的步骤不一样
 
@@ -26,15 +19,7 @@ public class DefaultStageFactory implements StageFactory {
                 "switch-service",
                 List.of(
                         new ConfigUpdateStep("config-update", deployUnitVersion),
-                        new BroadcastStep("broadcast-change"),
-                        new HealthCheckStep(
-                                "health-check",
-                                cfg.getNetworkEndpoints() != null ? cfg.getNetworkEndpoints() : List.of(),
-                                String.valueOf(deployUnitVersion),
-                                props.getHealthCheckVersionKey(),
-                                healthClient,
-                                props
-                        )
+                        new BroadcastStep("broadcast-change")
                 )
         );
         return List.of(stage);
