@@ -25,7 +25,7 @@ import java.util.List;
 
 /**
  * 单租户 Task 聚合（DDD 重构：充血模型 + 值对象 RF-13）
- *
+ * <p>
  * 职责：
  * 1. 管理任务生命周期和状态转换
  * 2. 保护业务不变式
@@ -582,7 +582,7 @@ public class TaskAggregate {
 
     /**
      * 记录检查点（在 Stage 左边界）
-     * 
+     * <p>
      * 业务规则：
      * 1. 只有 RUNNING 状态才能记录检查点
      * 2. 一个 Task 最多保留 1 个检查点（覆盖旧的）
@@ -615,7 +615,7 @@ public class TaskAggregate {
     
     /**
      * 恢复到检查点
-     * 
+     * <p>
      * 业务规则：
      * 1. 必须有有效的检查点
      * 2. 只能在 retry 时调用（FAILED/ROLLED_BACK 状态）
@@ -639,7 +639,7 @@ public class TaskAggregate {
     
     /**
      * 清除检查点
-     * 
+     * <p>
      * 使用场景：
      * 1. Task 完成后清理
      * 2. Task 失败且不需要恢复

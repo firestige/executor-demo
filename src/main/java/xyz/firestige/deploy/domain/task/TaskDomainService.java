@@ -6,6 +6,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import xyz.firestige.deploy.application.dto.TenantConfig;
+import xyz.firestige.deploy.domain.task.event.TaskRetryStartedEvent;
 import xyz.firestige.deploy.infrastructure.execution.stage.TaskStage;
 import xyz.firestige.deploy.domain.shared.event.DomainEventPublisher;
 import xyz.firestige.deploy.domain.shared.exception.ErrorType;
@@ -13,7 +14,6 @@ import xyz.firestige.deploy.domain.shared.exception.FailureInfo;
 import xyz.firestige.deploy.facade.TaskStatusInfo;
 import xyz.firestige.deploy.infrastructure.execution.TaskExecutor;
 import xyz.firestige.deploy.infrastructure.execution.TaskWorkerCreationContext;
-import xyz.firestige.deploy.infrastructure.state.TaskStateManager;
 
 /**
  * Task 领域服务 (RF-15: 执行层解耦版)
@@ -405,10 +405,22 @@ public class TaskDomainService {
         }
 
         // 补偿进度事件（checkpoint retry）
-        if (fromCheckpoint) {
+        if (fromCheckpoint && target.getCheckpoint() != null) {
             int completed = target.getCurrentStageIndex();
-            int total = taskRuntimeRepository.getStages(target.getTaskId()).orElseGet(List::of).size();
-            // 发布进度补偿事件
+            List<TaskStage> stages = taskRuntimeRepository.getStages(target.getTaskId()).orElseGet(List::of);
+            int total = stages.size();
+            
+            // ✅ 发布进度补偿事件（告知监控系统从检查点恢复）
+            TaskRetryStartedEvent retryEvent = new TaskRetryStartedEvent(
+                    target.getTaskId(),
+                    true,  // fromCheckpoint = true
+                    completed,
+                    total
+                );
+            domainEventPublisher.publish(retryEvent);
+            
+            logger.info("[TaskDomainService] 已发布检查点恢复进度事件: taskId={}, progress={}/{}", 
+                target.getTaskId(), completed, total);
         }
 
         // 获取运行时数据

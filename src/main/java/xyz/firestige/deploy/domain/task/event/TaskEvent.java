@@ -4,7 +4,7 @@ import java.time.LocalDateTime;
 
 /**
  * Task 领域事件基类
- * 
+ * <p>
  * 职责：
  * - 提供事件的公共属性（taskId, occurredOn）
  * - 统一事件接口
