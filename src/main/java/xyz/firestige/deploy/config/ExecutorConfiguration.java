@@ -13,12 +13,12 @@ import xyz.firestige.deploy.application.validation.BusinessValidator;
 import xyz.firestige.deploy.application.checkpoint.CheckpointService;
 import xyz.firestige.deploy.infrastructure.execution.DefaultTaskWorkerFactory;
 import xyz.firestige.deploy.infrastructure.execution.TaskWorkerFactory;
+import xyz.firestige.deploy.infrastructure.execution.stage.StageFactory;
 import xyz.firestige.deploy.infrastructure.external.health.HealthCheckClient;
 import xyz.firestige.deploy.infrastructure.external.health.MockHealthCheckClient;
 import xyz.firestige.deploy.infrastructure.persistence.checkpoint.InMemoryCheckpointRepository;
 import xyz.firestige.deploy.domain.plan.PlanDomainService;
 import xyz.firestige.deploy.domain.plan.PlanRepository;
-import xyz.firestige.deploy.infrastructure.execution.stage.DefaultStageFactory;
 import xyz.firestige.deploy.domain.task.StateTransitionService;
 import xyz.firestige.deploy.domain.task.TaskDomainService;
 import xyz.firestige.deploy.domain.task.TaskRepository;
@@ -190,12 +190,13 @@ public class ExecutorConfiguration {
     public DeploymentPlanCreator deploymentPlanCreator(
             PlanDomainService planDomainService,
             TaskDomainService taskDomainService,
+            StageFactory stageFactory,
             BusinessValidator businessValidator,
             ExecutorProperties executorProperties) {
         return new DeploymentPlanCreator(
                 planDomainService,
                 taskDomainService,
-                new DefaultStageFactory(),
+                stageFactory,
                 businessValidator,
                 executorProperties
         );
@@ -208,14 +209,20 @@ public class ExecutorConfiguration {
             TaskDomainService taskDomainService,
             TenantConflictManager conflictManager,
             TaskWorkerFactory taskWorkerFactory,
-            TaskStateManager stateManager) {
+            TaskStateManager stateManager,
+            TaskRepository taskRepository,
+            TaskRuntimeRepository taskRuntimeRepository,
+            ExecutorProperties executorProperties) {
         return new DeploymentApplicationService(
                 deploymentPlanCreator,
                 planDomainService,
                 taskDomainService,
                 conflictManager,
                 taskWorkerFactory,
-                stateManager
+                stateManager,
+                taskRepository,
+                taskRuntimeRepository,
+                executorProperties
         );
     }
 
