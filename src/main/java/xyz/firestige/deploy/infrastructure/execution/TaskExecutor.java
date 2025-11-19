@@ -15,7 +15,6 @@ import xyz.firestige.deploy.domain.task.TaskStatus;
 import xyz.firestige.deploy.infrastructure.metrics.MetricsRegistry;
 import xyz.firestige.deploy.infrastructure.metrics.NoopMetricsRegistry;
 import xyz.firestige.deploy.infrastructure.scheduling.TenantConflictManager;
-import xyz.firestige.deploy.infrastructure.execution.stage.steps.ConfigUpdateStep;
 
 import java.time.Duration;
 import java.time.LocalDateTime;
@@ -176,9 +175,6 @@ public class TaskExecutor {
                     completedStages.add(stageResult);
                     checkpointService.saveCheckpoint(task, extractStageNames(completedStages), i);
                     
-                    // 更新版本信息（如果有 ConfigUpdateStep）
-                    updateVersionIfNeeded(stage);
-                    
                     log.info("Stage 执行成功: {}, 耗时: {}ms, taskId: {}", 
                         stageName, stageResult.getDuration().toMillis(), taskId);
                 } else {
@@ -327,22 +323,6 @@ public class TaskExecutor {
             conflictManager.releaseTask(task.getTenantId());
             log.debug("租户锁已释放, tenantId: {}", task.getTenantId());
         }
-    }
-
-    /**
-     * 更新版本信息（如果 Stage 包含 ConfigUpdateStep）
-     */
-    private void updateVersionIfNeeded(TaskStage stage) {
-        stage.getSteps().forEach(step -> {
-            if (step instanceof ConfigUpdateStep) {
-                Long version = ((ConfigUpdateStep) step).getTargetVersion();
-                if (version != null) {
-                    task.setDeployUnitVersion(version);
-                    task.setLastKnownGoodVersion(version);
-                    log.debug("更新版本信息: {}, taskId: {}", version, task.getTaskId());
-                }
-            }
-        });
     }
 
     /**
