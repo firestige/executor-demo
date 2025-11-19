@@ -5,6 +5,8 @@ import org.slf4j.LoggerFactory;
 import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Component;
 import xyz.firestige.deploy.application.orchestration.strategy.PlanSchedulingStrategy;
+import xyz.firestige.deploy.domain.shared.vo.PlanId;
+import xyz.firestige.deploy.domain.shared.vo.TenantId;
 import xyz.firestige.deploy.domain.task.TaskAggregate;
 import xyz.firestige.deploy.domain.task.TaskRepository;
 import xyz.firestige.deploy.domain.plan.event.PlanCompletedEvent;
@@ -50,7 +52,7 @@ public class PlanCompletionListener {
      */
     @EventListener
     public void handlePlanCompleted(PlanCompletedEvent event) {
-        String planId = event.getPlanId();
+        PlanId planId = event.getPlanId();
         logger.info("[PlanCompletionListener] 收到 Plan 完成事件: {}", planId);
 
         try {
@@ -58,10 +60,10 @@ public class PlanCompletionListener {
             List<TaskAggregate> tasks = taskRepository.findByPlanId(planId);
 
             // 2. 提取租户 ID 列表
-            List<String> tenantIds = tasks.stream()
+            List<TenantId> tenantIds = tasks.stream()
                 .map(TaskAggregate::getTenantId)
                 .distinct()
-                .collect(Collectors.toList());
+                .toList();
 
             logger.info("[PlanCompletionListener] Plan {} 包含 {} 个租户: {}",
                 planId, tenantIds.size(), tenantIds);
@@ -88,7 +90,7 @@ public class PlanCompletionListener {
      */
     @EventListener
     public void handlePlanFailed(PlanFailedEvent event) {
-        String planId = event.getPlanId();
+        PlanId planId = event.getPlanId();
         logger.info("[PlanCompletionListener] 收到 Plan 失败事件: {}, 原因: {}",
             planId, event.getFailureSummary());
 
@@ -97,10 +99,10 @@ public class PlanCompletionListener {
             List<TaskAggregate> tasks = taskRepository.findByPlanId(planId);
 
             // 2. 提取租户 ID 列表
-            List<String> tenantIds = tasks.stream()
+            List<TenantId> tenantIds = tasks.stream()
                 .map(TaskAggregate::getTenantId)
                 .distinct()
-                .collect(Collectors.toList());
+                .toList();
 
             logger.info("[PlanCompletionListener] Plan {} 失败，包含 {} 个租户: {}",
                 planId, tenantIds.size(), tenantIds);

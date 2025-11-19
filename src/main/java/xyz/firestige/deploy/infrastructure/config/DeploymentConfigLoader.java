@@ -13,6 +13,7 @@ import xyz.firestige.deploy.infrastructure.config.model.ServiceTypeConfig;
 import jakarta.annotation.PostConstruct;
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.List;
 
 /**
  * YAML 配置加载器
@@ -71,22 +72,59 @@ public class DeploymentConfigLoader {
     }
     
     /**
-     * 获取服务类型配置
+     * 获取服务类型配置（通过服务名称）
      */
-    public ServiceTypeConfig getServiceType(String serviceType) {
-        if (config == null || config.getServiceTypes() == null) {
-            throw new IllegalStateException("Service type configuration not loaded");
+    public ServiceTypeConfig getServiceType(String serviceName) {
+        if (config == null || config.getServices() == null) {
+            throw new IllegalStateException("Service configuration not loaded");
         }
-        return config.getServiceTypes().get(serviceType);
+        return config.getServices().get(serviceName);
     }
-    
+
     /**
-     * 检查是否支持指定的服务类型
+     * 获取服务配置（别名方法，语义更清晰）
      */
-    public boolean supportsServiceType(String serviceType) {
-        return config != null 
-                && config.getServiceTypes() != null 
-                && config.getServiceTypes().containsKey(serviceType);
+    public ServiceTypeConfig getServiceConfig(String serviceName) {
+        return getServiceType(serviceName);
+    }
+
+    /**
+     * 检查是否支持指定的服务
+     */
+    public boolean supportsServiceType(String serviceName) {
+        return config != null
+                && config.getServices() != null
+                && config.getServices().containsKey(serviceName);
+    }
+
+    /**
+     * 获取默认服务名称列表
+     *
+     * @return 默认服务名称列表（有序），如果配置中未定义则返回空列表
+     */
+    public List<String> getDefaultServiceNames() {
+        if (config == null) {
+            throw new IllegalStateException("Configuration not loaded");
+        }
+
+        List<String> defaultNames = config.getDefaultServiceNames();
+        if (defaultNames == null || defaultNames.isEmpty()) {
+            log.warn("No default service names configured, returning empty list");
+            return List.of();
+        }
+
+        log.debug("Loaded default service names: {}", defaultNames);
+        return List.copyOf(defaultNames);  // 返回不可变副本
+    }
+
+    /**
+     * 获取所有已配置的服务名称
+     */
+    public List<String> getAllServiceNames() {
+        if (config == null || config.getServices() == null) {
+            return List.of();
+        }
+        return List.copyOf(config.getServices().keySet());
     }
     
     /**
@@ -101,11 +139,11 @@ public class DeploymentConfigLoader {
             throw new IllegalStateException("Infrastructure configuration is missing");
         }
         
-        if (config.getServiceTypes() == null || config.getServiceTypes().isEmpty()) {
-            throw new IllegalStateException("No service types configured");
+        if (config.getServices() == null || config.getServices().isEmpty()) {
+            throw new IllegalStateException("No services configured");
         }
         
-        log.info("Configuration validated: {} service types configured", 
-                config.getServiceTypes().size());
+        log.info("Configuration validated: {} services configured",
+                config.getServices().size());
     }
 }

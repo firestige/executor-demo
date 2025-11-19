@@ -1,5 +1,7 @@
 package xyz.firestige.deploy.domain.stage.config;
 
+import xyz.firestige.deploy.domain.shared.vo.TenantId;
+
 import java.util.List;
 
 /**
@@ -12,20 +14,20 @@ import java.util.List;
  */
 public class ASBCGatewayConfig implements ServiceConfig {
     
-    private final String tenantId;
+    private final TenantId tenantId;
     private final Long configVersion;
     private final List<String> fixedInstances;  // 固定的实例 IP 列表
     private final String configEndpoint;        // 配置接口路径，如 /api/v1/config
     private final MediaRouting mediaRouting;    // ASBC 专用的媒体路由配置
     
     public ASBCGatewayConfig(
-            String tenantId,
+            TenantId tenantId,
             Long configVersion,
             List<String> fixedInstances,
             String configEndpoint,
             MediaRouting mediaRouting) {
         
-        if (tenantId == null || tenantId.isBlank()) {
+        if (tenantId == null) {
             throw new IllegalArgumentException("tenantId cannot be null or blank");
         }
         if (configVersion == null) {
@@ -54,7 +56,7 @@ public class ASBCGatewayConfig implements ServiceConfig {
     }
     
     @Override
-    public String getTenantId() {
+    public TenantId getTenantId() {
         return tenantId;
     }
     

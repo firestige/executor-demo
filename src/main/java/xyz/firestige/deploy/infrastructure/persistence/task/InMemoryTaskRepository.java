@@ -1,6 +1,10 @@
 package xyz.firestige.deploy.infrastructure.persistence.task;
 
+import xyz.firestige.deploy.domain.shared.vo.PlanId;
+import xyz.firestige.deploy.domain.shared.vo.TaskId;
+import xyz.firestige.deploy.domain.shared.vo.TenantId;
 import xyz.firestige.deploy.domain.task.TaskAggregate;
+import xyz.firestige.deploy.domain.task.TaskInfo;
 import xyz.firestige.deploy.domain.task.TaskRepository;
 
 import java.util.List;
@@ -23,7 +27,7 @@ import java.util.stream.Collectors;
  */
 public class InMemoryTaskRepository implements TaskRepository {
 
-    private final Map<String, TaskAggregate> tasks = new ConcurrentHashMap<>();
+    private final Map<TaskId, TaskAggregate> tasks = new ConcurrentHashMap<>();
 
     @Override
     public void save(TaskAggregate task) {
@@ -34,24 +38,24 @@ public class InMemoryTaskRepository implements TaskRepository {
     }
 
     @Override
-    public void remove(String taskId) {
+    public void remove(TaskId taskId) {
         tasks.remove(taskId);
     }
 
     @Override
-    public Optional<TaskAggregate> findById(String taskId) {
+    public Optional<TaskAggregate> findById(TaskId taskId) {
         return Optional.ofNullable(tasks.get(taskId));
     }
 
     @Override
-    public Optional<TaskAggregate> findByTenantId(String tenantId) {
+    public Optional<TaskAggregate> findByTenantId(TenantId tenantId) {
         return tasks.values().stream()
             .filter(task -> tenantId.equals(task.getTenantId()))
             .findFirst();
     }
 
     @Override
-    public List<TaskAggregate> findByPlanId(String planId) {
+    public List<TaskAggregate> findByPlanId(PlanId planId) {
         return tasks.values().stream()
             .filter(task -> planId.equals(task.getPlanId()))
             .collect(Collectors.toList());

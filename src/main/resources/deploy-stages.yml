@@ -1,11 +1,18 @@
 # Deployment Stage Configuration
-# Defines infrastructure settings and service-type stage/step combinations
+# Defines infrastructure settings and service configurations
+
+# ========== Default Service Names ==========
+# 默认的服务切换顺序（当外部未指定时使用）
+defaultServiceNames:
+  - blue-green-gateway
+  - portal
+  - asbc-gateway
 
 # ========== Infrastructure Configuration (Fixed Configuration) ==========
 infrastructure:
   # Redis Configuration
   redis:
-    hashKeyPrefix: "deploy:config:"
+    hashKeyPrefix: "icc_ai_ops_srv:tenant_config:"
     pubsubTopic: "deploy.config.notify"
   
   # Nacos Service Discovery Configuration
@@ -32,12 +39,12 @@ infrastructure:
   
   # Health Check Configuration
   healthCheck:
-    defaultPath: "/actuator/health"
+    defaultPath: "/actuator/bg-sdk/{tenantId}"
     intervalSeconds: 3
     maxAttempts: 10
 
-# ========== Service Type Definitions (Business Flow Configuration) ==========
-serviceTypes:
+# ========== Service Configurations (Business Flow Configuration) ==========
+services:
   # Blue-Green Gateway: Redis Write → Pub/Sub Broadcast → Health Check
   blue-green-gateway:
     stages:
@@ -46,8 +53,8 @@ serviceTypes:
           # Step 1: Redis Hash Write
           - type: key-value-write
             config:
-              hashField: "blue-green-gateway"
-          
+              hashField: "icc-bg-gateway"
+
           # Step 2: Redis Pub/Sub Broadcast
           - type: message-broadcast
             config:
@@ -58,8 +65,8 @@ serviceTypes:
             config:
               nacosServiceNameKey: "blueGreenGatewayService"
               validationType: "json-path"
-              validationRule: "$.status"
-              expectedValue: "UP"
+              validationRule: "$.version"
+              expectedValue: "1"
             retryPolicy:
               maxAttempts: 10
               intervalSeconds: 3
@@ -81,8 +88,8 @@ serviceTypes:
             config:
               nacosServiceNameKey: "portalService"
               validationType: "json-path"
-              validationRule: "$.status"
-              expectedValue: "UP"
+              validationRule: "$.version"
+              expectedValue: "1"
             retryPolicy:
               maxAttempts: 10
               intervalSeconds: 3

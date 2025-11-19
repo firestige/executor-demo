@@ -44,5 +44,10 @@ public class SchedulingStrategyConfiguration {
         log.info("启用粗粒度调度策略（Coarse-Grained）");
         return new CoarseGrainedSchedulingStrategy(conflictRegistry);
     }
+
+    @Bean
+    public ConflictRegistry conflictRegistry() {
+        return new ConflictRegistry();
+    }
 }
 

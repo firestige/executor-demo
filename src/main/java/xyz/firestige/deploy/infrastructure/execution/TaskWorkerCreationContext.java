@@ -2,6 +2,7 @@ package xyz.firestige.deploy.infrastructure.execution;
 
 import java.util.List;
 
+import xyz.firestige.deploy.domain.shared.vo.PlanId;
 import xyz.firestige.deploy.infrastructure.execution.stage.TaskStage;
 import xyz.firestige.deploy.domain.task.TaskAggregate;
 import xyz.firestige.deploy.domain.task.TaskRuntimeContext;
@@ -27,7 +28,7 @@ import xyz.firestige.deploy.domain.task.TaskRuntimeContext;
 public class TaskWorkerCreationContext {
 
     // Domain data
-    private final String planId;
+    private final PlanId planId;
     private final TaskAggregate task;
     private final List<TaskStage> stages;
     private final TaskRuntimeContext runtimeContext;
@@ -43,7 +44,7 @@ public class TaskWorkerCreationContext {
 
     // Getters
 
-    public String getPlanId() {
+    public PlanId getPlanId() {
         return planId;
     }
 
@@ -77,7 +78,7 @@ public class TaskWorkerCreationContext {
 
     public static class Builder {
         // Required parameters (no defaults)
-        private String planId;
+        private PlanId planId;
         private TaskAggregate task;
         private List<TaskStage> stages;
         private TaskRuntimeContext runtimeContext;
@@ -85,7 +86,7 @@ public class TaskWorkerCreationContext {
 
         private Builder() {}
 
-        public Builder planId(String planId) {
+        public Builder planId(PlanId planId) {
             this.planId = planId;
             return this;
         }
@@ -118,7 +119,7 @@ public class TaskWorkerCreationContext {
          */
         public TaskWorkerCreationContext build() {
             // Validate required parameters
-            if (planId == null || planId.trim().isEmpty()) {
+            if (planId == null) {
                 throw new IllegalArgumentException("planId is required");
             }
             if (task == null) {

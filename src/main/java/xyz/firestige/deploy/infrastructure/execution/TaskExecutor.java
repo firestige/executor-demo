@@ -12,6 +12,8 @@ import org.springframework.context.ApplicationEventPublisher;
 import xyz.firestige.deploy.application.checkpoint.CheckpointService;
 import xyz.firestige.deploy.domain.shared.exception.ErrorType;
 import xyz.firestige.deploy.domain.shared.exception.FailureInfo;
+import xyz.firestige.deploy.domain.shared.vo.PlanId;
+import xyz.firestige.deploy.domain.shared.vo.TaskId;
 import xyz.firestige.deploy.domain.task.StateTransitionService;
 import xyz.firestige.deploy.domain.task.TaskAggregate;
 import xyz.firestige.deploy.domain.task.TaskDomainService;
@@ -52,7 +54,7 @@ public class TaskExecutor {
 
     private static final Logger log = LoggerFactory.getLogger(TaskExecutor.class);
 
-    private final String planId;
+    private final PlanId planId;
     private final TaskAggregate task;
     private final List<TaskStage> stages;
     private final TaskRuntimeContext context;
@@ -75,7 +77,7 @@ public class TaskExecutor {
      * RF-18: 新构造函数（完整依赖）
      */
     public TaskExecutor(
-            String planId,
+            PlanId planId,
             TaskAggregate task,
             List<TaskStage> stages,
             TaskRuntimeContext context,
@@ -113,7 +115,7 @@ public class TaskExecutor {
      * RF-18: 执行任务（基于方案C架构）
      */
     public TaskResult execute() {
-        String taskId = task.getTaskId();
+        TaskId taskId = task.getTaskId();
         LocalDateTime startTime = LocalDateTime.now();
         List<StageResult> completedStages = new ArrayList<>();
         
@@ -373,7 +375,7 @@ public class TaskExecutor {
      * </ol>
      */
     public TaskResult rollback() {
-        String taskId = task.getTaskId();
+        TaskId taskId = task.getTaskId();
         LocalDateTime startTime = LocalDateTime.now();
         List<StageResult> rollbackStages = new ArrayList<>();
         
@@ -498,7 +500,7 @@ public class TaskExecutor {
      * @return 执行结果
      */
     public TaskResult retry(boolean fromCheckpoint) {
-        String taskId = task.getTaskId();
+        TaskId taskId = task.getTaskId();
         LocalDateTime startTime = LocalDateTime.now();
         
         try {

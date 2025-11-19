@@ -1,5 +1,6 @@
 package xyz.firestige.deploy.domain.task.event;
 
+import xyz.firestige.deploy.domain.shared.vo.TaskId;
 import xyz.firestige.deploy.domain.task.TaskStatus;
 
 /**
@@ -32,7 +33,7 @@ public class TaskProgressEvent extends TaskStatusEvent {
         setStatus(TaskStatus.RUNNING);
     }
 
-    public TaskProgressEvent(String taskId, String currentStage, int completedStages, int totalStages) {
+    public TaskProgressEvent(TaskId taskId, String currentStage, int completedStages, int totalStages) {
         super(taskId, TaskStatus.RUNNING);
         this.currentStage = currentStage;
         this.completedStages = completedStages;

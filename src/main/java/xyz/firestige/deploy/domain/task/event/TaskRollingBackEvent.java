@@ -1,5 +1,6 @@
 package xyz.firestige.deploy.domain.task.event;
 
+import xyz.firestige.deploy.domain.shared.vo.TaskId;
 import xyz.firestige.deploy.domain.task.TaskStatus;
 
 import java.util.ArrayList;
@@ -26,7 +27,7 @@ public class TaskRollingBackEvent extends TaskStatusEvent {
         this.stagesToRollback = new ArrayList<>();
     }
 
-    public TaskRollingBackEvent(String taskId, String reason, List<String> stagesToRollback) {
+    public TaskRollingBackEvent(TaskId taskId, String reason, List<String> stagesToRollback) {
         super(taskId, TaskStatus.ROLLING_BACK);
         this.reason = reason;
         this.stagesToRollback = stagesToRollback != null ? stagesToRollback : new ArrayList<>();

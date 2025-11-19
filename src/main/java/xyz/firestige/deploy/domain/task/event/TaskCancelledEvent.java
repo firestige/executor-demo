@@ -1,5 +1,8 @@
 package xyz.firestige.deploy.domain.task.event;
 
+import xyz.firestige.deploy.domain.shared.vo.PlanId;
+import xyz.firestige.deploy.domain.shared.vo.TaskId;
+import xyz.firestige.deploy.domain.shared.vo.TenantId;
 import xyz.firestige.deploy.domain.task.TaskStatus;
 
 /**
@@ -16,12 +19,12 @@ public class TaskCancelledEvent extends TaskStatusEvent {
         setMessage("任务已取消");
     }
 
-    public TaskCancelledEvent(String taskId) {
+    public TaskCancelledEvent(TaskId taskId) {
         super(taskId, TaskStatus.CANCELLED);
         setMessage("任务已取消");
     }
 
-    public TaskCancelledEvent(String taskId, String tenantId, Long planId) {
+    public TaskCancelledEvent(TaskId taskId, TenantId tenantId, PlanId planId) {
         super(taskId, tenantId, planId, TaskStatus.CANCELLED);
         setMessage("任务已取消");
     }

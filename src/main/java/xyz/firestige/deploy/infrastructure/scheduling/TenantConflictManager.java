@@ -2,6 +2,8 @@ package xyz.firestige.deploy.infrastructure.scheduling;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import xyz.firestige.deploy.domain.shared.vo.TaskId;
+import xyz.firestige.deploy.domain.shared.vo.TenantId;
 
 import java.time.Instant;
 import java.util.List;
@@ -102,8 +104,8 @@ public class TenantConflictManager {
             return new ConflictCheckResult(true, List.of(), "");
         }
 
-        public static ConflictCheckResult reject(List<String> conflicts) {
-            return new ConflictCheckResult(false, conflicts,
+        public static ConflictCheckResult reject(List<TenantId> conflicts) {
+            return new ConflictCheckResult(false, conflicts.stream().map(TenantId::getValue).toList(),
                     "租户冲突：以下租户已在运行中: " + conflicts);
         }
 
@@ -124,16 +126,16 @@ public class TenantConflictManager {
      * 冲突条目
      */
     private static class ConflictEntry {
-        final String taskId;
+        final TaskId taskId;
         volatile Instant registeredAt = Instant.now();
 
-        ConflictEntry(String taskId) {
+        ConflictEntry(TaskId taskId) {
             this.taskId = taskId;
         }
     }
 
     private final ConflictPolicy policy;
-    private final Map<String, ConflictEntry> runningTasks = new ConcurrentHashMap<>();
+    private final Map<TenantId, ConflictEntry> runningTasks = new ConcurrentHashMap<>();
 
     /**
      * 构造函数
@@ -154,7 +156,7 @@ public class TenantConflictManager {
      * @param taskId   任务 ID
      * @return true=成功获取锁，false=租户冲突
      */
-    public boolean registerTask(String tenantId, String taskId) {
+    public boolean registerTask(TenantId tenantId, TaskId taskId) {
         Objects.requireNonNull(tenantId, "tenantId");
         Objects.requireNonNull(taskId, "taskId");
         boolean registered = runningTasks.putIfAbsent(tenantId, new ConflictEntry(taskId)) == null;
@@ -172,7 +174,7 @@ public class TenantConflictManager {
      *
      * @param tenantId 租户 ID
      */
-    public void releaseTask(String tenantId) {
+    public void releaseTask(TenantId tenantId) {
         if (tenantId != null) {
             ConflictEntry removed = runningTasks.remove(tenantId);
             if (removed != null) {
@@ -187,7 +189,7 @@ public class TenantConflictManager {
      * @param tenantId 租户 ID
      * @return true=存在冲突，false=无冲突
      */
-    public boolean hasConflict(String tenantId) {
+    public boolean hasConflict(TenantId tenantId) {
         return runningTasks.containsKey(tenantId);
     }
 
@@ -197,7 +199,7 @@ public class TenantConflictManager {
      * @param tenantId 租户 ID
      * @return 冲突任务 ID，若无冲突则返回 null
      */
-    public String getConflictingTaskId(String tenantId) {
+    public TaskId getConflictingTaskId(TenantId tenantId) {
         ConflictEntry entry = runningTasks.get(tenantId);
         return entry != null ? entry.taskId : null;
     }
@@ -216,7 +218,7 @@ public class TenantConflictManager {
      * @param tenantIds Plan 包含的租户列表
      * @return 冲突检查结果
      */
-    public ConflictCheckResult canCreatePlan(List<String> tenantIds) {
+    public ConflictCheckResult canCreatePlan(List<TenantId> tenantIds) {
         // 细粒度策略：允许创建，冲突由 Task 执行时处理
         if (policy == ConflictPolicy.FINE_GRAINED) {
             log.debug("细粒度策略：允许创建 Plan，租户数量: {}", tenantIds.size());
@@ -224,7 +226,7 @@ public class TenantConflictManager {
         }
 
         // 粗粒度策略：检查所有租户，有冲突则拒绝
-        List<String> conflicts = getConflictingTenants(tenantIds);
+        List<TenantId> conflicts = getConflictingTenants(tenantIds);
         if (!conflicts.isEmpty()) {
             log.warn("粗粒度策略：拒绝创建 Plan，冲突租户: {}", conflicts);
             return ConflictCheckResult.reject(conflicts);
@@ -240,7 +242,7 @@ public class TenantConflictManager {
      * @param tenantIds 租户 ID 列表
      * @return 存在冲突的租户列表
      */
-    public List<String> getConflictingTenants(List<String> tenantIds) {
+    public List<TenantId> getConflictingTenants(List<TenantId> tenantIds) {
         return tenantIds.stream()
                 .filter(this::hasConflict)
                 .collect(Collectors.toList());

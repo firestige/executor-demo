@@ -1,5 +1,6 @@
 package xyz.firestige.deploy.application.checkpoint;
 
+import xyz.firestige.deploy.domain.shared.vo.TaskId;
 import xyz.firestige.deploy.domain.task.CheckpointRepository;
 import xyz.firestige.deploy.domain.task.TaskAggregate;
 import xyz.firestige.deploy.domain.task.TaskCheckpoint;
@@ -99,13 +100,13 @@ public class CheckpointService {
      * @param taskIds Task ID 列表
      * @return taskId -> TaskCheckpoint 的映射
      */
-    public Map<String, TaskCheckpoint> loadMultiple(List<String> taskIds) {
-        Map<String, TaskCheckpoint> result = new HashMap<>();
+    public Map<TaskId, TaskCheckpoint> loadMultiple(List<TaskId> taskIds) {
+        Map<TaskId, TaskCheckpoint> result = new HashMap<>();
         if (taskIds == null || taskIds.isEmpty()) {
             return result;
         }
         
-        for (String id : taskIds) {
+        for (TaskId id : taskIds) {
             TaskCheckpoint cp = store.get(id);
             if (cp != null) {
                 result.put(id, cp);

@@ -1,6 +1,9 @@
 package xyz.firestige.deploy.domain.task;
 
 import org.slf4j.MDC;
+import xyz.firestige.deploy.domain.shared.vo.PlanId;
+import xyz.firestige.deploy.domain.shared.vo.TaskId;
+import xyz.firestige.deploy.domain.shared.vo.TenantId;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -9,14 +12,14 @@ import java.util.Map;
  * Task runtime context: MDC, pause/cancel flags, and pipeline context bridge.
  */
 public class TaskRuntimeContext {
-    private final String planId;
-    private final String taskId;
-    private final String tenantId;
+    private final PlanId planId;
+    private final TaskId taskId;
+    private final TenantId tenantId;
     private final Map<String, Object> context;
     private volatile boolean pauseRequested;
     private volatile boolean cancelRequested;
 
-    public TaskRuntimeContext(String planId, String taskId, String tenantId) {
+    public TaskRuntimeContext(PlanId planId, TaskId taskId, TenantId tenantId) {
         this.planId = planId;
         this.taskId = taskId;
         this.tenantId = tenantId;
@@ -24,9 +27,9 @@ public class TaskRuntimeContext {
     }
 
     public void injectMdc(String stageName) {
-        MDC.put("planId", planId);
-        MDC.put("taskId", taskId);
-        MDC.put("tenantId", tenantId);
+        MDC.put("planId", planId.getValue());
+        MDC.put("taskId", taskId.getValue());
+        MDC.put("tenantId", tenantId.getValue());
         if (stageName != null) {
             MDC.put("stageName", stageName);
         }
@@ -42,9 +45,9 @@ public class TaskRuntimeContext {
     public void requestCancel() { this.cancelRequested = true; }
     public void clearCancel() { this.cancelRequested = false; }
 
-    public String getPlanId() { return planId; }
-    public String getTaskId() { return taskId; }
-    public String getTenantId() { return tenantId; }
+    public PlanId getPlanId() { return planId; }
+    public TaskId getTaskId() { return taskId; }
+    public TenantId getTenantId() { return tenantId; }
 
     public Object getAdditionalData(String key) {
         return context.get(key);

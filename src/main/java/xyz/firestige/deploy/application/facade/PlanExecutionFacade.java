@@ -8,8 +8,9 @@ import org.slf4j.LoggerFactory;
 
 import xyz.firestige.deploy.application.conflict.TenantConflictCoordinator;
 import xyz.firestige.deploy.application.lifecycle.PlanLifecycleService;
-import xyz.firestige.deploy.application.orchestration.PlanExecutionOrchestrator;
+import xyz.firestige.deploy.application.orchestration.TaskExecutionOrchestrator;
 import xyz.firestige.deploy.application.task.TaskOperationService;
+import xyz.firestige.deploy.domain.shared.vo.PlanId;
 import xyz.firestige.deploy.domain.task.TaskAggregate;
 import xyz.firestige.deploy.infrastructure.execution.TaskExecutor;
 
@@ -39,13 +40,13 @@ public class PlanExecutionFacade {
     private static final Logger logger = LoggerFactory.getLogger(PlanExecutionFacade.class);
 
     private final PlanLifecycleService planLifecycleService;
-    private final PlanExecutionOrchestrator orchestrator;
+    private final TaskExecutionOrchestrator orchestrator;
     private final TenantConflictCoordinator conflictCoordinator;
     private final TaskOperationService taskOperationService;
 
     public PlanExecutionFacade(
             PlanLifecycleService planLifecycleService,
-            PlanExecutionOrchestrator orchestrator,
+            TaskExecutionOrchestrator orchestrator,
             TenantConflictCoordinator conflictCoordinator,
             TaskOperationService taskOperationService) {
         this.planLifecycleService = planLifecycleService;
@@ -63,7 +64,7 @@ public class PlanExecutionFacade {
      *
      * @param planId Plan ID
      */
-    public void executePlan(String planId) {
+    public void executePlan(PlanId planId) {
         logger.info("[PlanExecutionFacade] 执行 Plan: {}", planId);
 
         // 1. 验证 Plan
@@ -89,7 +90,7 @@ public class PlanExecutionFacade {
      *
      * @param planId Plan ID
      */
-    public void resumePlanExecution(String planId) {
+    public void resumePlanExecution(PlanId planId) {
         logger.info("[PlanExecutionFacade] 恢复 Plan: {}", planId);
 
         // 1. 验证 Plan
@@ -114,7 +115,7 @@ public class PlanExecutionFacade {
      * @param planId Plan ID
      * @param fromCheckpoint 是否从 checkpoint 恢复
      */
-    public void retryPlanExecution(String planId, boolean fromCheckpoint) {
+    public void retryPlanExecution(PlanId planId, boolean fromCheckpoint) {
         logger.info("[PlanExecutionFacade] 重试 Plan: {}, fromCheckpoint: {}", planId, fromCheckpoint);
 
         // 1. 验证 Plan
@@ -138,7 +139,7 @@ public class PlanExecutionFacade {
      *
      * @param planId Plan ID
      */
-    public void rollbackPlanExecution(String planId) {
+    public void rollbackPlanExecution(PlanId planId) {
         logger.info("[PlanExecutionFacade] 回滚 Plan: {}", planId);
 
         // 1. 验证 Plan

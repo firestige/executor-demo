@@ -2,6 +2,8 @@ package xyz.firestige.deploy.application.orchestration.strategy;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import xyz.firestige.deploy.domain.shared.vo.PlanId;
+import xyz.firestige.deploy.domain.shared.vo.TenantId;
 import xyz.firestige.deploy.infrastructure.scheduling.ConflictRegistry;
 
 import java.util.List;
@@ -32,17 +34,17 @@ public class FineGrainedSchedulingStrategy implements PlanSchedulingStrategy {
     }
 
     @Override
-    public boolean canCreatePlan(List<String> tenantIds) {
+    public boolean canCreatePlan(List<TenantId> tenantIds) {
         // 细粒度策略：创建时不检查冲突，允许并发创建
         log.debug("细粒度策略：允许创建 Plan，租户数量: {}", tenantIds.size());
         return true;
     }
 
     @Override
-    public boolean canStartPlan(String planId, List<String> tenantIds) {
+    public boolean canStartPlan(PlanId planId, List<TenantId> tenantIds) {
         // 细粒度策略：启动时检查租户冲突，但不阻止 Plan 启动
         int conflictCount = 0;
-        for (String tenantId : tenantIds) {
+        for (TenantId tenantId : tenantIds) {
             if (conflictRegistry.hasConflict(tenantId)) {
                 conflictCount++;
                 log.warn("租户 {} 存在冲突，Plan {} 的该租户任务将被跳过", tenantId, planId);
@@ -59,13 +61,13 @@ public class FineGrainedSchedulingStrategy implements PlanSchedulingStrategy {
     }
 
     @Override
-    public void onPlanCreated(String planId, List<String> tenantIds) {
+    public void onPlanCreated(PlanId planId, List<TenantId> tenantIds) {
         // 无需特殊处理
         log.debug("Plan {} 创建完成，租户数量: {}", planId, tenantIds.size());
     }
 
     @Override
-    public void onPlanCompleted(String planId, List<String> tenantIds) {
+    public void onPlanCompleted(PlanId planId, List<TenantId> tenantIds) {
         // 释放租户锁（由 ConflictRegistry 和 PlanOrchestrator 处理）
         log.debug("Plan {} 完成，租户锁将由 ConflictRegistry 释放", planId);
     }

@@ -8,6 +8,7 @@ import xyz.firestige.deploy.config.ExecutorProperties;
 import xyz.firestige.deploy.domain.plan.PlanAggregate;
 import xyz.firestige.deploy.domain.plan.PlanDomainService;
 import xyz.firestige.deploy.domain.plan.PlanInfo;
+import xyz.firestige.deploy.domain.shared.vo.PlanId;
 import xyz.firestige.deploy.infrastructure.execution.stage.StageFactory;
 import xyz.firestige.deploy.infrastructure.execution.stage.TaskStage;
 import xyz.firestige.deploy.domain.task.TaskAggregate;
@@ -76,7 +77,7 @@ public class DeploymentPlanCreator {
         }
 
         // Step 2: 提取 Plan ID
-        String planId = extractPlanId(configs);
+        PlanId planId = extractPlanId(configs);
         logger.info("[DeploymentPlanCreator] 使用 Plan ID: {}", planId);
 
         try {
@@ -111,7 +112,7 @@ public class DeploymentPlanCreator {
      * @param config 租户配置
      */
     private TaskAggregate createAndLinkTask(TenantConfig config) {
-        String planId = String.valueOf(config.getPlanId());
+        PlanId planId = config.getPlanId();
         // 创建 Task 聚合
         TaskAggregate task = taskDomainService.createTask(planId, config);
 
@@ -142,11 +143,10 @@ public class DeploymentPlanCreator {
      * @param configs 配置列表
      * @return Plan ID
      */
-    private String extractPlanId(List<TenantConfig> configs) {
+    private PlanId extractPlanId(List<TenantConfig> configs) {
         return configs.stream()
                 .map(TenantConfig::getPlanId)
                 .findFirst()
-                .map(String::valueOf)
                 .orElseThrow(() -> new IllegalArgumentException("配置列表为空或缺少 Plan ID"));
     }
 }

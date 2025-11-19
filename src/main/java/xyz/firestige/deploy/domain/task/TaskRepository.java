@@ -1,5 +1,9 @@
 package xyz.firestige.deploy.domain.task;
 
+import xyz.firestige.deploy.domain.shared.vo.PlanId;
+import xyz.firestige.deploy.domain.shared.vo.TaskId;
+import xyz.firestige.deploy.domain.shared.vo.TenantId;
+
 import java.util.List;
 import java.util.Optional;
 
@@ -32,7 +36,7 @@ public interface TaskRepository {
      *
      * @param taskId Task ID
      */
-    void remove(String taskId);
+    void remove(TaskId taskId);
 
     // ========== 查询方法 ==========
 
@@ -42,7 +46,7 @@ public interface TaskRepository {
      * @param taskId Task ID
      * @return Task 聚合，如果不存在则返回 empty
      */
-    Optional<TaskAggregate> findById(String taskId);
+    Optional<TaskAggregate> findById(TaskId taskId);
 
     /**
      * 根据租户 ID 查找 Task
@@ -50,7 +54,7 @@ public interface TaskRepository {
      * @param tenantId 租户 ID
      * @return Task 聚合，如果不存在则返回 empty
      */
-    Optional<TaskAggregate> findByTenantId(String tenantId);
+    Optional<TaskAggregate> findByTenantId(TenantId tenantId);
 
     /**
      * 根据 Plan ID 查找所有 Task
@@ -58,6 +62,6 @@ public interface TaskRepository {
      * @param planId Plan ID
      * @return Task 列表，如果不存在则返回空列表
      */
-    List<TaskAggregate> findByPlanId(String planId);
+    List<TaskAggregate> findByPlanId(PlanId planId);
 }
 

@@ -2,6 +2,7 @@ package xyz.firestige.deploy.application.plan;
 
 import xyz.firestige.deploy.domain.plan.PlanInfo;
 import xyz.firestige.deploy.domain.shared.validation.ValidationSummary;
+import xyz.firestige.deploy.domain.shared.vo.PlanId;
 
 /**
  * Plan 创建上下文（RF-10 重构）
@@ -55,7 +56,7 @@ public class PlanCreationContext {
      *
      * @return Plan ID，如果创建失败则返回 null
      */
-    public String getPlanId() {
+    public PlanId getPlanId() {
         return planInfo != null ? planInfo.getPlanId() : null;
     }
 

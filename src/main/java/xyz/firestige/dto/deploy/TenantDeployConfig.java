@@ -18,6 +18,13 @@ public class TenantDeployConfig {
     private Long planVersion;
     private TenantDeployConfig sourceTenantDeployConfig;
 
+    /**
+     * 需要切换的服务名称列表（可选）
+     * 例如: ["blue-green-gateway", "portal", "asbc-gateway"]
+     * 如果为空，Converter 将使用配置文件中的默认值
+     */
+    private List<String> serviceNames;
+
     public Long getDeployUnitId() {
         return deployUnitId;
     }
@@ -112,5 +119,13 @@ public class TenantDeployConfig {
 
     public void setSourceTenantDeployConfig(TenantDeployConfig sourceTenantDeployConfig) {
         this.sourceTenantDeployConfig = sourceTenantDeployConfig;
+    }
+
+    public List<String> getServiceNames() {
+        return serviceNames;
+    }
+
+    public void setServiceNames(List<String> serviceNames) {
+        this.serviceNames = serviceNames;
     }
 }

@@ -1,5 +1,8 @@
 package xyz.firestige.deploy.domain.task.event;
 
+import xyz.firestige.deploy.domain.shared.vo.PlanId;
+import xyz.firestige.deploy.domain.shared.vo.TaskId;
+import xyz.firestige.deploy.domain.shared.vo.TenantId;
 import xyz.firestige.deploy.domain.task.TaskStatus;
 
 /**
@@ -17,13 +20,13 @@ public class TaskStartedEvent extends TaskStatusEvent {
         setStatus(TaskStatus.RUNNING);
     }
 
-    public TaskStartedEvent(String taskId, int totalStages) {
+    public TaskStartedEvent(TaskId taskId, int totalStages) {
         super(taskId, TaskStatus.RUNNING);
         this.totalStages = totalStages;
         setMessage("任务开始执行，总 Stage 数: " + totalStages);
     }
 
-    public TaskStartedEvent(String taskId, String tenantId, Long planId, int totalStages) {
+    public TaskStartedEvent(TaskId taskId, TenantId tenantId, PlanId planId, int totalStages) {
         super(taskId, tenantId, planId, TaskStatus.RUNNING);
         this.totalStages = totalStages;
         setMessage("任务开始执行，总 Stage 数: " + totalStages);

@@ -67,10 +67,10 @@ public class TaskAggregate {
     // ============================================
     private final List<TaskStatusEvent> domainEvents = new ArrayList<>();
 
-    public TaskAggregate(String taskId, String planId, String tenantId) {
-        this.taskId = TaskId.of(taskId);
-        this.planId = PlanId.of(planId);
-        this.tenantId = TenantId.of(tenantId);
+    public TaskAggregate(TaskId taskId, PlanId planId, TenantId tenantId) {
+        this.taskId = taskId;
+        this.planId = planId;
+        this.tenantId = tenantId;
         this.status = TaskStatus.CREATED;
         this.timeRange = TimeRange.notStarted();
         this.duration = TaskDuration.notStarted();
@@ -132,7 +132,7 @@ public class TaskAggregate {
         this.timeRange = timeRange.start();
 
         // ✅ 产生领域事件
-        TaskStartedEvent event = new TaskStartedEvent(taskId.getValue(), stageProgress.getTotalStages());
+        TaskStartedEvent event = new TaskStartedEvent(taskId, stageProgress.getTotalStages());
         addDomainEvent(event);
     }
 
@@ -180,7 +180,7 @@ public class TaskAggregate {
 
         // ✅ 产生领域事件
         TaskPausedEvent event = new TaskPausedEvent();
-        event.setTaskId(taskId.getValue());
+        event.setTaskId(taskId);
         event.setStatus(TaskStatus.PAUSED);
         addDomainEvent(event);
     }
@@ -219,7 +219,7 @@ public class TaskAggregate {
         calculateDuration();
 
         // ✅ 产生领域事件
-        TaskCancelledEvent event = new TaskCancelledEvent(taskId.getValue());
+        TaskCancelledEvent event = new TaskCancelledEvent(taskId);
         event.setCancelledBy(cancelledBy);
         addDomainEvent(event);
     }
@@ -252,7 +252,7 @@ public class TaskAggregate {
 
         // ✅ 产生领域事件（包含进度信息）
         TaskStageCompletedEvent event = new TaskStageCompletedEvent(
-                taskId.getValue(),
+                taskId,
                 stageName,
                 stageProgress.getCurrentStageIndex(),  // 已完成的 Stage 数
                 stageProgress.getTotalStages(),
@@ -306,7 +306,7 @@ public class TaskAggregate {
 
         // ✅ 产生领域事件
         TaskCompletedEvent event = new TaskCompletedEvent();
-        event.setTaskId(taskId.getValue());
+        event.setTaskId(taskId);
         event.setStatus(TaskStatus.COMPLETED);
         addDomainEvent(event);
     }
@@ -342,7 +342,7 @@ public class TaskAggregate {
         }
 
         // ✅ 产生领域事件
-        TaskRetryStartedEvent event = new TaskRetryStartedEvent(taskId.getValue(), fromCheckpoint);
+        TaskRetryStartedEvent event = new TaskRetryStartedEvent(taskId, fromCheckpoint);
         addDomainEvent(event);
     }
 
@@ -369,7 +369,7 @@ public class TaskAggregate {
         this.status = TaskStatus.RUNNING;
 
         // ✅ 产生领域事件
-        TaskRetryStartedEvent event = new TaskRetryStartedEvent(taskId.getValue(), false);
+        TaskRetryStartedEvent event = new TaskRetryStartedEvent(taskId, false);
         addDomainEvent(event);
     }
 
@@ -386,7 +386,7 @@ public class TaskAggregate {
         this.status = TaskStatus.ROLLING_BACK;
 
         // ✅ 产生领域事件
-        TaskRollingBackEvent event = new TaskRollingBackEvent(taskId.getValue(), reason, null);
+        TaskRollingBackEvent event = new TaskRollingBackEvent(taskId, reason, null);
         addDomainEvent(event);
     }
 
@@ -404,7 +404,7 @@ public class TaskAggregate {
         this.status = TaskStatus.ROLLING_BACK;
 
         // ✅ 产生领域事件
-        TaskRollingBackEvent event = new TaskRollingBackEvent(taskId.getValue(), "系统触发回滚", null);
+        TaskRollingBackEvent event = new TaskRollingBackEvent(taskId, "系统触发回滚", null);
         addDomainEvent(event);
     }
 
@@ -423,7 +423,7 @@ public class TaskAggregate {
         calculateDuration();
 
         // ✅ 产生领域事件
-        TaskRolledBackEvent event = new TaskRolledBackEvent(taskId.getValue(), null);
+        TaskRolledBackEvent event = new TaskRolledBackEvent(taskId, null);
         if (prevConfigSnapshot != null) {
             event.setPrevDeployUnitVersion(prevConfigSnapshot.getDeployUnitVersion());
         }
@@ -478,7 +478,7 @@ public class TaskAggregate {
 
         // ✅ 产生领域事件
         TaskFailedEvent event = new TaskFailedEvent();
-        event.setTaskId(taskId.getValue());
+        event.setTaskId(taskId);
         event.setStatus(TaskStatus.FAILED);
         event.setMessage(failure.getErrorMessage());
         addDomainEvent(event);
@@ -512,13 +512,13 @@ public class TaskAggregate {
     // Getter/Setter（RF-13 重构：返回值对象）
     // ============================================
 
-    public String getTaskId() { return taskId.getValue(); }
+    public TaskId getTaskId() { return taskId; }
     public TaskId getTaskIdVO() { return taskId; }
     
-    public String getPlanId() { return planId.getValue(); }
+    public PlanId getPlanId() { return planId; }
     public PlanId getPlanIdVO() { return planId; }
     
-    public String getTenantId() { return tenantId.getValue(); }
+    public TenantId getTenantId() { return tenantId; }
     public TenantId getTenantIdVO() { return tenantId; }
 
     public Long getDeployUnitId() { 

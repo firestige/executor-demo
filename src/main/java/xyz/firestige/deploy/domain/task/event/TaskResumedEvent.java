@@ -1,5 +1,6 @@
 package xyz.firestige.deploy.domain.task.event;
 
+import xyz.firestige.deploy.domain.shared.vo.TaskId;
 import xyz.firestige.deploy.domain.task.TaskStatus;
 
 /**
@@ -22,7 +23,7 @@ public class TaskResumedEvent extends TaskStatusEvent {
         setStatus(TaskStatus.RESUMING);
     }
 
-    public TaskResumedEvent(String taskId, String resumedBy, String resumeFromStage) {
+    public TaskResumedEvent(TaskId taskId, String resumedBy, String resumeFromStage) {
         super(taskId, TaskStatus.RESUMING);
         this.resumedBy = resumedBy;
         this.resumeFromStage = resumeFromStage;

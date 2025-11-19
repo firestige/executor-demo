@@ -1,6 +1,7 @@
 package xyz.firestige.deploy.domain.plan.event;
 
 import xyz.firestige.deploy.domain.plan.PlanStatus;
+import xyz.firestige.deploy.domain.shared.vo.PlanId;
 
 import java.time.LocalDateTime;
 import java.util.UUID;
@@ -19,7 +20,7 @@ public abstract class PlanStatusEvent {
     /**
      * 计划 ID
      */
-    private String planId;
+    private PlanId planId;
 
     /**
      * 计划状态
@@ -41,13 +42,13 @@ public abstract class PlanStatusEvent {
         this.timestamp = LocalDateTime.now();
     }
 
-    public PlanStatusEvent(String planId, PlanStatus status) {
+    public PlanStatusEvent(PlanId planId, PlanStatus status) {
         this();
         this.planId = planId;
         this.status = status;
     }
 
-    public PlanStatusEvent(String planId, PlanStatus status, String message) {
+    public PlanStatusEvent(PlanId planId, PlanStatus status, String message) {
         this(planId, status);
         this.message = message;
     }
@@ -62,11 +63,11 @@ public abstract class PlanStatusEvent {
         this.eventId = eventId;
     }
 
-    public String getPlanId() {
+    public PlanId getPlanId() {
         return planId;
     }
 
-    public void setPlanId(String planId) {
+    public void setPlanId(PlanId planId) {
         this.planId = planId;
     }
 

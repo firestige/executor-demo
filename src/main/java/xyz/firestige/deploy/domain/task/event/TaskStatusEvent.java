@@ -1,6 +1,9 @@
 package xyz.firestige.deploy.domain.task.event;
 
 import xyz.firestige.deploy.domain.shared.exception.FailureInfo;
+import xyz.firestige.deploy.domain.shared.vo.PlanId;
+import xyz.firestige.deploy.domain.shared.vo.TaskId;
+import xyz.firestige.deploy.domain.shared.vo.TenantId;
 import xyz.firestige.deploy.domain.task.TaskStatus;
 
 import java.time.LocalDateTime;
@@ -20,17 +23,17 @@ public abstract class TaskStatusEvent {
     /**
      * 任务 ID
      */
-    private String taskId;
+    private TaskId taskId;
 
     /**
      * 租户 ID
      */
-    private String tenantId;
+    private TenantId tenantId;
 
     /**
      * 计划 ID
      */
-    private Long planId;
+    private PlanId planId;
 
     /**
      * 任务状态
@@ -62,13 +65,13 @@ public abstract class TaskStatusEvent {
         this.timestamp = LocalDateTime.now();
     }
 
-    public TaskStatusEvent(String taskId, TaskStatus status) {
+    public TaskStatusEvent(TaskId taskId, TaskStatus status) {
         this();
         this.taskId = taskId;
         this.status = status;
     }
 
-    public TaskStatusEvent(String taskId, String tenantId, Long planId, TaskStatus status) {
+    public TaskStatusEvent(TaskId taskId, TenantId tenantId, PlanId planId, TaskStatus status) {
         this();
         this.taskId = taskId;
         this.tenantId = tenantId;
@@ -86,27 +89,27 @@ public abstract class TaskStatusEvent {
         this.eventId = eventId;
     }
 
-    public String getTaskId() {
+    public TaskId getTaskId() {
         return taskId;
     }
 
-    public void setTaskId(String taskId) {
+    public void setTaskId(TaskId taskId) {
         this.taskId = taskId;
     }
 
-    public String getTenantId() {
+    public TenantId getTenantId() {
         return tenantId;
     }
 
-    public void setTenantId(String tenantId) {
+    public void setTenantId(TenantId tenantId) {
         this.tenantId = tenantId;
     }
 
-    public Long getPlanId() {
+    public PlanId getPlanId() {
         return planId;
     }
 
-    public void setPlanId(Long planId) {
+    public void setPlanId(PlanId planId) {
         this.planId = planId;
     }
 

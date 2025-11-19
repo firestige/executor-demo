@@ -1,5 +1,8 @@
 package xyz.firestige.deploy.infrastructure.scheduling;
 
+import xyz.firestige.deploy.domain.shared.vo.TaskId;
+import xyz.firestige.deploy.domain.shared.vo.TenantId;
+
 import java.time.Instant;
 import java.util.Map;
 import java.util.Objects;
@@ -11,41 +14,41 @@ import java.util.concurrent.ConcurrentHashMap;
 public class ConflictRegistry {
 
     private static class Entry {
-        final String taskId;
+        final TaskId taskId;
         volatile Instant registeredAt = Instant.now();
-        Entry(String taskId) { this.taskId = taskId; }
+        Entry(TaskId taskId) { this.taskId = taskId; }
     }
 
     // tenantId -> Entry
-    private final Map<String, Entry> running = new ConcurrentHashMap<>();
+    private final Map<TenantId, Entry> running = new ConcurrentHashMap<>();
 
     /**
      * 注册租户，如果已在运行则返回 false。
      */
-    public boolean register(String tenantId, String taskId) {
+    public boolean register(TenantId tenantId, TaskId taskId) {
         Objects.requireNonNull(tenantId, "tenantId");
         Objects.requireNonNull(taskId, "taskId");
         return running.putIfAbsent(tenantId, new Entry(taskId)) == null;
     }
 
     /** 是否在运行中 */
-    public boolean isRunning(String tenantId) {
+    public boolean isRunning(TenantId tenantId) {
         return running.containsKey(tenantId);
     }
 
     /** 检查租户是否存在冲突（RF-12 新增） */
-    public boolean hasConflict(String tenantId) {
+    public boolean hasConflict(TenantId tenantId) {
         return running.containsKey(tenantId);
     }
 
     /** 返回当前租户对应的任务ID，若无则 null */
-    public String getRunningTaskId(String tenantId) {
+    public TaskId getRunningTaskId(TenantId tenantId) {
         Entry e = running.get(tenantId);
         return e == null ? null : e.taskId;
     }
 
     /** 释放租户占用 */
-    public void release(String tenantId) {
+    public void release(TenantId tenantId) {
         running.remove(tenantId);
     }
 

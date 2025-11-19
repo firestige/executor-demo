@@ -1,5 +1,8 @@
 package xyz.firestige.deploy.domain.task;
 
+import xyz.firestige.deploy.domain.shared.vo.TaskId;
+import xyz.firestige.deploy.domain.shared.vo.TenantId;
+
 /**
  * Task 信息
  * 值对象，表达 Task 实体的基本信息
@@ -7,12 +10,12 @@ package xyz.firestige.deploy.domain.task;
  */
 public class TaskInfo {
 
-    private final String taskId;
-    private final String tenantId;
+    private final TaskId taskId;
+    private final TenantId tenantId;
     private final Long deployUnitVersion;
     private final TaskStatus status;
 
-    public TaskInfo(String taskId, String tenantId, Long deployUnitVersion, TaskStatus status) {
+    public TaskInfo(TaskId taskId, TenantId tenantId, Long deployUnitVersion, TaskStatus status) {
         this.taskId = taskId;
         this.tenantId = tenantId;
         this.deployUnitVersion = deployUnitVersion;
@@ -33,11 +36,11 @@ public class TaskInfo {
 
     // Getters only (值对象不可变，无 Setters)
 
-    public String getTaskId() {
+    public TaskId getTaskId() {
         return taskId;
     }
 
-    public String getTenantId() {
+    public TenantId getTenantId() {
         return tenantId;
     }
 

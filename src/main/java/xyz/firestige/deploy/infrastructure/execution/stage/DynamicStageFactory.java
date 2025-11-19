@@ -50,38 +50,91 @@ public class DynamicStageFactory implements StageFactory {
     
     @Override
     public List<TaskStage> buildStages(TenantConfig tenantConfig) {
-        // 1. 确定服务类型（从 TenantConfig 推断）
-        String serviceType = determineServiceType(tenantConfig);
-        
-        log.info("Building stages for service type: {} (tenant={})", 
-                serviceType, tenantConfig.getTenantId());
-        
-        // 2. 通过防腐层转换为领域配置
-        ServiceConfig serviceConfig = configFactory.createConfig(serviceType, tenantConfig);
-        
-        // 3. 从 YAML 读取服务类型定义
-        ServiceTypeConfig serviceTypeConfig = configLoader.getServiceType(serviceType);
-        if (serviceTypeConfig == null) {
-            throw new UnsupportedOperationException("Service type not configured: " + serviceType);
+        // 1. 获取服务名称列表（有序）
+        List<String> serviceNames = tenantConfig.getServiceNames();
+
+        if (serviceNames == null || serviceNames.isEmpty()) {
+            throw new IllegalStateException(
+                String.format("Service names not configured for tenant: %s", tenantConfig.getTenantId()));
+        }
+
+        log.info("Building stages for {} services (tenant={}): {}",
+                serviceNames.size(), tenantConfig.getTenantId(), serviceNames);
+
+        // 2. 遍历服务列表，为每个服务构建 Stage
+        List<TaskStage> allStages = new ArrayList<>();
+
+        for (String serviceName : serviceNames) {
+            try {
+                // 2.1 从 YAML 读取服务配置模板
+                ServiceTypeConfig serviceTypeConfig = configLoader.getServiceConfig(serviceName);
+                if (serviceTypeConfig == null) {
+                    throw new UnsupportedOperationException(
+                        String.format("Service not configured in deploy-stages.yml: %s", serviceName));
+                }
+
+                // 2.2 通过防腐层转换为领域服务配置（注入租户特定信息）
+                ServiceConfig serviceConfig = configFactory.createConfig(serviceName, tenantConfig);
+
+                // 2.3 构建该服务的所有 Stage
+                List<TaskStage> serviceStages = buildStagesForService(
+                    serviceName,
+                    serviceTypeConfig,
+                    serviceConfig
+                );
+                allStages.addAll(serviceStages);
+
+                log.info("Created {} stage(s) for service: {}",
+                        serviceStages.size(), serviceName);
+
+            } catch (Exception e) {
+                log.error("Failed to build stages for service: {}", serviceName, e);
+                throw new IllegalStateException(
+                    String.format("Failed to build stages for service '%s': %s",
+                            serviceName, e.getMessage()), e);
+            }
         }
         
-        // 4. 动态构建 Stage 列表
+        log.info("Total stages built: {} for {} services (tenant={})",
+                allStages.size(), serviceNames.size(), tenantConfig.getTenantId());
+        return allStages;
+    }
+
+    /**
+     * 为单个服务构建所有 Stage
+     *
+     * @param serviceName 服务名称
+     * @param serviceTypeConfig YAML 配置模板
+     * @param serviceConfig 领域服务配置
+     * @return 该服务的所有 Stage 列表
+     */
+    private List<TaskStage> buildStagesForService(
+            String serviceName,
+            ServiceTypeConfig serviceTypeConfig,
+            ServiceConfig serviceConfig) {
+
         List<TaskStage> stages = new ArrayList<>();
+
         for (StageDefinition stageDef : serviceTypeConfig.getStages()) {
-            TaskStage stage = buildStage(stageDef, serviceConfig);
+            TaskStage stage = buildStage(serviceName, stageDef, serviceConfig);
             stages.add(stage);
             
-            log.info("Created stage: name={}, steps={}", stageDef.getName(), stageDef.getSteps().size());
+            log.debug("Created stage: service={}, name={}, steps={}",
+                    serviceName, stageDef.getName(), stageDef.getSteps().size());
         }
         
-        log.info("Total stages built: {}", stages.size());
         return stages;
     }
     
     /**
      * 构建单个 Stage
+     *
+     * @param serviceName 服务名称
+     * @param stageDef Stage 定义
+     * @param serviceConfig 服务配置
+     * @return TaskStage
      */
-    private TaskStage buildStage(StageDefinition stageDef, ServiceConfig serviceConfig) {
+    private TaskStage buildStage(String serviceName, StageDefinition stageDef, ServiceConfig serviceConfig) {
         List<StageStep> steps = new ArrayList<>();
         
         for (StepDefinition stepDef : stageDef.getSteps()) {
@@ -89,29 +142,9 @@ public class DynamicStageFactory implements StageFactory {
             steps.add(step);
         }
         
-        return new CompositeServiceStage(stageDef.getName(), steps);
-    }
-    
-    /**
-     * 从 TenantConfig 推断服务类型
-     * 
-     * 规则：
-     * 1. 如果有 mediaRoutingConfig 且已启用 → asbc-gateway
-     * 2. 默认 → blue-green-gateway
-     * 
-     * TODO: 后续可以在 TenantConfig 中显式添加 serviceType 字段
-     */
-    private String determineServiceType(TenantConfig tenantConfig) {
-        // 规则 1：ASBC 网关特征检测
-        if (tenantConfig.getMediaRoutingConfig() != null && 
-            tenantConfig.getMediaRoutingConfig().isEnabled()) {
-            return "asbc-gateway";
-        }
-        
-        // TODO: 可以根据其他字段进一步推断 portal vs blue-green-gateway
-        // 例如：根据 deployUnit.name 或专门的 serviceType 字段
-        
-        // 默认：蓝绿网关
-        return "blue-green-gateway";
+        // Stage 名称：service-{serviceName}-{stageName}
+        // 例如：service-blue-green-gateway-deploy-stage
+        String stageName = String.format("service-%s-%s", serviceName, stageDef.getName());
+        return new CompositeServiceStage(stageName, steps);
     }
 }

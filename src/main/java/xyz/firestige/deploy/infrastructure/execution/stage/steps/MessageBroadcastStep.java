@@ -3,6 +3,7 @@ package xyz.firestige.deploy.infrastructure.execution.stage.steps;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import xyz.firestige.deploy.domain.stage.config.ServiceConfig;
 import xyz.firestige.deploy.domain.task.TaskRuntimeContext;
 import xyz.firestige.deploy.infrastructure.config.DeploymentConfigLoader;
@@ -24,14 +25,14 @@ public class MessageBroadcastStep extends AbstractConfigurableStep {
     
     private static final Logger log = LoggerFactory.getLogger(MessageBroadcastStep.class);
     
-    private final RedisTemplate<String, Object> redisTemplate;
+    private final StringRedisTemplate redisTemplate;
     private final DeploymentConfigLoader configLoader;
     
     public MessageBroadcastStep(
             String stepName,
             Map<String, Object> stepConfig,
             ServiceConfig serviceConfig,
-            RedisTemplate<String, Object> redisTemplate,
+            StringRedisTemplate redisTemplate,
             DeploymentConfigLoader configLoader) {
         
         super(stepName, stepConfig, serviceConfig);

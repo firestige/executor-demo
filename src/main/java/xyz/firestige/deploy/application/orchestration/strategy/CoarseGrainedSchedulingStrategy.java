@@ -2,6 +2,9 @@ package xyz.firestige.deploy.application.orchestration.strategy;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import xyz.firestige.deploy.domain.plan.PlanInfo;
+import xyz.firestige.deploy.domain.shared.vo.PlanId;
+import xyz.firestige.deploy.domain.shared.vo.TenantId;
 import xyz.firestige.deploy.infrastructure.scheduling.ConflictRegistry;
 
 import java.util.ArrayList;
@@ -39,10 +42,10 @@ public class CoarseGrainedSchedulingStrategy implements PlanSchedulingStrategy {
     }
     
     @Override
-    public boolean canCreatePlan(List<String> tenantIds) {
+    public boolean canCreatePlan(List<TenantId> tenantIds) {
         // 粗粒度策略：创建前检查所有租户
-        List<String> conflictTenants = new ArrayList<>();
-        for (String tenantId : tenantIds) {
+        List<TenantId> conflictTenants = new ArrayList<>();
+        for (TenantId tenantId : tenantIds) {
             if (conflictRegistry.hasConflict(tenantId)) {
                 conflictTenants.add(tenantId);
             }
@@ -58,10 +61,10 @@ public class CoarseGrainedSchedulingStrategy implements PlanSchedulingStrategy {
     }
     
     @Override
-    public boolean canStartPlan(String planId, List<String> tenantIds) {
+    public boolean canStartPlan(PlanId planId, List<TenantId> tenantIds) {
         // 启动时再次检查（双重保险）
-        List<String> conflictTenants = new ArrayList<>();
-        for (String tenantId : tenantIds) {
+        List<TenantId> conflictTenants = new ArrayList<>();
+        for (TenantId tenantId : tenantIds) {
             if (conflictRegistry.hasConflict(tenantId)) {
                 conflictTenants.add(tenantId);
             }
@@ -77,12 +80,12 @@ public class CoarseGrainedSchedulingStrategy implements PlanSchedulingStrategy {
     }
     
     @Override
-    public void onPlanCreated(String planId, List<String> tenantIds) {
+    public void onPlanCreated(PlanId planId, List<TenantId> tenantIds) {
         log.debug("粗粒度策略：Plan {} 创建完成，租户列表: {}", planId, tenantIds);
     }
     
     @Override
-    public void onPlanCompleted(String planId, List<String> tenantIds) {
+    public void onPlanCompleted(PlanId planId, List<TenantId> tenantIds) {
         log.debug("粗粒度策略：Plan {} 完成，租户锁由 ConflictRegistry 释放", planId);
     }
 }

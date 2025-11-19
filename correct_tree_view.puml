@@ -1,0 +1,640 @@
+@startuml correct_tree_view
+'===============================================================================
+' DDD 分层架构 - 完整包结构树状图（含问题标注）
+' 遵循 DDD 的严格分层：Facade -> Application -> Domain -> Infrastructure
+'===============================================================================
+
+skinparam packageStyle folder
+skinparam backgroundColor #FEFEFE
+skinparam packageBackgroundColor #E8F5E9
+skinparam packageBorderColor #4CAF50
+skinparam packageFontSize 12
+skinparam packageFontStyle bold
+
+'===============================================================================
+' ⚠️ 包结构问题汇总（需要重构）
+'===============================================================================
+note top of root
+  **包结构存在的问题：**
+  
+  ❌ **问题 1：顶级包结构混乱**
+  - xyz.firestige.dto.deploy.TenantDeployConfig
+  - xyz.firestige.entity.deploy.NetworkEndpoint
+  
+  这两个类应该移动到 DDD 分层内部：
+  → TenantDeployConfig 应该在 facade.dto 或 application.dto
+  → NetworkEndpoint 已有 domain.shared.vo.NetworkEndpoint，
+    entity 包的应该废弃或合并
+  
+  ❌ **问题 2：infrastructure 包被简化导入**
+  - import xyz.firestige.deploy.state.* 
+    (应该是 infrastructure.state.*)
+  - import xyz.firestige.deploy.execution.* 
+    (应该是 infrastructure.execution.*)
+  - import xyz.firestige.deploy.metrics.* 
+    (应该是 infrastructure.metrics.*)
+  
+  这些短路径导致分层不清晰，建议统一使用完整路径
+  
+  ❌ **问题 3：domain 层依赖外部 dto/entity**
+  - PlanFactory 依赖 xyz.firestige.dto.deploy.TenantDeployConfig
+  - HealthCheckStep 依赖 xyz.firestige.entity.deploy.NetworkEndpoint
+  - ValidationSummary 依赖 xyz.firestige.dto.deploy.TenantDeployConfig
+  
+  **违反 DDD 原则**：Domain 层不应依赖外部包
+end note
+
+'===============================================================================
+' 顶层包：xyz.firestige.deploy
+'===============================================================================
+package "xyz.firestige.deploy" as root {
+
+  '=============================================================================
+  ' ⚠️ 问题包：应该被移除或重构的顶级包（不符合 DDD 分层）
+  '=============================================================================
+  package "xyz.firestige.dto.deploy" as wrong_dto #FFE6E6 {
+    class "TenantDeployConfig <<应移到 facade.dto>>" as WrongTenantDeployConfig
+    note right of WrongTenantDeployConfig
+      **问题**：
+      - 被 Domain 层引用（PlanFactory, ValidationSummary）
+      - 被 Facade 层引用（DeploymentTaskFacade）
+      - 应该移动到 facade 层或创建领域模型
+      
+      **建议**：
+      1. 在 facade 层保留此类（外部 DTO）
+      2. 在 application 层转换为内部 DTO (TenantConfig)
+      3. Domain 层使用自己的领域对象
+    end note
+  }
+  
+  package "⚠️ xyz.firestige.entity.deploy <<WRONG LOCATION>>" as wrong_entity #FFE6E6 {
+    class "NetworkEndpoint <<与 VO 重复>>" as WrongNetworkEndpoint
+    note right of WrongNetworkEndpoint
+      **问题**：
+      - 与 domain.shared.vo.NetworkEndpoint 重复
+      - 被 Domain 层引用（HealthCheckStep）
+      - 应该统一使用 Value Object
+      
+      **建议**：
+      1. 删除 entity.deploy.NetworkEndpoint
+      2. 统一使用 domain.shared.vo.NetworkEndpoint
+      3. Facade 层做 DTO 转换
+    end note
+  }
+
+  '=============================================================================
+  ' 1. Facade 层 (用户接口层 / API 层)
+  ' 职责：对外暴露 API，接收外部请求，转换 DTO
+  '=============================================================================
+  package "facade <<Facade Layer>>" as facade #LightBlue {
+    class DeploymentTaskFacade
+    class TaskStatusInfo
+    
+    package "converter" as facade_converter {
+      class TenantConfigConverter
+    }
+    
+    package "exception" as facade_exception {
+      class TaskCreationException
+      class TaskOperationException
+      class TaskNotFoundException
+      class PlanNotFoundException
+    }
+    
+    note bottom of facade
+      **⚠️ 问题**：Facade 层缺少 DTO 定义
+      
+      **现状**：
+      - DeploymentTaskFacade 直接使用 
+        xyz.firestige.dto.deploy.TenantDeployConfig
+      
+      **建议**：
+      - 在 facade.dto 中定义外部 DTO
+      - 或者接受外部 DTO 在顶级包的设计
+        (如果是独立的 API 契约)
+    end note
+  }
+
+  '=============================================================================
+  ' 2. Application 层 (应用服务层)
+  ' 职责：编排业务流程，协调领域服务，不包含业务逻辑
+  '=============================================================================
+  package "application <<Application Layer>>" as application #LightYellow {
+    class DeploymentApplicationService
+    
+    package "dto" as app_dto {
+      class TenantConfig
+      class DeployUnitIdentifier
+      class MediaRoutingConfig
+    }
+    
+    package "plan" as app_plan {
+      class DeploymentPlanCreator
+      class PlanCreationContext
+      class PlanCreationException
+    }
+    
+    package "checkpoint" as app_checkpoint {
+      class CheckpointService
+    }
+    
+    package "validation" as app_validation {
+      class BusinessValidator
+      class ConflictValidator
+      class ValidationException
+    }
+    
+    package "orchestration" as app_orchestration {
+      class PlanOrchestrator
+      class TaskScheduler
+      class ExecutionMode
+      
+      package "strategy" as orch_strategy {
+        interface PlanSchedulingStrategy
+        class CoarseGrainedSchedulingStrategy
+        class FineGrainedSchedulingStrategy
+        class SchedulingStrategyConfiguration
+      }
+      
+      package "listener" as orch_listener {
+        class PlanCompletionListener
+      }
+    }
+  }
+
+  '=============================================================================
+  ' 3. Domain 层 (领域核心层)
+  ' 职责：核心业务逻辑、聚合根、实体、值对象、领域服务
+  '=============================================================================
+  package "domain <<Domain Layer>>" as domain #LightGreen {
+    
+    '===========================================================================
+    ' 3.1 Plan 聚合 (部署计划)
+    '===========================================================================
+    package "plan" as domain_plan {
+      class "PlanAggregate <<Aggregate Root>>" as PlanAggregate
+      class PlanDomainService
+      class PlanFactory
+      class PlanRepository <<Interface>>
+      class PlanContext
+      class PlanInfo
+      class PlanProgress
+      class PlanStatus <<Enum>>
+      class PlanCreationResult
+      class PlanOperationResult
+      
+      note right of PlanFactory
+        **⚠️ 问题**：依赖外部 DTO
+        
+        import xyz.firestige.dto.deploy.TenantDeployConfig
+        import xyz.firestige.entity.deploy.NetworkEndpoint
+        
+        **违反原则**：Domain 不应依赖外部包
+        **建议**：接受 application 层的内部 DTO
+      end note
+      
+      package "event" as plan_event {
+        abstract class PlanStatusEvent
+        class PlanReadyEvent
+        class PlanStartedEvent
+        class PlanPausedEvent
+        class PlanResumedEvent
+        class PlanCompletedEvent
+        class PlanFailedEvent
+      }
+    }
+    
+    '===========================================================================
+    ' 3.2 Task 聚合 (部署任务)
+    '===========================================================================
+    package "task" as domain_task {
+      class "TaskAggregate <<Aggregate Root>>" as TaskAggregate
+      class TaskDomainService
+      class TaskRepository <<Interface>>
+      class TaskRuntimeRepository <<Interface>>
+      class CheckpointRepository <<Interface>>
+      class TaskInfo
+      class TaskStatus <<Enum>>
+      class TaskCheckpoint
+      class TaskDuration
+      class TaskRuntimeContext
+      class TenantDeployConfigSnapshot
+      class RetryPolicy
+      class TaskOperationResult
+      
+      package "event" as task_event {
+        note "Task 事件在 infrastructure.state.event 中\n这是基础设施层的事件实现" as task_event_note
+      }
+      
+      package "exception" as task_exception {
+        class TaskNotFoundException
+        class ExecutorException
+        class CheckpointException
+      }
+    }
+    
+    '===========================================================================
+    ' 3.3 Stage 聚合 (部署阶段)
+    '===========================================================================
+    package "stage" as domain_stage {
+      interface TaskStage
+      class CompositeServiceStage
+      class StageFactory <<Interface>>
+      class DefaultStageFactory
+      class StageProgress
+      class StageExecutionResult
+      class StepExecutionResult
+      
+      interface StageStep
+      
+      package "steps" as stage_steps {
+        class ConfigUpdateStep
+        class HealthCheckStep
+        class BroadcastStep
+        class NotificationStep
+        
+        note right of HealthCheckStep
+          **⚠️ 问题**：依赖外部 entity
+          
+          import xyz.firestige.entity.deploy.NetworkEndpoint
+          
+          应该使用：
+          domain.shared.vo.NetworkEndpoint
+        end note
+      }
+      
+      package "rollback" as stage_rollback {
+        interface RollbackStrategy
+        class PreviousConfigRollbackStrategy
+      }
+      
+      package "event" as stage_event {
+        note "Stage 事件暂未独立\n集成在 Task 事件中" as stage_event_note
+      }
+    }
+    
+    '===========================================================================
+    ' 3.4 State 子域 (状态机)
+    '===========================================================================
+    package "state" as domain_state {
+      class TaskStateMachine
+      class PlanStateMachine
+      interface TransitionGuard
+      interface TransitionAction
+      
+      package "ctx" as state_ctx {
+        class TaskTransitionContext
+      }
+    }
+    
+    '===========================================================================
+    ' 3.5 Shared Kernel (共享内核)
+    '===========================================================================
+    package "shared" as domain_shared {
+      
+      package "vo <<Value Objects>>" as shared_vo {
+        class PlanId
+        class TaskId
+        class TenantId
+        class DeployVersion
+        class NetworkEndpoint
+        class TimeRange
+        
+        note right of NetworkEndpoint
+          **⚠️ 冲突**：存在两个 NetworkEndpoint
+          
+          1. domain.shared.vo.NetworkEndpoint (Value Object)
+          2. xyz.firestige.entity.deploy.NetworkEndpoint
+          
+          **建议**：统一使用 VO，删除 entity 版本
+        end note
+      }
+      
+      package "event" as shared_event {
+        interface DomainEventPublisher
+      }
+      
+      package "exception" as shared_exception {
+        class ErrorType <<Enum>>
+        class FailureInfo
+      }
+      
+      package "validation" as shared_validation {
+        class ValidationResult
+        class ValidationSummary
+        class ValidationError
+        class ValidationWarning
+        
+        note right of ValidationSummary
+          **⚠️ 问题**：依赖外部 DTO
+          
+          import xyz.firestige.dto.deploy.TenantDeployConfig
+          
+          **违反原则**：Shared Kernel 不应依赖外部
+        end note
+      }
+    }
+  }
+
+  '=============================================================================
+  ' 4. Infrastructure 层 (基础设施层)
+  ' 职责：技术实现、外部依赖、持久化、消息队列、缓存等
+  '=============================================================================
+  package "infrastructure <<Infrastructure Layer>>" as infrastructure #LightCoral {
+    
+    '===========================================================================
+    ' 4.1 持久化 (Persistence)
+    '===========================================================================
+    package "persistence" as infra_persistence {
+      package "plan" as persist_plan {
+        class InMemoryPlanRepository
+      }
+      
+      package "task" as persist_task {
+        class InMemoryTaskRepository
+        class InMemoryTaskRuntimeRepository
+      }
+      
+      package "checkpoint" as persist_checkpoint {
+        class InMemoryCheckpointRepository
+        class RedisCheckpointRepository
+      }
+    }
+    
+    '===========================================================================
+    ' 4.2 执行引擎 (Execution)
+    '===========================================================================
+    package "execution" as infra_execution {
+      class TaskExecutor
+      class TaskWorkerFactory
+      class DefaultTaskWorkerFactory
+      class TaskWorkerCreationContext
+      class TaskExecutionResult
+      class PipelineResult
+      class StageResult
+      class StageStatus <<Enum>>
+      class HeartbeatScheduler
+      
+      note top of TaskExecutor
+        **⚠️ 简化导入问题**
+        
+        很多类使用：
+        import xyz.firestige.deploy.execution.*
+        
+        应该使用：
+        import xyz.firestige.deploy.infrastructure.execution.*
+      end note
+      
+      package "checkpoint" as exec_checkpoint {
+        class Checkpoint
+      }
+      
+      package "exception" as exec_exception {
+        class ExecutionException
+      }
+    }
+    
+    '===========================================================================
+    ' 4.3 状态管理 (State Management)
+    '===========================================================================
+    package "state" as infra_state {
+      class TaskStateManager
+      class StateTransition
+      class StateTransitionResult
+      
+      note top of TaskStateManager
+        **⚠️ 简化导入问题**
+        
+        很多类使用：
+        import xyz.firestige.deploy.state.TaskStateManager
+        
+        应该使用完整路径：
+        import xyz.firestige.deploy.infrastructure.state.TaskStateManager
+        
+        **影响**：分层不清晰，容易误认为是顶级包
+      end note
+      
+      package "strategy" as state_strategy {
+        interface StateTransitionStrategy
+        class StateTransitionKey
+        class StartTransitionStrategy
+        class PauseTransitionStrategy
+        class ResumeTransitionStrategy
+        class CancelTransitionStrategy
+        class CompleteTransitionStrategy
+        class FailTransitionStrategy
+        class RollbackTransitionStrategy
+        class RollbackCompleteTransitionStrategy
+        class RollbackFailTransitionStrategy
+        class RetryTransitionStrategy
+        class MarkAsPendingTransitionStrategy
+      }
+      
+      package "event" as state_event {
+        abstract class TaskStatusEvent
+        class TaskCreatedEvent
+        class TaskValidatedEvent
+        class TaskValidationFailedEvent
+        class TaskStartedEvent
+        class TaskPausedEvent
+        class TaskResumedEvent
+        class TaskCancelledEvent
+        class TaskCompletedEvent
+        class TaskFailedEvent
+        class TaskRollingBackEvent
+        class TaskRolledBackEvent
+        class TaskRollbackFailedEvent
+        class TaskRetryStartedEvent
+        class TaskRetryCompletedEvent
+        class TaskProgressEvent
+        class TaskStageCompletedEvent
+        class TaskStageFailedEvent
+        
+        note bottom of state_event
+          **⚠️ 简化导入问题**
+          
+          很多类使用：
+          import xyz.firestige.deploy.state.event.*
+          
+          应该使用：
+          import xyz.firestige.deploy.infrastructure.state.event.*
+        end note
+      }
+      
+      package "exception" as state_exception {
+        class StateTransitionException
+      }
+    }
+    
+    '===========================================================================
+    ' 4.4 事件发布 (Event Publishing)
+    '===========================================================================
+    package "event" as infra_event {
+      class SpringDomainEventPublisher
+      class CompositeDomainEventPublisher
+      class SpringTaskEventSink
+      class NoopTaskEventSink
+      interface TaskEventSink
+    }
+    
+    '===========================================================================
+    ' 4.5 消息队列 (Message Queue)
+    '===========================================================================
+    package "mq" as infra_mq {
+      class KafkaDomainEventPublisher
+      class RocketMQDomainEventPublisher
+    }
+    
+    '===========================================================================
+    ' 4.6 外部服务 (External Services)
+    '===========================================================================
+    package "external" as infra_external {
+      package "health" as external_health {
+        interface HealthCheckClient
+        interface RollbackHealthVerifier
+        class MockHealthCheckClient
+        class AlwaysTrueRollbackHealthVerifier
+        class VersionRollbackHealthVerifier
+      }
+    }
+    
+    '===========================================================================
+    ' 4.7 调度与冲突管理 (Scheduling)
+    '===========================================================================
+    package "scheduling" as infra_scheduling {
+      class TenantConflictManager
+      class ConflictRegistry
+    }
+    
+    '===========================================================================
+    ' 4.8 验证器 (Validators)
+    '===========================================================================
+    package "validation" as infra_validation {
+      class ValidationChain
+      class RequiredFieldsValidator
+      class ConfigValidator
+      
+      package "validator" as validation_validator {
+        class TenantIdValidator
+        class NetworkEndpointValidator
+        class BusinessRuleValidator
+      }
+    }
+    
+    '===========================================================================
+    ' 4.9 监控指标 (Metrics)
+    '===========================================================================
+    package "metrics" as infra_metrics {
+      interface MetricsRegistry
+      class MicrometerMetricsRegistry
+      class NoopMetricsRegistry
+      
+      note top of infra_metrics
+        **⚠️ 简化导入问题**
+        
+        很多类使用：
+        import xyz.firestige.deploy.metrics.*
+        
+        应该使用：
+        import xyz.firestige.deploy.infrastructure.metrics.*
+      end note
+    }
+    
+    '===========================================================================
+    ' 4.10 缓存 (Redis)
+    '===========================================================================
+    package "redis" as infra_redis {
+      interface RedisClient
+      class SpringDataRedisClient
+    }
+  }
+
+  '=============================================================================
+  ' 5. 配置层 (Config & Autoconfigure)
+  ' 职责：Spring Boot 自动配置、属性绑定
+  '=============================================================================
+  package "config" as config #LightGray {
+    class ExecutorConfiguration
+    class ExecutorProperties
+  }
+  
+  package "autoconfigure" as autoconfigure #LightGray {
+    class ExecutorCheckpointAutoConfiguration
+    class ExecutorCheckpointProperties
+    class DomainEventPublisherAutoConfiguration
+    class DomainEventPublisherProperties
+  }
+}
+
+'===============================================================================
+' 分层依赖关系 (严格遵循 DDD 分层原则)
+'===============================================================================
+facade -down-> application : "调用"
+application -down-> domain : "编排"
+application -down-> infrastructure : "使用"
+infrastructure -down-> domain : "实现接口"
+config -down-> infrastructure : "配置"
+autoconfigure -down-> infrastructure : "自动装配"
+
+'===============================================================================
+' 图例
+'===============================================================================
+legend right
+  |= 层级 |= 职责 |= 依赖方向 |
+  | **Facade** | API 入口，DTO 转换 | → Application |
+  | **Application** | 流程编排，协调 | → Domain + Infrastructure |
+  | **Domain** | 核心业务逻辑 | 无外部依赖 |
+  | **Infrastructure** | 技术实现 | → Domain (实现接口) |
+  | **Config** | 配置管理 | → Infrastructure |
+  
+  **聚合根 (Aggregate Root):**
+  - PlanAggregate (计划聚合)
+  - TaskAggregate (任务聚合)
+  - Stage 聚合 (通过组合实现)
+  
+  **关键设计模式:**
+  - 工厂模式: PlanFactory, StageFactory, TaskWorkerFactory
+  - 策略模式: PlanSchedulingStrategy, RollbackStrategy, StateTransitionStrategy
+  - 状态机模式: TaskStateMachine, PlanStateMachine
+  - 责任链模式: ValidationChain
+  - 发布-订阅: DomainEventPublisher, TaskEventSink
+  
+  **⚠️ 需要重构的问题：**
+  1. 移除/合并顶级 dto/entity 包
+  2. 修正 Domain 层对外部 DTO 的依赖
+  3. 统一使用完整的包路径（避免简化导入）
+  4. 删除重复的 NetworkEndpoint 定义
+endlegend
+
+note bottom of domain
+  **Domain 层是核心**
+  - 纯业务逻辑，无技术依赖
+  - 定义接口，基础设施实现
+  - 聚合根管理边界内的实体
+  - 领域服务协调跨聚合操作
+  
+  **⚠️ 当前问题：**
+  - PlanFactory 依赖外部 dto.deploy.TenantDeployConfig
+  - HealthCheckStep 依赖外部 entity.deploy.NetworkEndpoint
+  - ValidationSummary 依赖外部 dto.deploy.TenantDeployConfig
+  
+  **需要重构为：**
+  - 接受 application 层的内部 DTO
+  - 使用 domain.shared.vo 中的值对象
+end note
+
+note bottom of infrastructure
+  **Infrastructure 层服务 Domain**
+  - 实现 Repository 接口
+  - 提供技术能力（执行器、状态管理、消息队列）
+  - 不包含业务逻辑
+  - 可替换的技术实现
+  
+  **⚠️ 当前问题：**
+  - 很多类使用简化的包路径导入
+    (state.*, execution.*, metrics.*)
+  - 应该使用完整路径保持分层清晰
+    (infrastructure.state.*, infrastructure.execution.*)
+end note
+
+@enduml

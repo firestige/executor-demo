@@ -7,10 +7,14 @@ import org.springframework.context.annotation.Configuration;
 import jakarta.validation.Validation;
 import jakarta.validation.Validator;
 import jakarta.validation.ValidatorFactory;
+import org.springframework.data.redis.connection.RedisConnectionFactory;
+import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.serializer.GenericJackson2JsonRedisSerializer;
+import org.springframework.data.redis.serializer.StringRedisSerializer;
 import xyz.firestige.deploy.application.conflict.TenantConflictCoordinator;
 import xyz.firestige.deploy.application.facade.PlanExecutionFacade;
 import xyz.firestige.deploy.application.lifecycle.PlanLifecycleService;
-import xyz.firestige.deploy.application.orchestration.PlanExecutionOrchestrator;
+import xyz.firestige.deploy.application.orchestration.TaskExecutionOrchestrator;
 import xyz.firestige.deploy.application.task.TaskOperationService;
 import xyz.firestige.deploy.application.checkpoint.CheckpointService;
 import xyz.firestige.deploy.application.plan.DeploymentPlanCreator;
@@ -24,6 +28,8 @@ import xyz.firestige.deploy.domain.task.TaskDomainService;
 import xyz.firestige.deploy.domain.task.TaskRepository;
 import xyz.firestige.deploy.domain.task.TaskRuntimeRepository;
 import xyz.firestige.deploy.facade.DeploymentTaskFacade;
+import xyz.firestige.deploy.facade.converter.TenantConfigConverter;
+import xyz.firestige.deploy.infrastructure.execution.DefaultTaskWorkerFactory;
 import xyz.firestige.deploy.infrastructure.execution.DefaultTaskWorkerFactory;
 import xyz.firestige.deploy.infrastructure.execution.TaskWorkerFactory;
 import xyz.firestige.deploy.infrastructure.execution.stage.StageFactory;
@@ -63,21 +69,8 @@ public class ExecutorConfiguration {
     }
 
     @Bean
-    public TaskStateManager taskStateManager() {
+    public StateTransitionService StateTransitionService() {
         return new TaskStateManager();
-    }
-
-    /**
-     * RF-18: StateTransitionService Bean（方案C架构 - 依赖反转）
-     * 
-     * <p>Domain Layer 定义接口，Infrastructure Layer 实现
-     * <p>TaskStateManager 实现 StateTransitionService 接口
-     */
-    @Bean
-    public xyz.firestige.deploy.domain.task.StateTransitionService stateTransitionService(
-            TaskStateManager taskStateManager) {
-        // TaskStateManager 实现了 StateTransitionService 接口
-        return taskStateManager;
     }
 
     @Bean
@@ -177,8 +170,8 @@ public class ExecutorConfiguration {
     @Bean
     public TaskDomainService taskDomainService(
             TaskRepository taskRepository,
-            xyz.firestige.deploy.domain.task.TaskRuntimeRepository taskRuntimeRepository,
-            xyz.firestige.deploy.domain.task.StateTransitionService stateTransitionService,
+            TaskRuntimeRepository taskRuntimeRepository,
+            StateTransitionService stateTransitionService,
             DomainEventPublisher domainEventPublisher) {
         return new TaskDomainService(
                 taskRepository,
@@ -221,13 +214,11 @@ public class ExecutorConfiguration {
     }
 
     @Bean
-    public PlanExecutionOrchestrator planExecutionOrchestrator(
-            PlanDomainService planDomainService,
+    public TaskExecutionOrchestrator planExecutionOrchestrator(
             TaskWorkerFactory taskWorkerFactory,
             TaskRuntimeRepository taskRuntimeRepository,
             ExecutorProperties executorProperties) {
-        return new PlanExecutionOrchestrator(
-                planDomainService,
+        return new TaskExecutionOrchestrator(
                 taskWorkerFactory,
                 taskRuntimeRepository,
                 executorProperties
@@ -255,7 +246,7 @@ public class ExecutorConfiguration {
     @Bean
     public PlanExecutionFacade planExecutionFacade(
             PlanLifecycleService planLifecycleService,
-            PlanExecutionOrchestrator planExecutionOrchestrator,
+            TaskExecutionOrchestrator planExecutionOrchestrator,
             TenantConflictCoordinator tenantConflictCoordinator,
             TaskOperationService taskOperationService) {
         return new PlanExecutionFacade(
@@ -272,10 +263,12 @@ public class ExecutorConfiguration {
     public DeploymentTaskFacade deploymentTaskFacade(
             PlanLifecycleService planLifecycleService,
             TaskOperationService taskOperationService,
+            TenantConfigConverter tenantConfigConverter,
             Validator validator) {  // Jakarta Validator
         return new DeploymentTaskFacade(
                 planLifecycleService,
                 taskOperationService,
+                tenantConfigConverter,
                 validator);
     }
 }

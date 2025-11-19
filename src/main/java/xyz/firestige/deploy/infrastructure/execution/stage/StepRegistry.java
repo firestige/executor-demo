@@ -5,6 +5,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestTemplate;
 import xyz.firestige.deploy.domain.stage.config.ServiceConfig;
@@ -30,14 +31,14 @@ public class StepRegistry {
     
     private static final Logger log = LoggerFactory.getLogger(StepRegistry.class);
     
-    private final RedisTemplate<String, Object> redisTemplate;
+    private final StringRedisTemplate redisTemplate;
     private final RestTemplate restTemplate;
     private final DeploymentConfigLoader configLoader;
     private final ObjectMapper objectMapper;
     private final Object nacosNamingService;  // Optional Nacos dependency
     
     public StepRegistry(
-            RedisTemplate<String, Object> redisTemplate,
+            StringRedisTemplate redisTemplate,
             RestTemplate restTemplate,
             DeploymentConfigLoader configLoader,
             ObjectMapper objectMapper,

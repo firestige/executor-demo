@@ -7,6 +7,8 @@ import xyz.firestige.deploy.domain.plan.event.PlanReadyEvent;
 import xyz.firestige.deploy.domain.plan.event.PlanResumedEvent;
 import xyz.firestige.deploy.domain.plan.event.PlanStartedEvent;
 import xyz.firestige.deploy.domain.plan.event.PlanStatusEvent;
+import xyz.firestige.deploy.domain.shared.vo.PlanId;
+import xyz.firestige.deploy.domain.shared.vo.TaskId;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -26,13 +28,13 @@ import java.util.List;
  */
 public class PlanAggregate {
 
-    private final String planId;
+    private final PlanId planId;
     private String version;
     private PlanStatus status;
     private Integer maxConcurrency; // 可为空，表示使用全局配置
 
     // ✅ DDD 重构：改为持有 Task ID 列表，而非 Task 对象
-    private final List<String> taskIds = new ArrayList<>();
+    private final List<TaskId> taskIds = new ArrayList<>();
 
     private final LocalDateTime createdAt;
     private LocalDateTime startedAt;
@@ -46,7 +48,7 @@ public class PlanAggregate {
     // ============================================
     private final List<PlanStatusEvent> domainEvents = new ArrayList<>();
 
-    public PlanAggregate(String planId) {
+    public PlanAggregate(PlanId planId) {
         this.planId = planId;
         this.status = PlanStatus.CREATED;
         this.createdAt = LocalDateTime.now();
@@ -87,8 +89,8 @@ public class PlanAggregate {
      *
      * @param taskId Task ID
      */
-    public void addTask(String taskId) {
-        if (taskId == null || taskId.isBlank()) {
+    public void addTask(TaskId taskId) {
+        if (taskId == null) {
             throw new IllegalArgumentException("Task ID 不能为空");
         }
 
@@ -270,7 +272,7 @@ public class PlanAggregate {
     // Getter/Setter（保留必要的）
     // ============================================
 
-    public String getPlanId() {
+    public PlanId getPlanId() {
         return planId;
     }
 
@@ -299,7 +301,7 @@ public class PlanAggregate {
      *
      * @return 任务 ID 列表（不可变）
      */
-    public List<String> getTaskIds() {
+    public List<TaskId> getTaskIds() {
         return Collections.unmodifiableList(taskIds);
     }
 

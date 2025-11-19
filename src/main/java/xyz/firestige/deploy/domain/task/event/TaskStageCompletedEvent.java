@@ -1,5 +1,6 @@
 package xyz.firestige.deploy.domain.task.event;
 
+import xyz.firestige.deploy.domain.shared.vo.TaskId;
 import xyz.firestige.deploy.domain.task.TaskStatus;
 import xyz.firestige.deploy.infrastructure.execution.StageResult;
 import java.time.Duration;
@@ -43,7 +44,7 @@ public class TaskStageCompletedEvent extends TaskStatusEvent {
     /**
      * 旧版构造函数（保持兼容）
      */
-    public TaskStageCompletedEvent(String taskId, String stageName, StageResult stageResult) {
+    public TaskStageCompletedEvent(TaskId taskId, String stageName, StageResult stageResult) {
         super(taskId, TaskStatus.RUNNING);
         this.stageName = stageName;
         this.stageResult = stageResult;
@@ -54,7 +55,7 @@ public class TaskStageCompletedEvent extends TaskStatusEvent {
      * RF-18: 新构造函数（带进度信息）
      */
     public TaskStageCompletedEvent(
-            String taskId,
+            TaskId taskId,
             String stageName,
             int completedStages,
             int totalStages,

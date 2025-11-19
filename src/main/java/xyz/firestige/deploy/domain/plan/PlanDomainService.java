@@ -4,6 +4,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import xyz.firestige.deploy.config.ExecutorProperties;
 import xyz.firestige.deploy.domain.shared.event.DomainEventPublisher;
+import xyz.firestige.deploy.domain.shared.vo.PlanId;
+import xyz.firestige.deploy.domain.shared.vo.TaskId;
+import xyz.firestige.deploy.domain.shared.vo.TenantId;
 import xyz.firestige.deploy.domain.task.TaskStatus;
 import xyz.firestige.deploy.infrastructure.state.TaskStateManager;
 
@@ -47,7 +50,7 @@ public class PlanDomainService {
      * @param tenantCount 租户数量（暂未使用，保留接口兼容）
      * @return Plan 聚合
      */
-    public PlanAggregate createPlan(String planId, int tenantCount, int maxConcurrency) {
+    public PlanAggregate createPlan(PlanId planId, int tenantCount, int maxConcurrency) {
         logger.info("[PlanDomainService] 创建 Plan: {}, 租户数量: {}", planId, tenantCount);
 
         // ✅ 创建 Plan 聚合（业务逻辑在构造函数中）
@@ -71,7 +74,7 @@ public class PlanDomainService {
      * @param planId Plan ID
      * @param taskId Task ID（而非整个 TaskAggregate）
      */
-    public void addTaskToPlan(String planId, String taskId) {
+    public void addTaskToPlan(PlanId planId, TaskId taskId) {
         logger.debug("[PlanDomainService] 添加 Task 到 Plan: {} -> {}", planId, taskId);
 
         PlanAggregate plan = planRepository.findById(planId)
@@ -90,7 +93,7 @@ public class PlanDomainService {
      *
      * @param planId Plan ID
      */
-    public void markPlanAsReady(String planId) {
+    public void markPlanAsReady(PlanId planId) {
         logger.info("[PlanDomainService] 标记 Plan 为 READY: {}", planId);
 
         PlanAggregate plan = planRepository.findById(planId)
@@ -111,7 +114,7 @@ public class PlanDomainService {
      *
      * @param planId Plan ID
      */
-    public void startPlan(String planId) {
+    public void startPlan(PlanId planId) {
         logger.info("[PlanDomainService] 启动 Plan 执行: {}", planId);
 
         PlanAggregate plan = planRepository.findById(planId)
@@ -132,7 +135,7 @@ public class PlanDomainService {
      *
      * @param planId Plan ID
      */
-    public void pausePlanExecution(String planId) {
+    public void pausePlanExecution(PlanId planId) {
         logger.info("[PlanDomainService] 暂停 Plan 执行: {}", planId);
 
         PlanAggregate plan = planRepository.findById(planId)
@@ -153,7 +156,7 @@ public class PlanDomainService {
      *
      * @param planId Plan ID
      */
-    public void resumePlanExecution(String planId) {
+    public void resumePlanExecution(PlanId planId) {
         logger.info("[PlanDomainService] 恢复 Plan 执行: {}", planId);
 
         PlanAggregate plan = planRepository.findById(planId)
@@ -182,7 +185,7 @@ public class PlanDomainService {
      * @param planId Plan ID
      * @return Plan 聚合
      */
-    public PlanAggregate getPlan(String planId) {
+    public PlanAggregate getPlan(PlanId planId) {
         return planRepository.findById(planId).orElse(null);
     }
 

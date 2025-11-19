@@ -1,5 +1,7 @@
 package xyz.firestige.deploy.domain.plan;
 
+import xyz.firestige.deploy.domain.shared.vo.PlanId;
+
 import java.util.List;
 import java.util.Optional;
 
@@ -31,7 +33,7 @@ public interface PlanRepository {
      *
      * @param planId Plan ID
      */
-    void remove(String planId);
+    void remove(PlanId planId);
 
     // ========== 查询方法 ==========
 
@@ -41,7 +43,7 @@ public interface PlanRepository {
      * @param planId Plan ID
      * @return Plan 聚合，如果不存在则返回 empty
      */
-    Optional<PlanAggregate> findById(String planId);
+    Optional<PlanAggregate> findById(PlanId planId);
 
     /**
      * 获取所有 Plan

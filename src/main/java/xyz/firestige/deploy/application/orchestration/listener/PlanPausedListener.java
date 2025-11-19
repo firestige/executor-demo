@@ -6,6 +6,7 @@ import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Component;
 
 import xyz.firestige.deploy.domain.plan.event.PlanPausedEvent;
+import xyz.firestige.deploy.domain.shared.vo.PlanId;
 
 /**
  * Plan 暂停事件监听器（RF-19：事件驱动架构优化）
@@ -45,7 +46,7 @@ public class PlanPausedListener {
      */
     @EventListener
     public void onPlanPaused(PlanPausedEvent event) {
-        String planId = event.getPlanId();
+        PlanId planId = event.getPlanId();
         logger.info("[PlanPausedListener] Plan {} 已暂停，TaskExecutor 将自动检查标志并停止", planId);
 
         // 可选：发送通知、更新监控指标、记录审计日志等

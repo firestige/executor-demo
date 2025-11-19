@@ -3,9 +3,13 @@ package xyz.firestige.deploy.application.dto;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import xyz.firestige.deploy.domain.shared.vo.PlanId;
+import xyz.firestige.deploy.domain.shared.vo.RouteRule;
+import xyz.firestige.deploy.domain.shared.vo.TenantId;
 import xyz.firestige.entity.deploy.NetworkEndpoint;
 
 
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -20,11 +24,11 @@ public class TenantConfig {
     @Valid
     private DeployUnitIdentifier deployUnit;
 
-    @NotBlank(message = "租户ID不能为空或空白")
-    private String tenantId;
+    @NotNull(message = "租户ID不能为空或空白")
+    private TenantId tenantId;
 
     // HTTP 网关路由信息
-    private List<NetworkEndpoint> networkEndpoints;
+    private List<RouteRule> routeRules = new ArrayList<>();
 
     // 健康检查端点
     // 基于服务约定，优先级：参数 > 配置 > 默认值
@@ -36,7 +40,7 @@ public class TenantConfig {
     private Boolean defaultFlag;
 
     // Plan 相关
-    private Long planId;
+    private PlanId planId;
     private Long planVersion;
 
     // 回滚相关
@@ -50,6 +54,18 @@ public class TenantConfig {
 
     // 媒体路由配置（使用 record 保证配对约束）
     private MediaRoutingConfig mediaRoutingConfig;
+
+    /**
+     * 需要切换的服务名称列表（有序）
+     * 定义该租户需要执行哪些服务的切换操作
+     *
+     * 例如: ["blue-green-gateway", "portal", "asbc-gateway"]
+     *
+     * 顺序很重要：将按照列表顺序依次创建 Stage
+     * 由 TenantConfigConverter 负责填充（显式传入或使用默认值）
+     */
+    @NotNull(message = "服务名称列表不能为空")
+    private List<String> serviceNames;
 
     // 构造器
     public TenantConfig() {
@@ -65,20 +81,20 @@ public class TenantConfig {
         this.deployUnit = deployUnit;
     }
 
-    public String getTenantId() {
+    public TenantId getTenantId() {
         return tenantId;
     }
 
     public void setTenantId(String tenantId) {
-        this.tenantId = tenantId;
+        this.tenantId = TenantId.of(tenantId);
     }
 
-    public List<NetworkEndpoint> getNetworkEndpoints() {
-        return networkEndpoints;
+    public List<RouteRule> getRouteRules() {
+        return routeRules;
     }
 
-    public void setNetworkEndpoints(List<NetworkEndpoint> networkEndpoints) {
-        this.networkEndpoints = networkEndpoints;
+    public void setRouteRules(List<RouteRule> routeRules) {
+        this.routeRules = routeRules;
     }
 
     public List<String> getHealthCheckEndpoints() {
@@ -105,12 +121,12 @@ public class TenantConfig {
         this.defaultFlag = defaultFlag;
     }
 
-    public Long getPlanId() {
+    public PlanId getPlanId() {
         return planId;
     }
 
     public void setPlanId(Long planId) {
-        this.planId = planId;
+        this.planId = PlanId.of(planId);
     }
 
     public Long getPlanVersion() {
@@ -143,6 +159,14 @@ public class TenantConfig {
 
     public void setMediaRoutingConfig(MediaRoutingConfig mediaRoutingConfig) {
         this.mediaRoutingConfig = mediaRoutingConfig;
+    }
+
+    public List<String> getServiceNames() {
+        return serviceNames;
+    }
+
+    public void setServiceNames(List<String> serviceNames) {
+        this.serviceNames = serviceNames;
     }
 
     // 便利方法：兼容旧的 API（可选，Phase 3 实施时根据需要决定是否保留）

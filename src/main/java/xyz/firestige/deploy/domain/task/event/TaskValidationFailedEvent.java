@@ -1,5 +1,6 @@
 package xyz.firestige.deploy.domain.task.event;
 
+import xyz.firestige.deploy.domain.shared.vo.TaskId;
 import xyz.firestige.dto.deploy.TenantDeployConfig;
 import xyz.firestige.deploy.domain.shared.exception.FailureInfo;
 import xyz.firestige.deploy.domain.task.TaskStatus;
@@ -30,7 +31,7 @@ public class TaskValidationFailedEvent extends TaskStatusEvent {
         this.invalidConfigs = new ArrayList<>();
     }
 
-    public TaskValidationFailedEvent(String taskId, FailureInfo failureInfo, List<ValidationError> validationErrors) {
+    public TaskValidationFailedEvent(TaskId taskId, FailureInfo failureInfo, List<ValidationError> validationErrors) {
         super(taskId, TaskStatus.VALIDATION_FAILED);
         setFailureInfo(failureInfo);
         this.validationErrors = validationErrors != null ? validationErrors : new ArrayList<>();

@@ -9,17 +9,17 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import xyz.firestige.deploy.application.dto.DeployUnitIdentifier;
 import xyz.firestige.deploy.application.dto.MediaRoutingConfig;
 import xyz.firestige.deploy.application.dto.TenantConfig;
+import xyz.firestige.deploy.application.lifecycle.PlanLifecycleService;
 import xyz.firestige.deploy.application.plan.DeploymentPlanCreator;
 import xyz.firestige.deploy.application.plan.PlanCreationContext;
 import xyz.firestige.deploy.domain.plan.PlanCreationResult;
 import xyz.firestige.deploy.domain.plan.PlanDomainService;
 import xyz.firestige.deploy.domain.plan.PlanInfo;
 import xyz.firestige.deploy.domain.plan.PlanStatus;
-import xyz.firestige.deploy.domain.task.TaskDomainService;
 import xyz.firestige.deploy.domain.shared.exception.ErrorType;
-import xyz.firestige.deploy.infrastructure.execution.TaskWorkerFactory;
+import xyz.firestige.deploy.domain.shared.vo.PlanId;
+import xyz.firestige.deploy.domain.shared.vo.TenantId;
 import xyz.firestige.deploy.infrastructure.scheduling.TenantConflictManager;
-import xyz.firestige.deploy.infrastructure.state.TaskStateManager;
 import xyz.firestige.deploy.util.TimingExtension;
 import xyz.firestige.deploy.domain.shared.validation.ValidationError;
 import xyz.firestige.deploy.domain.shared.validation.ValidationSummary;
@@ -62,21 +62,15 @@ class DeploymentApplicationServiceTest {
     private DeploymentPlanCreator mockCreator;
     private TenantConflictManager mockConflictManager;
 
-    private DeploymentApplicationService service;
+    private PlanLifecycleService service;
 
     @BeforeEach
     void setUp() {
         mockCreator = mock(DeploymentPlanCreator.class);
         PlanDomainService mockPlanService = mock(PlanDomainService.class);
-        TaskDomainService mockTaskService = mock(TaskDomainService.class);
         mockConflictManager = mock(TenantConflictManager.class);
-        TaskWorkerFactory mockWorkerFactory = mock(TaskWorkerFactory.class);
-        TaskStateManager mockStateManager = mock(TaskStateManager.class);
 
-        service = new DeploymentApplicationService(
-                mockCreator, mockPlanService, mockTaskService,
-                mockConflictManager, mockWorkerFactory, mockStateManager
-        );
+        service = new PlanLifecycleService(mockCreator, mockPlanService);
     }
 
     @Test
@@ -91,7 +85,7 @@ class DeploymentApplicationServiceTest {
         tenantConfig.setDeployUnit(
                 new DeployUnitIdentifier(faker.number().randomNumber(), new Random().nextLong(1000), "v1.0.0"));
         tenantConfig.setTenantId(faker.idNumber().valid());
-        tenantConfig.setNetworkEndpoints(List.of());
+        tenantConfig.setRouteRules(List.of());
         tenantConfig.setNacosNameSpace("");
         tenantConfig.setHealthCheckEndpoints(List.of());
         tenantConfig.setDefaultFlag(false);
@@ -100,7 +94,7 @@ class DeploymentApplicationServiceTest {
         tenantConfig.setMediaRoutingConfig(new MediaRoutingConfig("", ""));
         List<TenantConfig> configs = List.of(tenantConfig);
 
-        PlanInfo planInfo = new PlanInfo(String.valueOf(planId), 1, PlanStatus.CREATED, List.of(), LocalDateTime.now());
+        PlanInfo planInfo = new PlanInfo(PlanId.of(planId), 1, PlanStatus.CREATED, List.of(), LocalDateTime.now());
         PlanCreationContext successContext = PlanCreationContext.success(planInfo);
 
         // Mock 冲突检测通过
@@ -154,7 +148,7 @@ class DeploymentApplicationServiceTest {
     void createDeploymentPlan_WhenConflictDetected_ReturnsConflictFailure() {
         // Given
         when(mockConflictManager.canCreatePlan(anyList()))
-                .thenReturn(TenantConflictManager.ConflictCheckResult.reject(List.of("tenant1", "冲突")));
+                .thenReturn(TenantConflictManager.ConflictCheckResult.reject(List.of(TenantId.of("tenant1"))));
 
         // When
         PlanCreationResult result = service.createDeploymentPlan(List.of());

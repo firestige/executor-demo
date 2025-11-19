@@ -6,6 +6,9 @@ import org.springframework.transaction.annotation.Transactional;
 
 import xyz.firestige.deploy.domain.shared.exception.ErrorType;
 import xyz.firestige.deploy.domain.shared.exception.FailureInfo;
+import xyz.firestige.deploy.domain.shared.vo.PlanId;
+import xyz.firestige.deploy.domain.shared.vo.TaskId;
+import xyz.firestige.deploy.domain.shared.vo.TenantId;
 import xyz.firestige.deploy.domain.task.TaskAggregate;
 import xyz.firestige.deploy.domain.task.TaskDomainService;
 import xyz.firestige.deploy.domain.task.TaskOperationResult;
@@ -15,6 +18,9 @@ import xyz.firestige.deploy.domain.task.TaskStatus;
 import xyz.firestige.deploy.facade.TaskStatusInfo;
 import xyz.firestige.deploy.infrastructure.execution.TaskExecutor;
 import xyz.firestige.deploy.infrastructure.execution.TaskWorkerCreationContext;
+
+import java.util.List;
+import java.util.function.Function;
 
 /**
  * 任务操作服务（RF-20: DeploymentApplicationService 拆分）
@@ -64,7 +70,7 @@ public class TaskOperationService {
      * @return 操作结果
      */
     @Transactional
-    public TaskOperationResult pauseTaskByTenant(String tenantId) {
+    public TaskOperationResult pauseTaskByTenant(TenantId tenantId) {
         logger.info("[TaskOperationService] 暂停租户任务: {}", tenantId);
         return taskDomainService.pauseTaskByTenant(tenantId);
     }
@@ -76,7 +82,7 @@ public class TaskOperationService {
      * @return 操作结果
      */
     @Transactional
-    public TaskOperationResult resumeTaskByTenant(String tenantId) {
+    public TaskOperationResult resumeTaskByTenant(TenantId tenantId) {
         logger.info("[TaskOperationService] 恢复租户任务: {}", tenantId);
         return taskDomainService.resumeTaskByTenant(tenantId);
     }
@@ -90,8 +96,8 @@ public class TaskOperationService {
      */
     @Transactional
     public TaskOperationResult rollbackTaskByTenant(
-            String tenantId,
-            java.util.function.Function<TaskWorkerCreationContext, TaskExecutor> executorCreator) {
+            TenantId tenantId,
+            Function<TaskWorkerCreationContext, TaskExecutor> executorCreator) {
         logger.info("[TaskOperationService] 回滚租户任务: {}", tenantId);
 
         // Step 1: 调用领域服务准备回滚
@@ -139,7 +145,7 @@ public class TaskOperationService {
      */
     @Transactional
     public TaskOperationResult retryTaskByTenant(
-            String tenantId,
+            TenantId tenantId,
             boolean fromCheckpoint,
             java.util.function.Function<TaskWorkerCreationContext, TaskExecutor> executorCreator) {
         logger.info("[TaskOperationService] 重试租户任务: {}, fromCheckpoint: {}",
@@ -179,7 +185,7 @@ public class TaskOperationService {
      * @return 操作结果
      */
     @Transactional
-    public TaskOperationResult cancelTaskByTenant(String tenantId) {
+    public TaskOperationResult cancelTaskByTenant(TenantId tenantId) {
         logger.info("[TaskOperationService] 取消租户任务: {}", tenantId);
         return taskDomainService.cancelTaskByTenant(tenantId);
     }
@@ -190,7 +196,7 @@ public class TaskOperationService {
      * @param taskId 任务 ID
      * @return 任务状态信息
      */
-    public TaskStatusInfo queryTaskStatus(String taskId) {
+    public TaskStatusInfo queryTaskStatus(TaskId taskId) {
         logger.debug("[TaskOperationService] 查询任务状态: {}", taskId);
         return taskDomainService.queryTaskStatus(taskId);
     }
@@ -201,7 +207,7 @@ public class TaskOperationService {
      * @param tenantId 租户 ID
      * @return 任务状态信息
      */
-    public TaskStatusInfo queryTaskStatusByTenant(String tenantId) {
+    public TaskStatusInfo queryTaskStatusByTenant(TenantId tenantId) {
         logger.debug("[TaskOperationService] 查询租户任务状态: {}", tenantId);
         return taskDomainService.queryTaskStatusByTenant(tenantId);
     }
@@ -212,7 +218,7 @@ public class TaskOperationService {
      * @param planId Plan ID
      * @return 任务列表
      */
-    public java.util.List<TaskAggregate> getTasksByPlanId(String planId) {
+    public List<TaskAggregate> getTasksByPlanId(PlanId planId) {
         logger.debug("[TaskOperationService] 查询 Plan 任务: {}", planId);
         return taskRepository.findByPlanId(planId);
     }

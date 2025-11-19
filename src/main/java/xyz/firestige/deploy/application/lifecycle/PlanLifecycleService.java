@@ -17,6 +17,7 @@ import xyz.firestige.deploy.domain.plan.PlanOperationResult;
 import xyz.firestige.deploy.domain.plan.PlanStatus;
 import xyz.firestige.deploy.domain.shared.exception.ErrorType;
 import xyz.firestige.deploy.domain.shared.exception.FailureInfo;
+import xyz.firestige.deploy.domain.shared.vo.PlanId;
 
 /**
  * 计划生命周期服务（RF-20: DeploymentApplicationService 拆分）
@@ -98,17 +99,16 @@ public class PlanLifecycleService {
      * @return 操作结果
      */
     @Transactional
-    public PlanOperationResult pausePlan(Long planId) {
+    public PlanOperationResult pausePlan(PlanId planId) {
         logger.info("[PlanLifecycleService] 暂停计划: {}", planId);
 
-        String planIdStr = String.valueOf(planId);
         try {
-            planDomainService.pausePlanExecution(planIdStr);
-            return PlanOperationResult.success(planIdStr, PlanStatus.PAUSED, "计划已暂停");
+            planDomainService.pausePlanExecution(planId);
+            return PlanOperationResult.success(planId.getValue(), PlanStatus.PAUSED, "计划已暂停");
         } catch (Exception e) {
             logger.error("[PlanLifecycleService] 暂停计划失败: {}", planId, e);
             return PlanOperationResult.failure(
-                planIdStr,
+                planId.getValue(),
                 FailureInfo.of(ErrorType.SYSTEM_ERROR, e.getMessage()),
                 "暂停失败"
             );
@@ -122,17 +122,16 @@ public class PlanLifecycleService {
      * @return 操作结果
      */
     @Transactional
-    public PlanOperationResult resumePlan(Long planId) {
+    public PlanOperationResult resumePlan(PlanId planId) {
         logger.info("[PlanLifecycleService] 恢复计划: {}", planId);
 
-        String planIdStr = String.valueOf(planId);
         try {
-            planDomainService.resumePlanExecution(planIdStr);
-            return PlanOperationResult.success(planIdStr, PlanStatus.RUNNING, "计划已恢复");
+            planDomainService.resumePlanExecution(planId);
+            return PlanOperationResult.success(planId.getValue(), PlanStatus.RUNNING, "计划已恢复");
         } catch (Exception e) {
             logger.error("[PlanLifecycleService] 恢复计划失败: {}", planId, e);
             return PlanOperationResult.failure(
-                planIdStr,
+                planId.getValue(),
                 FailureInfo.of(ErrorType.SYSTEM_ERROR, e.getMessage()),
                 "恢复失败"
             );
@@ -145,7 +144,7 @@ public class PlanLifecycleService {
      * @param planId 计划 ID
      * @return 计划聚合根
      */
-    public String getAndValidatePlan(String planId) {
+    public PlanId getAndValidatePlan(PlanId planId) {
         logger.debug("[PlanLifecycleService] 获取计划: {}", planId);
         // 这里可以添加验证逻辑，目前直接返回
         return planId;

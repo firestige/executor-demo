@@ -7,6 +7,7 @@ import org.springframework.stereotype.Component;
 
 import xyz.firestige.deploy.application.facade.PlanExecutionFacade;
 import xyz.firestige.deploy.domain.plan.event.PlanResumedEvent;
+import xyz.firestige.deploy.domain.shared.vo.PlanId;
 
 /**
  * Plan 恢复事件监听器（RF-20：服务拆分优化）
@@ -46,7 +47,7 @@ public class PlanResumedListener {
      */
     @EventListener
     public void onPlanResumed(PlanResumedEvent event) {
-        String planId = event.getPlanId();
+        PlanId planId = event.getPlanId();
         logger.info("[PlanResumedListener] 收到 Plan 恢复事件: {}, 委托给 PlanExecutionFacade 执行", planId);
 
         try {

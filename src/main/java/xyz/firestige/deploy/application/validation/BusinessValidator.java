@@ -6,6 +6,7 @@ import org.springframework.stereotype.Component;
 import xyz.firestige.deploy.application.dto.TenantConfig;
 import xyz.firestige.deploy.domain.shared.validation.ValidationError;
 import xyz.firestige.deploy.domain.shared.validation.ValidationSummary;
+import xyz.firestige.deploy.domain.shared.vo.TenantId;
 
 import java.util.*;
 import java.util.stream.Collectors;
@@ -92,21 +93,21 @@ public class BusinessValidator {
         List<ValidationError> errors = new ArrayList<>();
 
         // 统计租户ID出现次数
-        Map<String, Long> tenantIdCounts = configs.stream()
+        Map<TenantId, Long> tenantIdCounts = configs.stream()
                 .map(TenantConfig::getTenantId)
                 .collect(Collectors.groupingBy(id -> id, Collectors.counting()));
 
         // 找出重复的租户ID
-        Set<String> duplicates = tenantIdCounts.entrySet().stream()
+        Set<TenantId> duplicates = tenantIdCounts.entrySet().stream()
                 .filter(entry -> entry.getValue() > 1)
                 .map(Map.Entry::getKey)
                 .collect(Collectors.toSet());
 
         if (!duplicates.isEmpty()) {
-            for (String tenantId : duplicates) {
+            for (TenantId tenantId : duplicates) {
                 errors.add(new ValidationError(
                         "tenantId",
-                        tenantId,
+                        tenantId.getValue(),
                         "租户ID重复: " + tenantId
                 ));
             }

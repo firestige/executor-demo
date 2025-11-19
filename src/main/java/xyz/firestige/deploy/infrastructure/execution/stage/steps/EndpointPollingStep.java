@@ -243,21 +243,46 @@ public class EndpointPollingStep extends AbstractConfigurableStep {
     }
     
     private String buildHealthCheckUrl(ServiceInstance instance, String path) {
-        return String.format("http://%s:%d%s", instance.ip(), instance.port(), path);
+        // 替换路径中的 {tenantId} 占位符
+        String resolvedPath = path.replace("{tenantId}", serviceConfig.getTenantId().getValue());
+        return String.format("http://%s:%d%s", instance.ip(), instance.port(), resolvedPath);
     }
     
     private boolean validateResponse(String response, String validationType, String rule, String expectedValue) {
         if ("json-path".equals(validationType)) {
             try {
                 JsonNode jsonNode = objectMapper.readTree(response);
-                JsonNode valueNode = jsonNode.at("/" + rule.replace("$.", "").replace(".", "/"));
-                
+                // 将 $.version 转换为 /version，$.status 转换为 /status
+                String jsonPath = "/" + rule.replace("$.", "").replace(".", "/");
+                JsonNode valueNode = jsonNode.at(jsonPath);
+
                 if (valueNode.isMissingNode()) {
+                    log.warn("[EndpointPollingStep] JSON path not found: rule={}, response={}", rule, response);
                     return false;
                 }
+
+                // 支持数字类型比对（如 version: 1）
+                if (valueNode.isNumber()) {
+                    try {
+                        long actualNumber = valueNode.asLong();
+                        long expectedNumber = Long.parseLong(expectedValue);
+                        boolean matched = actualNumber == expectedNumber;
+                        log.debug("[EndpointPollingStep] Number validation: actual={}, expected={}, matched={}",
+                                actualNumber, expectedNumber, matched);
+                        return matched;
+                    } catch (NumberFormatException e) {
+                        log.warn("[EndpointPollingStep] Expected number but got: {}", expectedValue);
+                        return false;
+                    }
+                }
                 
+                // 字符串类型比对（如 status: "UP"）
                 String actualValue = valueNode.asText();
-                return expectedValue.equals(actualValue);
+                boolean matched = expectedValue.equals(actualValue);
+                log.debug("[EndpointPollingStep] String validation: actual={}, expected={}, matched={}",
+                        actualValue, expectedValue, matched);
+                return matched;
+
             } catch (Exception e) {
                 log.warn("[EndpointPollingStep] JSON validation failed: {}", e.getMessage());
                 return false;

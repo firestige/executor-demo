@@ -5,12 +5,15 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Semaphore;
 import java.util.function.BiConsumer;
+import java.util.function.Function;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import xyz.firestige.deploy.config.ExecutorProperties;
-import xyz.firestige.deploy.domain.plan.PlanDomainService;
+import xyz.firestige.deploy.domain.shared.vo.PlanId;
+import xyz.firestige.deploy.domain.shared.vo.TaskId;
+import xyz.firestige.deploy.domain.shared.vo.TenantId;
 import xyz.firestige.deploy.domain.task.TaskAggregate;
 import xyz.firestige.deploy.domain.task.TaskRuntimeContext;
 import xyz.firestige.deploy.domain.task.TaskRuntimeRepository;
@@ -43,23 +46,20 @@ import xyz.firestige.deploy.infrastructure.execution.stage.TaskStage;
  *
  * @since RF-20 - 服务拆分
  */
-public class PlanExecutionOrchestrator {
+public class TaskExecutionOrchestrator {
 
-    private static final Logger logger = LoggerFactory.getLogger(PlanExecutionOrchestrator.class);
+    private static final Logger logger = LoggerFactory.getLogger(TaskExecutionOrchestrator.class);
 
-    private final PlanDomainService planDomainService;
     private final TaskWorkerFactory taskWorkerFactory;
     private final TaskRuntimeRepository taskRuntimeRepository;
     private final ExecutorService executorService;
     private final Semaphore concurrencyLimit;
     private final int maxConcurrency;
 
-    public PlanExecutionOrchestrator(
-            PlanDomainService planDomainService,
+    public TaskExecutionOrchestrator(
             TaskWorkerFactory taskWorkerFactory,
             TaskRuntimeRepository taskRuntimeRepository,
             ExecutorProperties executorProperties) {
-        this.planDomainService = planDomainService;
         this.taskWorkerFactory = taskWorkerFactory;
         this.taskRuntimeRepository = taskRuntimeRepository;
         this.maxConcurrency = executorProperties.getMaxConcurrency();
@@ -87,17 +87,17 @@ public class PlanExecutionOrchestrator {
      * @param conflictCallback 冲突检查回调（返回 true 表示允许执行）
      */
     public void orchestrate(
-            String planId,
+            PlanId planId,
             List<TaskAggregate> tasks,
             BiConsumer<TaskExecutor, TaskAggregate> executorAction,
             String actionName,
-            java.util.function.Function<TaskAggregate, Boolean> conflictCallback) {
+            Function<TaskAggregate, Boolean> conflictCallback) {
 
-        logger.info("[PlanExecutionOrchestrator] 开始编排 {} Plan: {}, 任务数量: {}", 
+        logger.info("[TaskExecutionOrchestrator] 开始编排 {} Plan: {}, 任务数量: {}",
             actionName, planId, tasks.size());
 
         if (tasks.isEmpty()) {
-            logger.warn("[PlanExecutionOrchestrator] Plan {} 没有关联的 Task", planId);
+            logger.warn("[TaskExecutionOrchestrator] Plan {} 没有关联的 Task", planId);
             return;
         }
 
@@ -106,7 +106,7 @@ public class PlanExecutionOrchestrator {
             submitTaskAction(planId, task, executorAction, actionName, conflictCallback);
         }
 
-        logger.info("[PlanExecutionOrchestrator] Plan {} 的所有 Task 已提交 {}，共 {} 个，maxConcurrency: {}",
+        logger.info("[TaskExecutionOrchestrator] Plan {} 的所有 Task 已提交 {}，共 {} 个，maxConcurrency: {}",
             planId, actionName, tasks.size(), maxConcurrency);
     }
 
@@ -120,31 +120,31 @@ public class PlanExecutionOrchestrator {
      * @param conflictCallback 冲突检查回调
      */
     private void submitTaskAction(
-            String planId,
+            PlanId planId,
             TaskAggregate task,
             BiConsumer<TaskExecutor, TaskAggregate> executorAction,
             String actionName,
-            java.util.function.Function<TaskAggregate, Boolean> conflictCallback) {
+            Function<TaskAggregate, Boolean> conflictCallback) {
 
-        String taskId = task.getTaskId();
-        String tenantId = task.getTenantId();
+        TaskId taskId = task.getTaskId();
+        TenantId tenantId = task.getTenantId();
 
         // 1. 冲突检查（由外部传入）
         if (!conflictCallback.apply(task)) {
-            logger.warn("[PlanExecutionOrchestrator] 租户冲突，跳过 {}: taskId={}, tenantId={}",
+            logger.warn("[TaskExecutionOrchestrator] 租户冲突，跳过 {}: taskId={}, tenantId={}",
                 actionName, taskId, tenantId);
             return;
         }
 
-        logger.info("[PlanExecutionOrchestrator] Task {} 已通过冲突检查，准备提交 {}", taskId, actionName);
+        logger.info("[TaskExecutionOrchestrator] Task {} 已通过冲突检查，准备提交 {}", taskId, actionName);
 
         // 2. 异步提交执行
         executorService.submit(() -> {
             try {
                 // 2.1 获取并发许可（阻塞直到有可用许可）
-                logger.debug("[PlanExecutionOrchestrator] Task {} 等待并发许可...", taskId);
+                logger.debug("[TaskExecutionOrchestrator] Task {} 等待并发许可...", taskId);
                 concurrencyLimit.acquire();
-                logger.info("[PlanExecutionOrchestrator] Task {} 获得并发许可，开始 {}", taskId, actionName);
+                logger.info("[TaskExecutionOrchestrator] Task {} 获得并发许可，开始 {}", taskId, actionName);
 
                 // 2.2 准备执行上下文
                 TaskWorkerCreationContext context = createExecutionContext(planId, task);
@@ -155,17 +155,17 @@ public class PlanExecutionOrchestrator {
                 // 2.4 执行传入的策略（execute/resume/retry/rollback）
                 executorAction.accept(executor, task);
 
-                logger.info("[PlanExecutionOrchestrator] Task {} {} 完成", taskId, actionName);
+                logger.info("[TaskExecutionOrchestrator] Task {} {} 完成", taskId, actionName);
 
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
-                logger.error("[PlanExecutionOrchestrator] Task {} {} 被中断", taskId, actionName, e);
+                logger.error("[TaskExecutionOrchestrator] Task {} {} 被中断", taskId, actionName, e);
             } catch (Exception e) {
-                logger.error("[PlanExecutionOrchestrator] Task {} {} 失败", taskId, actionName, e);
+                logger.error("[TaskExecutionOrchestrator] Task {} {} 失败", taskId, actionName, e);
             } finally {
                 // 2.5 释放并发许可（冲突锁由外部管理）
                 concurrencyLimit.release();
-                logger.debug("[PlanExecutionOrchestrator] Task {} 释放并发许可", taskId);
+                logger.debug("[TaskExecutionOrchestrator] Task {} 释放并发许可", taskId);
             }
         });
 
@@ -179,8 +179,8 @@ public class PlanExecutionOrchestrator {
      * @param task Task 聚合
      * @return 任务执行上下文
      */
-    private TaskWorkerCreationContext createExecutionContext(String planId, TaskAggregate task) {
-        String taskId = task.getTaskId();
+    private TaskWorkerCreationContext createExecutionContext(PlanId planId, TaskAggregate task) {
+        TaskId taskId = task.getTaskId();
         
         // 从运行时仓储获取 Stages
         List<TaskStage> stages = taskRuntimeRepository.getStages(taskId)

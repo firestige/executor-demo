@@ -1,7 +1,9 @@
 package xyz.firestige.deploy.infrastructure.persistence.plan;
 
 import xyz.firestige.deploy.domain.plan.PlanAggregate;
+import xyz.firestige.deploy.domain.plan.PlanInfo;
 import xyz.firestige.deploy.domain.plan.PlanRepository;
+import xyz.firestige.deploy.domain.shared.vo.PlanId;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -22,7 +24,7 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public class InMemoryPlanRepository implements PlanRepository {
 
-    private final Map<String, PlanAggregate> plans = new ConcurrentHashMap<>();
+    private final Map<PlanId, PlanAggregate> plans = new ConcurrentHashMap<>();
 
     @Override
     public void save(PlanAggregate plan) {
@@ -33,12 +35,12 @@ public class InMemoryPlanRepository implements PlanRepository {
     }
 
     @Override
-    public void remove(String planId) {
+    public void remove(PlanId planId) {
         plans.remove(planId);
     }
 
     @Override
-    public Optional<PlanAggregate> findById(String planId) {
+    public Optional<PlanAggregate> findById(PlanId planId) {
         return Optional.ofNullable(plans.get(planId));
     }
 

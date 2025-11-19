@@ -5,6 +5,9 @@ import jakarta.validation.Validator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
+import xyz.firestige.deploy.domain.shared.vo.PlanId;
+import xyz.firestige.deploy.domain.shared.vo.TaskId;
+import xyz.firestige.deploy.domain.shared.vo.TenantId;
 import xyz.firestige.dto.deploy.TenantDeployConfig;
 import xyz.firestige.deploy.application.lifecycle.PlanLifecycleService;
 import xyz.firestige.deploy.application.task.TaskOperationService;
@@ -48,14 +51,17 @@ public class DeploymentTaskFacade {
 
     private final PlanLifecycleService planLifecycleService;
     private final TaskOperationService taskOperationService;
+    private final TenantConfigConverter tenantConfigConverter;
     private final Validator validator;  // Jakarta Validator
 
     public DeploymentTaskFacade(
             PlanLifecycleService planLifecycleService,
             TaskOperationService taskOperationService,
+            TenantConfigConverter tenantConfigConverter,
             Validator validator) {
         this.planLifecycleService = planLifecycleService;
         this.taskOperationService = taskOperationService;
+        this.tenantConfigConverter = tenantConfigConverter;
         this.validator = validator;
     }
 
@@ -71,7 +77,7 @@ public class DeploymentTaskFacade {
         }
 
         // Step 2: DTO 转换：外部 DTO → 内部 DTO（防腐层职责）
-        List<TenantConfig> internalConfigs = TenantConfigConverter.fromExternal(configs);
+        List<TenantConfig> internalConfigs = tenantConfigConverter.fromExternal(configs);
 
         // Step 3: 字段格式校验（对转换后的 TenantConfig 使用 Spring Validator）
         for (int i = 0; i < internalConfigs.size(); i++) {
@@ -112,7 +118,7 @@ public class DeploymentTaskFacade {
      */
     public void pauseTaskByTenant(String tenantId) {
         logger.info("[Facade] 暂停租户任务: {}", tenantId);
-        TaskOperationResult result = taskOperationService.pauseTaskByTenant(tenantId);
+        TaskOperationResult result = taskOperationService.pauseTaskByTenant(TenantId.of(tenantId));
         handleTaskOperationResult(result, "暂停任务");
         logger.info("[Facade] 租户任务暂停成功: {}", tenantId);
     }
@@ -120,7 +126,7 @@ public class DeploymentTaskFacade {
     /**
      * 根据计划 ID 暂停任务
      */
-    public void pauseTaskByPlan(Long planId) {
+    public void pauseTaskByPlan(PlanId planId) {
         logger.info("[Facade] 暂停计划: {}", planId);
         PlanOperationResult result = planLifecycleService.pausePlan(planId);
         handlePlanOperationResult(result, "暂停计划");
@@ -130,7 +136,7 @@ public class DeploymentTaskFacade {
     /**
      * 根据租户 ID 恢复任务
      */
-    public void resumeTaskByTenant(String tenantId) {
+    public void resumeTaskByTenant(TenantId tenantId) {
         logger.info("[Facade] 恢复租户任务: {}", tenantId);
         TaskOperationResult result = taskOperationService.resumeTaskByTenant(tenantId);
         handleTaskOperationResult(result, "恢复任务");
@@ -140,7 +146,7 @@ public class DeploymentTaskFacade {
     /**
      * 根据计划 ID 恢复任务
      */
-    public void resumeTaskByPlan(Long planId) {
+    public void resumeTaskByPlan(PlanId planId) {
         logger.info("[Facade] 恢复计划: {}", planId);
         PlanOperationResult result = planLifecycleService.resumePlan(planId);
         handlePlanOperationResult(result, "恢复计划");
@@ -150,7 +156,7 @@ public class DeploymentTaskFacade {
     /**
      * 根据租户 ID 回滚任务
      */
-    public void rollbackTaskByTenant(String tenantId) {
+    public void rollbackTaskByTenant(TenantId tenantId) {
         logger.info("[Facade] 回滚租户任务: {}", tenantId);
         TaskOperationResult result = taskOperationService.rollbackTaskByTenant(tenantId, null);  // TODO: 需要传入 executorCreator
         handleTaskOperationResult(result, "回滚任务");
@@ -160,7 +166,7 @@ public class DeploymentTaskFacade {
     /**
      * 根据租户 ID 重试任务
      */
-    public void retryTaskByTenant(String tenantId, boolean fromCheckpoint) {
+    public void retryTaskByTenant(TenantId tenantId, boolean fromCheckpoint) {
         logger.info("[Facade] 重试租户任务: {}, fromCheckpoint: {}", tenantId, fromCheckpoint);
         TaskOperationResult result = taskOperationService.retryTaskByTenant(tenantId, fromCheckpoint, null);  // TODO: 需要传入 executorCreator
         handleTaskOperationResult(result, "重试任务");
@@ -170,11 +176,11 @@ public class DeploymentTaskFacade {
     /**
      * 查询任务状态
      */
-    public TaskStatusInfo queryTaskStatus(String executionUnitId) {
-        logger.debug("[Facade] 查询任务状态: {}", executionUnitId);
-        TaskStatusInfo result = taskOperationService.queryTaskStatus(executionUnitId);
+    public TaskStatusInfo queryTaskStatus(TaskId taskId) {
+        logger.debug("[Facade] 查询任务状态: {}", taskId);
+        TaskStatusInfo result = taskOperationService.queryTaskStatus(taskId);
         if (result.getStatus() == null) {
-            throw new TaskNotFoundException("任务不存在: " + executionUnitId);
+            throw new TaskNotFoundException("任务不存在: " + taskId);
         }
         return result;
     }
@@ -182,7 +188,7 @@ public class DeploymentTaskFacade {
     /**
      * 根据租户 ID 查询任务状态
      */
-    public TaskStatusInfo queryTaskStatusByTenant(String tenantId) {
+    public TaskStatusInfo queryTaskStatusByTenant(TenantId tenantId) {
         logger.debug("[Facade] 查询租户任务状态: {}", tenantId);
         TaskStatusInfo result = taskOperationService.queryTaskStatusByTenant(tenantId);
         if (result.getStatus() == null) {
@@ -194,7 +200,7 @@ public class DeploymentTaskFacade {
     /**
      * 根据租户 ID 取消任务
      */
-    public void cancelTaskByTenant(String tenantId) {
+    public void cancelTaskByTenant(TenantId tenantId) {
         logger.info("[Facade] 取消租户任务: {}", tenantId);
         TaskOperationResult result = taskOperationService.cancelTaskByTenant(tenantId);
         handleTaskOperationResult(result, "取消任务");

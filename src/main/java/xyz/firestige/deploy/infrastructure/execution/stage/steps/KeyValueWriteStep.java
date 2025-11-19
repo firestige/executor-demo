@@ -4,6 +4,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.core.StringRedisTemplate;
+import xyz.firestige.deploy.domain.shared.vo.TenantId;
 import xyz.firestige.deploy.domain.stage.config.BlueGreenGatewayConfig;
 import xyz.firestige.deploy.domain.stage.config.PortalConfig;
 import xyz.firestige.deploy.domain.stage.config.ServiceConfig;
@@ -28,7 +30,7 @@ public class KeyValueWriteStep extends AbstractConfigurableStep {
     
     private static final Logger log = LoggerFactory.getLogger(KeyValueWriteStep.class);
     
-    private final RedisTemplate<String, Object> redisTemplate;
+    private final StringRedisTemplate redisTemplate;
     private final ObjectMapper objectMapper;
     private final DeploymentConfigLoader configLoader;
     
@@ -36,7 +38,7 @@ public class KeyValueWriteStep extends AbstractConfigurableStep {
             String stepName,
             Map<String, Object> stepConfig,
             ServiceConfig serviceConfig,
-            RedisTemplate<String, Object> redisTemplate,
+            StringRedisTemplate redisTemplate,
             ObjectMapper objectMapper,
             DeploymentConfigLoader configLoader) {
         
@@ -48,46 +50,49 @@ public class KeyValueWriteStep extends AbstractConfigurableStep {
     
     @Override
     public void execute(TaskRuntimeContext ctx) throws Exception {
-        // 1. 从 YAML 配置获取 Hash field
-        String hashField = getConfigValue("hash-field", null);
+        // 1. 从 YAML 配置获取 Hash field（与 YAML 配置保持一致使用驼峰命名）
+        String hashField = getConfigValue("hashField", null);
         if (hashField == null || hashField.isBlank()) {
-            throw new IllegalArgumentException("hash-field not configured in YAML");
+            throw new IllegalArgumentException("hashField not configured in YAML");
         }
         
         // 2. 从 ServiceConfig 获取运行时数据
-        String tenantId = serviceConfig.getTenantId();
+        TenantId tenantId = serviceConfig.getTenantId();
         
         // 3. 从 Infrastructure 配置获取 key 前缀
         String keyPrefix = configLoader.getInfrastructure()
                 .getRedis()
                 .getHashKeyPrefix();
-        String hashKey = keyPrefix + tenantId;
+        String hashKey = keyPrefix + tenantId.getValue();
         
-        // 4. 构建写入数据（类型安全）
-        Map<String, Object> data = buildData();
-        
-        // 5. 序列化为 JSON 并写入 Redis
-        String jsonValue = objectMapper.writeValueAsString(data);
+        // 4. 获取 JSON 字符串（使用新的 Redis value 对象）
+        String jsonValue = getRedisValueJson();
+
+        // 5. 写入 Redis Hash
         redisTemplate.opsForHash().put(hashKey, hashField, jsonValue);
         
-        log.info("[KeyValueWriteStep] Redis Hash written: key={}, field={}, version={}", 
-                hashKey, hashField, data.get("version"));
+        log.info("[KeyValueWriteStep] Redis Hash written: key={}, field={}, valueLength={}",
+                hashKey, hashField, jsonValue.length());
+        log.debug("[KeyValueWriteStep] JSON value: {}", jsonValue);
     }
     
     /**
-     * 根据 ServiceConfig 类型构建数据
+     * 根据 ServiceConfig 类型获取 Redis value JSON
      */
-    private Map<String, Object> buildData() {
+    private String getRedisValueJson() {
         if (serviceConfig instanceof BlueGreenGatewayConfig bgConfig) {
-            return Map.of(
-                "version", bgConfig.getConfigVersion(),
-                "routing", bgConfig.getRoutingData()
-            );
+            return bgConfig.getRedisValueJson();
         } else if (serviceConfig instanceof PortalConfig portalConfig) {
-            return Map.of(
+            // Portal 暂时使用旧的格式（后续可以扩展）
+            Map<String, Object> data = Map.of(
                 "version", portalConfig.getConfigVersion(),
                 "routing", portalConfig.getRoutingData()
             );
+            try {
+                return objectMapper.writeValueAsString(data);
+            } catch (Exception e) {
+                throw new IllegalStateException("Failed to serialize portal config", e);
+            }
         } else {
             throw new UnsupportedOperationException(
                     "KeyValueWriteStep does not support: " + serviceConfig.getClass().getName());

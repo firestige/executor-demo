@@ -1,6 +1,7 @@
 package xyz.firestige.deploy.domain.plan.event;
 
 import xyz.firestige.deploy.domain.plan.PlanStatus;
+import xyz.firestige.deploy.domain.shared.vo.PlanId;
 
 /**
  * Plan 启动事件
@@ -14,7 +15,7 @@ public class PlanStartedEvent extends PlanStatusEvent {
         super();
     }
 
-    public PlanStartedEvent(String planId, int taskCount) {
+    public PlanStartedEvent(PlanId planId, int taskCount) {
         super(planId, PlanStatus.RUNNING, String.format("Plan 已启动，开始执行 %d 个任务", taskCount));
         this.taskCount = taskCount;
     }

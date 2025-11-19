@@ -1,5 +1,6 @@
 package xyz.firestige.deploy.domain.plan;
 
+import xyz.firestige.deploy.domain.shared.vo.PlanId;
 import xyz.firestige.deploy.domain.task.TaskInfo;
 
 import java.time.LocalDateTime;
@@ -14,13 +15,13 @@ import java.util.List;
  */
 public class PlanInfo {
 
-    private final String planId;
+    private final PlanId planId;
     private final int maxConcurrency;
     private final PlanStatus status;
     private final List<TaskInfo> tasks;     // Plan 包含的 Task 列表（聚合关系）
     private final LocalDateTime createdAt;
 
-    public PlanInfo(String planId, int maxConcurrency, PlanStatus status,
+    public PlanInfo(PlanId planId, int maxConcurrency, PlanStatus status,
                     List<TaskInfo> tasks, LocalDateTime createdAt) {
         this.planId = planId;
         this.maxConcurrency = maxConcurrency;
@@ -49,7 +50,7 @@ public class PlanInfo {
 
     // Getters only (值对象不可变，无 Setters)
 
-    public String getPlanId() {
+    public PlanId getPlanId() {
         return planId;
     }
 

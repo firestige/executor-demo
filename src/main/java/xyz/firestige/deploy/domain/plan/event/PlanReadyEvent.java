@@ -1,6 +1,7 @@
 package xyz.firestige.deploy.domain.plan.event;
 
 import xyz.firestige.deploy.domain.plan.PlanStatus;
+import xyz.firestige.deploy.domain.shared.vo.PlanId;
 
 /**
  * Plan 准备就绪事件
@@ -14,7 +15,7 @@ public class PlanReadyEvent extends PlanStatusEvent {
         super();
     }
 
-    public PlanReadyEvent(String planId, int taskCount) {
+    public PlanReadyEvent(PlanId planId, int taskCount) {
         super(planId, PlanStatus.READY, String.format("Plan 已准备就绪，包含 %d 个任务", taskCount));
         this.taskCount = taskCount;
     }

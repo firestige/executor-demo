@@ -7,6 +7,7 @@ import org.springframework.stereotype.Component;
 
 import xyz.firestige.deploy.application.facade.PlanExecutionFacade;
 import xyz.firestige.deploy.domain.plan.event.PlanStartedEvent;
+import xyz.firestige.deploy.domain.shared.vo.PlanId;
 
 /**
  * Plan 启动事件监听器（RF-20：服务拆分优化）
@@ -41,7 +42,7 @@ public class PlanStartedListener {
      */
     @EventListener
     public void onPlanStarted(PlanStartedEvent event) {
-        String planId = event.getPlanId();
+        PlanId planId = event.getPlanId();
         logger.info("[PlanStartedListener] 收到 Plan 启动事件: {}, 委托给 PlanExecutionFacade 执行", planId);
 
         try {

@@ -3,6 +3,7 @@ package xyz.firestige.deploy.infrastructure.persistence.checkpoint;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.fasterxml.jackson.databind.SerializationFeature;
+import xyz.firestige.deploy.domain.shared.vo.TaskId;
 import xyz.firestige.deploy.domain.task.CheckpointRepository;
 import xyz.firestige.deploy.domain.task.TaskCheckpoint;
 import xyz.firestige.deploy.infrastructure.redis.RedisClient;
@@ -24,7 +25,7 @@ public class RedisCheckpointRepository implements CheckpointRepository {
             .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
 
     // local read-through cache (optional small optimization)
-    private final Map<String, TaskCheckpoint> cache = new ConcurrentHashMap<>();
+    private final Map<TaskId, TaskCheckpoint> cache = new ConcurrentHashMap<>();
 
     public RedisCheckpointRepository(RedisClient client, String namespace, Duration ttl) {
         this.client = client;
@@ -32,10 +33,10 @@ public class RedisCheckpointRepository implements CheckpointRepository {
         this.ttl = ttl;
     }
 
-    private String k(String taskId) { return namespace + taskId; }
+    private String k(TaskId taskId) { return namespace + taskId.getValue(); }
 
     @Override
-    public void put(String taskId, TaskCheckpoint checkpoint) {
+    public void put(TaskId taskId, TaskCheckpoint checkpoint) {
         if (taskId == null || checkpoint == null) return;
         try {
             byte[] json = mapper.writeValueAsBytes(checkpoint);
@@ -47,7 +48,7 @@ public class RedisCheckpointRepository implements CheckpointRepository {
     }
 
     @Override
-    public TaskCheckpoint get(String taskId) {
+    public TaskCheckpoint get(TaskId taskId) {
         if (taskId == null) return null;
         TaskCheckpoint cached = cache.get(taskId);
         if (cached != null) return cached;
@@ -63,7 +64,7 @@ public class RedisCheckpointRepository implements CheckpointRepository {
     }
 
     @Override
-    public void remove(String taskId) {
+    public void remove(TaskId taskId) {
         if (taskId == null) return;
         client.del(k(taskId));
         cache.remove(taskId);

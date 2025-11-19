@@ -1,5 +1,6 @@
 package xyz.firestige.deploy.domain.task.event;
 
+import xyz.firestige.deploy.domain.shared.vo.TaskId;
 import xyz.firestige.deploy.domain.task.TaskStatus;
 
 import java.time.Duration;
@@ -27,7 +28,7 @@ public class TaskCompletedEvent extends TaskStatusEvent {
         this.completedStages = new ArrayList<>();
     }
 
-    public TaskCompletedEvent(String taskId, Duration duration, List<String> completedStages) {
+    public TaskCompletedEvent(TaskId taskId, Duration duration, List<String> completedStages) {
         super(taskId, TaskStatus.COMPLETED);
         this.duration = duration;
         this.completedStages = completedStages != null ? completedStages : new ArrayList<>();

@@ -33,6 +33,13 @@ public final class PlanId {
     /**
      * 创建 PlanId（带验证）
      */
+    public static PlanId of(Long value) {
+        return new PlanId(String.valueOf(value));
+    }
+
+    /**
+     * 创建 PlanId（带验证）
+     */
     public static PlanId of(String value) {
         return new PlanId(value);
     }

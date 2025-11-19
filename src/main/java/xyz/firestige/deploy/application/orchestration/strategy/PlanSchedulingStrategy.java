@@ -1,5 +1,8 @@
 package xyz.firestige.deploy.application.orchestration.strategy;
 
+import xyz.firestige.deploy.domain.shared.vo.PlanId;
+import xyz.firestige.deploy.domain.shared.vo.TenantId;
+
 import java.util.List;
 
 /**
@@ -19,7 +22,7 @@ public interface PlanSchedulingStrategy {
      * @param tenantIds 租户 ID 列表
      * @return true=允许创建，false=拒绝创建
      */
-    boolean canCreatePlan(List<String> tenantIds);
+    boolean canCreatePlan(List<TenantId> tenantIds);
 
     /**
      * 检查是否可以启动 Plan
@@ -28,7 +31,7 @@ public interface PlanSchedulingStrategy {
      * @param tenantIds 租户 ID 列表
      * @return true=允许启动，false=拒绝启动
      */
-    boolean canStartPlan(String planId, List<String> tenantIds);
+    boolean canStartPlan(PlanId planId, List<TenantId> tenantIds);
 
     /**
      * Plan 创建完成通知
@@ -36,7 +39,7 @@ public interface PlanSchedulingStrategy {
      * @param planId Plan ID
      * @param tenantIds 租户 ID 列表
      */
-    void onPlanCreated(String planId, List<String> tenantIds);
+    void onPlanCreated(PlanId planId, List<TenantId> tenantIds);
 
     /**
      * Plan 完成通知（包括成功和失败）
@@ -44,6 +47,6 @@ public interface PlanSchedulingStrategy {
      * @param planId Plan ID
      * @param tenantIds 租户 ID 列表
      */
-    void onPlanCompleted(String planId, List<String> tenantIds);
+    void onPlanCompleted(PlanId planId, List<TenantId> tenantIds);
 }
 

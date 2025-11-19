@@ -1,6 +1,7 @@
 package xyz.firestige.deploy.domain.task.event;
 
 import xyz.firestige.deploy.domain.shared.exception.FailureInfo;
+import xyz.firestige.deploy.domain.shared.vo.TaskId;
 import xyz.firestige.deploy.domain.task.TaskStatus;
 
 import java.util.ArrayList;
@@ -22,7 +23,7 @@ public class TaskRollbackFailedEvent extends TaskStatusEvent {
         this.partiallyRolledBackStages = new ArrayList<>();
     }
 
-    public TaskRollbackFailedEvent(String taskId, FailureInfo failureInfo, List<String> partiallyRolledBackStages) {
+    public TaskRollbackFailedEvent(TaskId taskId, FailureInfo failureInfo, List<String> partiallyRolledBackStages) {
         super(taskId, TaskStatus.ROLLBACK_FAILED);
         setFailureInfo(failureInfo);
         this.partiallyRolledBackStages = partiallyRolledBackStages != null ? partiallyRolledBackStages : new ArrayList<>();

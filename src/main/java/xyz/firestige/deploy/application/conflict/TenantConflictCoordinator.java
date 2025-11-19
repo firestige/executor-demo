@@ -10,6 +10,9 @@ import xyz.firestige.deploy.application.dto.TenantConfig;
 import xyz.firestige.deploy.domain.plan.PlanCreationResult;
 import xyz.firestige.deploy.domain.shared.exception.ErrorType;
 import xyz.firestige.deploy.domain.shared.exception.FailureInfo;
+import xyz.firestige.deploy.domain.shared.vo.PlanId;
+import xyz.firestige.deploy.domain.shared.vo.TaskId;
+import xyz.firestige.deploy.domain.shared.vo.TenantId;
 import xyz.firestige.deploy.domain.task.TaskAggregate;
 import xyz.firestige.deploy.infrastructure.scheduling.TenantConflictManager;
 
@@ -51,7 +54,7 @@ public class TenantConflictCoordinator {
      */
     public PlanCreationResult checkPlanCreation(List<TenantConfig> configs) {
         // 提取租户 ID
-        List<String> tenantIds = configs.stream()
+        List<TenantId> tenantIds = configs.stream()
             .map(TenantConfig::getTenantId)
             .collect(Collectors.toList());
 
@@ -77,12 +80,12 @@ public class TenantConflictCoordinator {
      * @return true 表示注册成功，false 表示冲突
      */
     public boolean checkAndRegisterTask(TaskAggregate task) {
-        String tenantId = task.getTenantId();
-        String taskId = task.getTaskId();
+        TenantId tenantId = task.getTenantId();
+        TaskId taskId = task.getTaskId();
 
         // 注册租户锁
         if (!conflictManager.registerTask(tenantId, taskId)) {
-            String conflictingTaskId = conflictManager.getConflictingTaskId(tenantId);
+            TaskId conflictingTaskId = conflictManager.getConflictingTaskId(tenantId);
             logger.warn("[TenantConflictCoordinator] 租户冲突，注册失败: taskId={}, tenantId={}, conflictingTask={}",
                 taskId, tenantId, conflictingTaskId);
             return false;
@@ -97,7 +100,7 @@ public class TenantConflictCoordinator {
      *
      * @param tenantId 租户 ID
      */
-    public void releaseTenant(String tenantId) {
+    public void releaseTenant(TenantId tenantId) {
         conflictManager.releaseTask(tenantId);
         logger.debug("[TenantConflictCoordinator] 释放租户锁: {}", tenantId);
     }
@@ -108,7 +111,7 @@ public class TenantConflictCoordinator {
      * @param tenantId 租户 ID
      * @return 冲突的 Task ID
      */
-    public String getConflictingTaskId(String tenantId) {
+    public TaskId getConflictingTaskId(TenantId tenantId) {
         return conflictManager.getConflictingTaskId(tenantId);
     }
 }

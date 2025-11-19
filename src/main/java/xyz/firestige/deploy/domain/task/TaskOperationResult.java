@@ -1,6 +1,7 @@
 package xyz.firestige.deploy.domain.task;
 
 import xyz.firestige.deploy.domain.shared.exception.FailureInfo;
+import xyz.firestige.deploy.domain.shared.vo.TaskId;
 
 /**
  * Task 操作结果
@@ -13,7 +14,7 @@ import xyz.firestige.deploy.domain.shared.exception.FailureInfo;
 public class TaskOperationResult {
 
     private boolean success;
-    private String taskId;
+    private TaskId taskId;
     private TaskStatus status;
     private FailureInfo failureInfo;
     private String message;
@@ -26,7 +27,7 @@ public class TaskOperationResult {
     /**
      * 创建成功结果
      */
-    public static TaskOperationResult success(String taskId, TaskStatus status, String message) {
+    public static TaskOperationResult success(TaskId taskId, TaskStatus status, String message) {
         TaskOperationResult result = new TaskOperationResult();
         result.success = true;
         result.taskId = taskId;
@@ -38,7 +39,7 @@ public class TaskOperationResult {
     /**
      * 创建失败结果
      */
-    public static TaskOperationResult failure(String taskId, FailureInfo failureInfo, String message) {
+    public static TaskOperationResult failure(TaskId taskId, FailureInfo failureInfo, String message) {
         TaskOperationResult result = new TaskOperationResult();
         result.success = false;
         result.taskId = taskId;
@@ -67,11 +68,11 @@ public class TaskOperationResult {
         this.success = success;
     }
 
-    public String getTaskId() {
+    public TaskId getTaskId() {
         return taskId;
     }
 
-    public void setTaskId(String taskId) {
+    public void setTaskId(TaskId taskId) {
         this.taskId = taskId;
     }
 
@@ -103,7 +104,7 @@ public class TaskOperationResult {
     public String toString() {
         return "TaskOperationResult{" +
                 "success=" + success +
-                ", taskId='" + taskId + '\'' +
+                ", taskId='" + taskId.getValue() + '\'' +
                 ", status=" + status +
                 ", message='" + message + '\'' +
                 '}';

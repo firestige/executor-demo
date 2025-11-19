@@ -1,5 +1,6 @@
 package xyz.firestige.deploy.domain.task;
 
+import xyz.firestige.deploy.domain.shared.vo.TaskId;
 import xyz.firestige.deploy.infrastructure.execution.stage.TaskStage;
 import xyz.firestige.deploy.infrastructure.execution.TaskExecutor;
 
@@ -29,7 +30,7 @@ public interface TaskRuntimeRepository {
      * @param taskId Task ID
      * @param executor TaskExecutor 实例
      */
-    void saveExecutor(String taskId, TaskExecutor executor);
+    void saveExecutor(TaskId taskId, TaskExecutor executor);
 
     /**
      * 获取 TaskExecutor
@@ -37,7 +38,7 @@ public interface TaskRuntimeRepository {
      * @param taskId Task ID
      * @return TaskExecutor，如果不存在则返回 empty
      */
-    Optional<TaskExecutor> getExecutor(String taskId);
+    Optional<TaskExecutor> getExecutor(TaskId taskId);
 
     // ========== Context 管理 ==========
 
@@ -47,7 +48,7 @@ public interface TaskRuntimeRepository {
      * @param taskId Task ID
      * @param context TaskRuntimeContext 实例
      */
-    void saveContext(String taskId, TaskRuntimeContext context);
+    void saveContext(TaskId taskId, TaskRuntimeContext context);
 
     /**
      * 获取 Task 的运行时上下文
@@ -55,7 +56,7 @@ public interface TaskRuntimeRepository {
      * @param taskId Task ID
      * @return TaskRuntimeContext，如果不存在则返回 empty
      */
-    Optional<TaskRuntimeContext> getContext(String taskId);
+    Optional<TaskRuntimeContext> getContext(TaskId taskId);
 
     // ========== Stages 管理 ==========
 
@@ -65,7 +66,7 @@ public interface TaskRuntimeRepository {
      * @param taskId Task ID
      * @param stages Stage 列表
      */
-    void saveStages(String taskId, List<TaskStage> stages);
+    void saveStages(TaskId taskId, List<TaskStage> stages);
 
     /**
      * 获取 Task 的 Stage 列表
@@ -73,7 +74,7 @@ public interface TaskRuntimeRepository {
      * @param taskId Task ID
      * @return Stage 列表，如果不存在则返回 empty
      */
-    Optional<List<TaskStage>> getStages(String taskId);
+    Optional<List<TaskStage>> getStages(TaskId taskId);
 
     // ========== 清理方法 ==========
 
@@ -82,27 +83,27 @@ public interface TaskRuntimeRepository {
      *
      * @param taskId Task ID
      */
-    void remove(String taskId);
+    void remove(TaskId taskId);
 
     /**
      * 删除 TaskExecutor
      *
      * @param taskId Task ID
      */
-    void removeExecutor(String taskId);
+    void removeExecutor(TaskId taskId);
 
     /**
      * 删除 Context
      *
      * @param taskId Task ID
      */
-    void removeContext(String taskId);
+    void removeContext(TaskId taskId);
 
     /**
      * 删除 Stages
      *
      * @param taskId Task ID
      */
-    void removeStages(String taskId);
+    void removeStages(TaskId taskId);
 }
 

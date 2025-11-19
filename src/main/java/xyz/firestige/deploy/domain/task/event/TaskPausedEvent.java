@@ -1,5 +1,6 @@
 package xyz.firestige.deploy.domain.task.event;
 
+import xyz.firestige.deploy.domain.shared.vo.TaskId;
 import xyz.firestige.deploy.domain.task.TaskStatus;
 
 /**
@@ -22,7 +23,7 @@ public class TaskPausedEvent extends TaskStatusEvent {
         setStatus(TaskStatus.PAUSED);
     }
 
-    public TaskPausedEvent(String taskId, String pausedBy, String currentStage) {
+    public TaskPausedEvent(TaskId taskId, String pausedBy, String currentStage) {
         super(taskId, TaskStatus.PAUSED);
         this.pausedBy = pausedBy;
         this.currentStage = currentStage;

@@ -1,5 +1,6 @@
 package xyz.firestige.deploy.infrastructure.event.monitoring;
 
+import xyz.firestige.deploy.domain.shared.vo.TaskId;
 import xyz.firestige.deploy.domain.task.TaskStatus;
 import java.time.LocalDateTime;
 
@@ -23,7 +24,7 @@ import java.time.LocalDateTime;
  */
 public class TaskProgressMonitoringEvent {
     
-    private final String taskId;
+    private final TaskId taskId;
     private final int currentStageIndex;
     private final int totalStages;
     private final double percentage;
@@ -31,7 +32,7 @@ public class TaskProgressMonitoringEvent {
     private final LocalDateTime timestamp;
     
     public TaskProgressMonitoringEvent(
-            String taskId,
+            TaskId taskId,
             int currentStageIndex,
             int totalStages,
             double percentage,
@@ -47,7 +48,7 @@ public class TaskProgressMonitoringEvent {
     
     // Getters
     
-    public String getTaskId() {
+    public TaskId getTaskId() {
         return taskId;
     }
     

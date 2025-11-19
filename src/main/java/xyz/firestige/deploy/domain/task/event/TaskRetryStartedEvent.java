@@ -1,5 +1,6 @@
 package xyz.firestige.deploy.domain.task.event;
 
+import xyz.firestige.deploy.domain.shared.vo.TaskId;
 import xyz.firestige.deploy.domain.task.TaskStatus;
 
 /**
@@ -19,7 +20,7 @@ public class TaskRetryStartedEvent extends TaskStatusEvent {
     /**
      * 基础构造函数（不带进度信息）
      */
-    public TaskRetryStartedEvent(String taskId, boolean fromCheckpoint) {
+    public TaskRetryStartedEvent(TaskId taskId, boolean fromCheckpoint) {
         super(taskId, TaskStatus.RUNNING);
         this.fromCheckpoint = fromCheckpoint;
         this.currentStageIndex = 0;
@@ -30,7 +31,7 @@ public class TaskRetryStartedEvent extends TaskStatusEvent {
     /**
      * 完整构造函数（带进度信息，用于检查点恢复）
      */
-    public TaskRetryStartedEvent(String taskId, boolean fromCheckpoint, int currentStageIndex, int totalStages) {
+    public TaskRetryStartedEvent(TaskId taskId, boolean fromCheckpoint, int currentStageIndex, int totalStages) {
         super(taskId, TaskStatus.RUNNING);
         this.fromCheckpoint = fromCheckpoint;
         this.currentStageIndex = currentStageIndex;

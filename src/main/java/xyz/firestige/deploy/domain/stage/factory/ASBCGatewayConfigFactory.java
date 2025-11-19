@@ -3,6 +3,7 @@ package xyz.firestige.deploy.domain.stage.factory;
 import org.springframework.stereotype.Component;
 import xyz.firestige.deploy.application.dto.MediaRoutingConfig;
 import xyz.firestige.deploy.application.dto.TenantConfig;
+import xyz.firestige.deploy.domain.shared.vo.TenantId;
 import xyz.firestige.deploy.domain.stage.config.ASBCGatewayConfig;
 import xyz.firestige.deploy.domain.stage.config.ServiceConfig;
 
@@ -42,8 +43,8 @@ public class ASBCGatewayConfigFactory implements ServiceConfigFactory {
         }
         
         // 1. 提取租户标识
-        String tenantId = tenantConfig.getTenantId();
-        if (tenantId == null || tenantId.isBlank()) {
+        TenantId tenantId = tenantConfig.getTenantId();
+        if (tenantId == null) {
             throw new IllegalArgumentException("tenantId cannot be null or blank");
         }
         

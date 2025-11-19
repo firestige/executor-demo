@@ -1,5 +1,7 @@
 package xyz.firestige.deploy.facade;
 
+import xyz.firestige.deploy.domain.shared.vo.TaskId;
+import xyz.firestige.deploy.domain.task.TaskInfo;
 import xyz.firestige.deploy.domain.task.TaskStatus;
 
 /**
@@ -8,7 +10,7 @@ import xyz.firestige.deploy.domain.task.TaskStatus;
  */
 public class TaskStatusInfo {
 
-    private String taskId;
+    private TaskId taskId;
     private TaskStatus status;
     private String message;
     private Integer currentStage;
@@ -19,7 +21,7 @@ public class TaskStatusInfo {
     public TaskStatusInfo() {
     }
 
-    public TaskStatusInfo(String taskId, TaskStatus status) {
+    public TaskStatusInfo(TaskId taskId, TaskStatus status) {
         this.taskId = taskId;
         this.status = status;
     }
@@ -37,7 +39,7 @@ public class TaskStatusInfo {
     /**
      * 创建成功的状态信息
      */
-    public static TaskStatusInfo success(String taskId, TaskStatus status, String message) {
+    public static TaskStatusInfo success(TaskId taskId, TaskStatus status, String message) {
         TaskStatusInfo info = new TaskStatusInfo();
         info.setTaskId(taskId);
         info.setStatus(status);
@@ -45,11 +47,11 @@ public class TaskStatusInfo {
         return info;
     }
 
-    public String getTaskId() {
+    public TaskId getTaskId() {
         return taskId;
     }
 
-    public void setTaskId(String taskId) {
+    public void setTaskId(TaskId taskId) {
         this.taskId = taskId;
     }
 

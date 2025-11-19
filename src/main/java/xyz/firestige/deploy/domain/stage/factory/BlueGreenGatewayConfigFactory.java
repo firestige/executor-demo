@@ -2,11 +2,14 @@ package xyz.firestige.deploy.domain.stage.factory;
 
 import org.springframework.stereotype.Component;
 import xyz.firestige.deploy.application.dto.TenantConfig;
+import xyz.firestige.deploy.domain.shared.vo.TenantId;
 import xyz.firestige.deploy.domain.stage.config.BlueGreenGatewayConfig;
 import xyz.firestige.deploy.domain.stage.config.ServiceConfig;
-import xyz.firestige.entity.deploy.NetworkEndpoint;
+import xyz.firestige.deploy.domain.stage.model.BlueGreenGatewayRedisValue;
+import xyz.firestige.deploy.domain.stage.model.RouteInfo;
+import xyz.firestige.deploy.domain.shared.vo.RouteRule;
 
-import java.util.HashMap;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
@@ -14,10 +17,11 @@ import java.util.Map;
  * 蓝绿网关配置工厂
  * 
  * 转换逻辑：
- * 1. 从 TenantConfig.networkEndpoints 提取 key-value 路由数据
- * 2. 从 TenantConfig.deployUnit.version 映射为 configVersion
- * 3. 从 TenantConfig.nacosNameSpace 和固定 serviceName 构建服务发现信息
- * 4. 使用默认或配置的健康检查路径
+ * 1. 从 TenantConfig.routeRules 提取路由信息
+ * 2. 从 TenantConfig.deployUnit 提取当前和上一次的部署单元名称
+ * 3. 构建 BlueGreenGatewayRedisValue 对象
+ * 4. 从 TenantConfig.nacosNameSpace 和固定 serviceName 构建服务发现信息
+ * 5. 使用默认或配置的健康检查路径
  */
 @Component
 public class BlueGreenGatewayConfigFactory implements ServiceConfigFactory {
@@ -38,8 +42,8 @@ public class BlueGreenGatewayConfigFactory implements ServiceConfigFactory {
         }
         
         // 1. 提取租户标识
-        String tenantId = tenantConfig.getTenantId();
-        if (tenantId == null || tenantId.isBlank()) {
+        TenantId tenantId = tenantConfig.getTenantId();
+        if (tenantId == null) {
             throw new IllegalArgumentException("tenantId cannot be null or blank");
         }
         
@@ -58,20 +62,75 @@ public class BlueGreenGatewayConfigFactory implements ServiceConfigFactory {
         // 4. 提取健康检查路径
         String healthCheckPath = extractHealthCheckPath(tenantConfig);
         
-        // 5. 转换 NetworkEndpoint 列表为 Map<String, String>
-        Map<String, String> routingData = convertNetworkEndpoints(tenantConfig.getNetworkEndpoints());
-        
-        // 6. 创建领域配置对象
+        // 5. 构建 Redis value 对象
+        BlueGreenGatewayRedisValue redisValue = buildRedisValue(tenantConfig);
+
+        // 6. 创建领域配置对象（routingData 设置为空 Map，已弃用）
         return new BlueGreenGatewayConfig(
                 tenantId,
                 configVersion,
                 nacosNamespace,
                 NACOS_SERVICE_NAME,
                 healthCheckPath,
-                routingData
+                Map.of(),  // 空 Map，routingData 已弃用
+                redisValue
         );
     }
-    
+
+    /**
+     * 构建 Redis value 对象
+     */
+    private BlueGreenGatewayRedisValue buildRedisValue(TenantConfig tenantConfig) {
+        // 1. 租户 ID
+        TenantId tenantId = tenantConfig.getTenantId();
+
+        // 2. 目标部署单元名称（当前配置）
+        String targetUnitName = null;
+        if (tenantConfig.getDeployUnit() != null) {
+            targetUnitName = tenantConfig.getDeployUnit().name();
+        }
+        if (targetUnitName == null || targetUnitName.isBlank()) {
+            throw new IllegalArgumentException("deployUnit.name cannot be null or blank");
+        }
+
+        // 3. 来源部署单元名称（上一次配置）
+        String sourceUnitName = null;
+        if (tenantConfig.getPreviousConfig() != null
+                && tenantConfig.getPreviousConfig().getDeployUnit() != null) {
+            sourceUnitName = tenantConfig.getPreviousConfig().getDeployUnit().name();
+        }
+        // 如果没有上一次配置，sourceUnitName 可以为 null 或与 targetUnitName 相同
+        if (sourceUnitName == null || sourceUnitName.isBlank()) {
+            sourceUnitName = targetUnitName;  // 首次部署，source = target
+        }
+
+        // 4. 转换路由规则
+        List<RouteInfo> routes = convertRouteRules(tenantConfig.getRouteRules());
+
+        return new BlueGreenGatewayRedisValue(tenantId, sourceUnitName, targetUnitName, routes);
+    }
+
+    /**
+     * 转换路由规则为 RouteInfo 列表
+     */
+    private List<RouteInfo> convertRouteRules(List<RouteRule> routeRules) {
+        if (routeRules == null || routeRules.isEmpty()) {
+            throw new IllegalArgumentException("routeRules cannot be null or empty");
+        }
+
+        List<RouteInfo> routes = new ArrayList<>();
+        for (RouteRule rule : routeRules) {
+            RouteInfo routeInfo = new RouteInfo(
+                    rule.id(),
+                    rule.sourceUri().toString(),
+                    rule.targetUri().toString()
+            );
+            routes.add(routeInfo);
+        }
+
+        return routes;
+    }
+
     /**
      * 提取健康检查路径
      * 优先级：TenantConfig.healthCheckEndpoints > 默认值
@@ -82,33 +141,5 @@ public class BlueGreenGatewayConfigFactory implements ServiceConfigFactory {
             return healthCheckEndpoints.get(0);  // 使用第一个
         }
         return DEFAULT_HEALTH_CHECK_PATH;
-    }
-    
-    /**
-     * 转换 NetworkEndpoint 列表为 key-value Map
-     * 
-     * 转换规则：
-     * - 使用 NetworkEndpoint.key 作为 Map key
-     * - 使用 NetworkEndpoint.value 作为 Map value
-     * - 跳过 key 或 value 为空的条目
-     */
-    private Map<String, String> convertNetworkEndpoints(List<NetworkEndpoint> endpoints) {
-        if (endpoints == null || endpoints.isEmpty()) {
-            throw new IllegalArgumentException("networkEndpoints cannot be null or empty");
-        }
-        
-        Map<String, String> routingData = new HashMap<>();
-        for (NetworkEndpoint endpoint : endpoints) {
-            if (endpoint.getKey() != null && !endpoint.getKey().isBlank() 
-                    && endpoint.getValue() != null && !endpoint.getValue().isBlank()) {
-                routingData.put(endpoint.getKey(), endpoint.getValue());
-            }
-        }
-        
-        if (routingData.isEmpty()) {
-            throw new IllegalArgumentException("No valid key-value pairs found in networkEndpoints");
-        }
-        
-        return routingData;
     }
 }

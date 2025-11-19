@@ -1,5 +1,6 @@
 package xyz.firestige.deploy.domain.task.event;
 
+import xyz.firestige.deploy.domain.shared.vo.TaskId;
 import xyz.firestige.deploy.domain.task.TaskStatus;
 
 import java.util.ArrayList;
@@ -25,7 +26,7 @@ public class TaskRolledBackEvent extends TaskStatusEvent {
         this.rolledBackStages = new ArrayList<>();
     }
 
-    public TaskRolledBackEvent(String taskId, List<String> rolledBackStages) {
+    public TaskRolledBackEvent(TaskId taskId, List<String> rolledBackStages) {
         super(taskId, TaskStatus.ROLLED_BACK);
         this.rolledBackStages = rolledBackStages != null ? rolledBackStages : new ArrayList<>();
         setMessage("任务回滚完成，回滚 Stage 数: " + this.rolledBackStages.size());

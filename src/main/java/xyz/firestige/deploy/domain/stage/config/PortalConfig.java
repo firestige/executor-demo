@@ -1,5 +1,7 @@
 package xyz.firestige.deploy.domain.stage.config;
 
+import xyz.firestige.deploy.domain.shared.vo.TenantId;
+
 import java.util.Map;
 
 /**
@@ -10,7 +12,7 @@ import java.util.Map;
  */
 public class PortalConfig implements ServiceConfig {
     
-    private final String tenantId;
+    private final TenantId tenantId;
     private final Long configVersion;
     private final String nacosNamespace;
     private final String nacosServiceName;
@@ -18,14 +20,14 @@ public class PortalConfig implements ServiceConfig {
     private final Map<String, String> routingData;
     
     public PortalConfig(
-            String tenantId,
+            TenantId tenantId,
             Long configVersion,
             String nacosNamespace,
             String nacosServiceName,
             String healthCheckPath,
             Map<String, String> routingData) {
         
-        if (tenantId == null || tenantId.isBlank()) {
+        if (tenantId == null) {
             throw new IllegalArgumentException("tenantId cannot be null or blank");
         }
         if (configVersion == null) {
@@ -41,7 +43,7 @@ public class PortalConfig implements ServiceConfig {
             throw new IllegalArgumentException("healthCheckPath cannot be null");
         }
         if (routingData == null || routingData.isEmpty()) {
-            throw new IllegalArgumentException("routingData cannot be null or empty");
+//            throw new IllegalArgumentException("routingData cannot be null or empty");
         }
         
         this.tenantId = tenantId;
@@ -58,7 +60,7 @@ public class PortalConfig implements ServiceConfig {
     }
     
     @Override
-    public String getTenantId() {
+    public TenantId getTenantId() {
         return tenantId;
     }
     

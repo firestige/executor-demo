@@ -6,6 +6,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import xyz.firestige.deploy.application.dto.TenantConfig;
+import xyz.firestige.deploy.domain.shared.vo.PlanId;
+import xyz.firestige.deploy.domain.shared.vo.TaskId;
+import xyz.firestige.deploy.domain.shared.vo.TenantId;
 import xyz.firestige.deploy.domain.task.event.TaskRetryStartedEvent;
 import xyz.firestige.deploy.infrastructure.execution.stage.TaskStage;
 import xyz.firestige.deploy.domain.shared.event.DomainEventPublisher;
@@ -59,14 +62,14 @@ public class TaskDomainService {
      * @param config 租户配置（内部 DTO）
      * @return Task 聚合
      */
-    public TaskAggregate createTask(String planId, TenantConfig config) {
+    public TaskAggregate createTask(PlanId planId, TenantConfig config) {
         logger.info("[TaskDomainService] 创建 Task: planId={}, tenantId={}", planId, config.getTenantId());
 
         // 生成 Task ID
-        String taskId = generateTaskId(planId, config.getTenantId());
+        TaskId taskId = generateTaskId(planId, config.getTenantId());
 
         // 创建 Task 聚合
-        TaskAggregate task = new TaskAggregate(taskId, config.getTenantId(), planId);
+        TaskAggregate task = new TaskAggregate(taskId, planId, config.getTenantId());
         // ✅ 调用聚合的业务方法
         task.markAsPending();
 
@@ -91,6 +94,7 @@ public class TaskDomainService {
             TaskAggregate task,
             List<TaskStage> stages) {
         logger.debug("[TaskDomainService] 构建 Task Stages: {}", task.getTaskId());
+        task.setTotalStages(stages.size());
 
         // 保存到仓储
         taskRuntimeRepository.saveStages(task.getTaskId(), stages);
@@ -265,7 +269,7 @@ public class TaskDomainService {
      * @param tenantId 租户 ID
      * @return TaskOperationResult
      */
-    public TaskOperationResult pauseTaskByTenant(String tenantId) {
+    public TaskOperationResult pauseTaskByTenant(TenantId tenantId) {
         logger.info("[TaskDomainService] 暂停租户任务: {}", tenantId);
 
         TaskAggregate target = findTaskByTenantId(tenantId);
@@ -312,7 +316,7 @@ public class TaskDomainService {
      * @param tenantId 租户 ID
      * @return TaskOperationResult
      */
-    public TaskOperationResult resumeTaskByTenant(String tenantId) {
+    public TaskOperationResult resumeTaskByTenant(TenantId tenantId) {
         logger.info("[TaskDomainService] 恢复租户任务: {}", tenantId);
 
         TaskAggregate target = findTaskByTenantId(tenantId);
@@ -359,7 +363,7 @@ public class TaskDomainService {
      * @param tenantId 租户 ID
      * @return TaskWorkerCreationContext 包含执行所需的聚合和运行时数据，null 表示未找到任务
      */
-    public TaskWorkerCreationContext prepareRollbackByTenant(String tenantId) {
+    public TaskWorkerCreationContext prepareRollbackByTenant(TenantId tenantId) {
         logger.info("[TaskDomainService] 准备回滚租户任务: {}", tenantId);
 
         TaskAggregate target = findTaskByTenantId(tenantId);
@@ -395,7 +399,7 @@ public class TaskDomainService {
      * @param fromCheckpoint 是否从检查点恢复
      * @return TaskWorkerCreationContext 包含执行所需的聚合和运行时数据，null 表示未找到任务
      */
-    public TaskWorkerCreationContext prepareRetryByTenant(String tenantId, boolean fromCheckpoint) {
+    public TaskWorkerCreationContext prepareRetryByTenant(TenantId tenantId, boolean fromCheckpoint) {
         logger.info("[TaskDomainService] 准备重试租户任务: {}, fromCheckpoint: {}", tenantId, fromCheckpoint);
 
         TaskAggregate target = findTaskByTenantId(tenantId);
@@ -444,7 +448,7 @@ public class TaskDomainService {
      * @param taskId 执行单 ID
      * @return TaskStatusInfo
      */
-    public TaskStatusInfo queryTaskStatus(String taskId) {
+    public TaskStatusInfo queryTaskStatus(TaskId taskId) {
         logger.debug("[TaskDomainService] 查询任务状态: {}", taskId);
 
         TaskAggregate task = taskRepository.findById(taskId).orElse(null);
@@ -482,7 +486,7 @@ public class TaskDomainService {
      * @param tenantId 租户 ID
      * @return TaskStatusInfo
      */
-    public TaskStatusInfo queryTaskStatusByTenant(String tenantId) {
+    public TaskStatusInfo queryTaskStatusByTenant(TenantId tenantId) {
         logger.debug("[TaskApplicationService] 查询租户任务状态: {}", tenantId);
 
         TaskAggregate task = findTaskByTenantId(tenantId);
@@ -498,7 +502,7 @@ public class TaskDomainService {
      * @param taskId 执行单 ID
      * @return TaskOperationResult
      */
-    public TaskOperationResult cancelTask(String taskId) {
+    public TaskOperationResult cancelTask(TaskId taskId) {
         logger.info("[TaskDomainService] 取消任务: {}", taskId);
 
         TaskAggregate task = taskRepository.findById(taskId).orElse(null);
@@ -529,7 +533,7 @@ public class TaskDomainService {
      * @param tenantId 租户 ID
      * @return TaskOperationResult
      */
-    public TaskOperationResult cancelTaskByTenant(String tenantId) {
+    public TaskOperationResult cancelTaskByTenant(TenantId tenantId) {
         logger.info("[TaskApplicationService] 取消租户任务: {}", tenantId);
 
         TaskAggregate task = findTaskByTenantId(tenantId);
@@ -549,14 +553,14 @@ public class TaskDomainService {
     /**
      * 生成 Task ID
      */
-    private String generateTaskId(String planId, String tenantId) {
-        return planId + "_task_" + tenantId + "_" + System.currentTimeMillis();
+    private TaskId generateTaskId(PlanId planId, TenantId tenantId) {
+        return TaskId.of("task-" + planId + "_" +  tenantId + "_" + System.currentTimeMillis());
     }
 
     /**
      * 根据租户 ID 查找任务
      */
-    private TaskAggregate findTaskByTenantId(String tenantId) {
+    private TaskAggregate findTaskByTenantId(TenantId tenantId) {
         return taskRepository.findByTenantId(tenantId).orElse(null);
     }
 

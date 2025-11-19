@@ -1,6 +1,7 @@
 package xyz.firestige.deploy.domain.plan.event;
 
 import xyz.firestige.deploy.domain.plan.PlanStatus;
+import xyz.firestige.deploy.domain.shared.vo.PlanId;
 
 /**
  * Plan 完成事件
@@ -14,7 +15,7 @@ public class PlanCompletedEvent extends PlanStatusEvent {
         super();
     }
 
-    public PlanCompletedEvent(String planId, int taskCount) {
+    public PlanCompletedEvent(PlanId planId, int taskCount) {
         super(planId, PlanStatus.COMPLETED, String.format("Plan 已完成，成功执行 %d 个任务", taskCount));
         this.taskCount = taskCount;
     }

@@ -1,6 +1,7 @@
 package xyz.firestige.deploy.domain.task.event;
 
 import xyz.firestige.deploy.application.orchestration.ExecutionMode;
+import xyz.firestige.deploy.domain.shared.vo.TaskId;
 import xyz.firestige.deploy.domain.task.TaskStatus;
 
 /**
@@ -23,7 +24,7 @@ public class TaskCreatedEvent extends TaskStatusEvent {
         setStatus(TaskStatus.CREATED);
     }
 
-    public TaskCreatedEvent(String taskId, int configCount, ExecutionMode executionMode) {
+    public TaskCreatedEvent(TaskId taskId, int configCount, ExecutionMode executionMode) {
         super(taskId, TaskStatus.CREATED);
         this.configCount = configCount;
         this.executionMode = executionMode;

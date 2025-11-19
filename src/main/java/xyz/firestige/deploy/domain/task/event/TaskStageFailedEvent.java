@@ -1,6 +1,7 @@
 package xyz.firestige.deploy.domain.task.event;
 
 import xyz.firestige.deploy.domain.shared.exception.FailureInfo;
+import xyz.firestige.deploy.domain.shared.vo.TaskId;
 import xyz.firestige.deploy.domain.task.TaskStatus;
 
 import java.util.ArrayList;
@@ -27,7 +28,7 @@ public class TaskStageFailedEvent extends TaskStatusEvent {
         this.affectedTenants = new ArrayList<>();
     }
 
-    public TaskStageFailedEvent(String taskId, String stageName, FailureInfo failureInfo) {
+    public TaskStageFailedEvent(TaskId taskId, String stageName, FailureInfo failureInfo) {
         super(taskId, TaskStatus.RUNNING);
         this.stageName = stageName;
         setFailureInfo(failureInfo);
@@ -35,7 +36,7 @@ public class TaskStageFailedEvent extends TaskStatusEvent {
         setMessage("Stage 执行失败: " + stageName);
     }
 
-    public TaskStageFailedEvent(String taskId, String stageName, FailureInfo failureInfo, List<String> affectedTenants) {
+    public TaskStageFailedEvent(TaskId taskId, String stageName, FailureInfo failureInfo, List<String> affectedTenants) {
         super(taskId, TaskStatus.RUNNING);
         this.stageName = stageName;
         setFailureInfo(failureInfo);
