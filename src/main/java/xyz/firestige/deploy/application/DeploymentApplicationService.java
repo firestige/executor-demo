@@ -21,6 +21,7 @@ import xyz.firestige.deploy.domain.plan.PlanCreationResult;
 import xyz.firestige.deploy.domain.plan.PlanDomainService;
 import xyz.firestige.deploy.domain.plan.PlanOperationResult;
 import xyz.firestige.deploy.domain.plan.PlanStatus;
+import xyz.firestige.deploy.domain.task.StateTransitionService;
 import xyz.firestige.deploy.domain.task.TaskAggregate;
 import xyz.firestige.deploy.domain.task.TaskDomainService;
 import xyz.firestige.deploy.domain.task.TaskOperationResult;
@@ -71,7 +72,6 @@ public class DeploymentApplicationService {
     private final TaskDomainService taskDomainService;
     private final TenantConflictManager conflictManager;
     private final TaskWorkerFactory taskWorkerFactory;
-    private final TaskStateManager stateManager;
     private final TaskRepository taskRepository;
     private final TaskRuntimeRepository taskRuntimeRepository;
     private final ExecutorService executorService;
@@ -84,7 +84,6 @@ public class DeploymentApplicationService {
             TaskDomainService taskDomainService,
             TenantConflictManager conflictManager,
             TaskWorkerFactory taskWorkerFactory,
-            TaskStateManager stateManager,
             TaskRepository taskRepository,
             TaskRuntimeRepository taskRuntimeRepository,
             ExecutorProperties executorProperties) {
@@ -93,7 +92,6 @@ public class DeploymentApplicationService {
         this.taskDomainService = taskDomainService;
         this.conflictManager = conflictManager;
         this.taskWorkerFactory = taskWorkerFactory;
-        this.stateManager = stateManager;
         this.taskRepository = taskRepository;
         this.taskRuntimeRepository = taskRuntimeRepository;
         this.maxConcurrency = executorProperties.getMaxConcurrency();

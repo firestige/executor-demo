@@ -1,10 +1,13 @@
-package xyz.firestige.deploy.application.orchestration.strategy;
+package xyz.firestige.deploy.config;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import xyz.firestige.deploy.application.orchestration.strategy.CoarseGrainedSchedulingStrategy;
+import xyz.firestige.deploy.application.orchestration.strategy.FineGrainedSchedulingStrategy;
+import xyz.firestige.deploy.application.orchestration.strategy.PlanSchedulingStrategy;
 import xyz.firestige.deploy.infrastructure.scheduling.ConflictRegistry;
 
 /**
