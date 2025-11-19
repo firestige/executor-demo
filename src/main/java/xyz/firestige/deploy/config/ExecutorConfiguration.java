@@ -8,28 +8,28 @@ import jakarta.validation.Validation;
 import jakarta.validation.Validator;
 import jakarta.validation.ValidatorFactory;
 import xyz.firestige.deploy.application.DeploymentApplicationService;
+import xyz.firestige.deploy.application.checkpoint.CheckpointService;
 import xyz.firestige.deploy.application.plan.DeploymentPlanCreator;
 import xyz.firestige.deploy.application.validation.BusinessValidator;
-import xyz.firestige.deploy.application.checkpoint.CheckpointService;
+import xyz.firestige.deploy.application.validation.ConflictValidator;
+import xyz.firestige.deploy.domain.plan.PlanDomainService;
+import xyz.firestige.deploy.domain.plan.PlanRepository;
+import xyz.firestige.deploy.domain.shared.event.DomainEventPublisher;
+import xyz.firestige.deploy.domain.task.StateTransitionService;
+import xyz.firestige.deploy.domain.task.TaskDomainService;
+import xyz.firestige.deploy.domain.task.TaskRepository;
+import xyz.firestige.deploy.domain.task.TaskRuntimeRepository;
+import xyz.firestige.deploy.facade.DeploymentTaskFacade;
 import xyz.firestige.deploy.infrastructure.execution.DefaultTaskWorkerFactory;
 import xyz.firestige.deploy.infrastructure.execution.TaskWorkerFactory;
 import xyz.firestige.deploy.infrastructure.execution.stage.StageFactory;
 import xyz.firestige.deploy.infrastructure.external.health.HealthCheckClient;
 import xyz.firestige.deploy.infrastructure.external.health.MockHealthCheckClient;
 import xyz.firestige.deploy.infrastructure.persistence.checkpoint.InMemoryCheckpointRepository;
-import xyz.firestige.deploy.domain.plan.PlanDomainService;
-import xyz.firestige.deploy.domain.plan.PlanRepository;
-import xyz.firestige.deploy.domain.task.StateTransitionService;
-import xyz.firestige.deploy.domain.task.TaskDomainService;
-import xyz.firestige.deploy.domain.task.TaskRepository;
-import xyz.firestige.deploy.domain.task.TaskRuntimeRepository;
-import xyz.firestige.deploy.domain.shared.event.DomainEventPublisher;
-import xyz.firestige.deploy.facade.DeploymentTaskFacade;
 import xyz.firestige.deploy.infrastructure.persistence.plan.InMemoryPlanRepository;
 import xyz.firestige.deploy.infrastructure.persistence.task.InMemoryTaskRepository;
 import xyz.firestige.deploy.infrastructure.persistence.task.InMemoryTaskRuntimeRepository;
 import xyz.firestige.deploy.infrastructure.scheduling.TenantConflictManager;
-import xyz.firestige.deploy.application.validation.ConflictValidator;
 import xyz.firestige.deploy.infrastructure.state.TaskStateManager;
 import xyz.firestige.deploy.infrastructure.validation.ValidationChain;
 import xyz.firestige.deploy.infrastructure.validation.validator.BusinessRuleValidator;
@@ -209,7 +209,6 @@ public class ExecutorConfiguration {
             TaskDomainService taskDomainService,
             TenantConflictManager conflictManager,
             TaskWorkerFactory taskWorkerFactory,
-            TaskStateManager stateManager,
             TaskRepository taskRepository,
             TaskRuntimeRepository taskRuntimeRepository,
             ExecutorProperties executorProperties) {
@@ -219,7 +218,6 @@ public class ExecutorConfiguration {
                 taskDomainService,
                 conflictManager,
                 taskWorkerFactory,
-                stateManager,
                 taskRepository,
                 taskRuntimeRepository,
                 executorProperties

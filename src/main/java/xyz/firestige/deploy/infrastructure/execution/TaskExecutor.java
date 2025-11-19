@@ -1,25 +1,26 @@
 package xyz.firestige.deploy.infrastructure.execution;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.context.ApplicationEventPublisher;
-import xyz.firestige.deploy.application.checkpoint.CheckpointService;
-import xyz.firestige.deploy.domain.shared.exception.FailureInfo;
-import xyz.firestige.deploy.domain.shared.exception.ErrorType;
-import xyz.firestige.deploy.domain.task.TaskDomainService;
-import xyz.firestige.deploy.domain.task.StateTransitionService;
-import xyz.firestige.deploy.infrastructure.execution.stage.TaskStage;
-import xyz.firestige.deploy.domain.task.TaskAggregate;
-import xyz.firestige.deploy.domain.task.TaskRuntimeContext;
-import xyz.firestige.deploy.domain.task.TaskStatus;
-import xyz.firestige.deploy.infrastructure.metrics.MetricsRegistry;
-import xyz.firestige.deploy.infrastructure.metrics.NoopMetricsRegistry;
-import xyz.firestige.deploy.infrastructure.scheduling.TenantConflictManager;
-
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.context.ApplicationEventPublisher;
+
+import xyz.firestige.deploy.application.checkpoint.CheckpointService;
+import xyz.firestige.deploy.domain.shared.exception.ErrorType;
+import xyz.firestige.deploy.domain.shared.exception.FailureInfo;
+import xyz.firestige.deploy.domain.task.StateTransitionService;
+import xyz.firestige.deploy.domain.task.TaskAggregate;
+import xyz.firestige.deploy.domain.task.TaskDomainService;
+import xyz.firestige.deploy.domain.task.TaskRuntimeContext;
+import xyz.firestige.deploy.domain.task.TaskStatus;
+import xyz.firestige.deploy.infrastructure.execution.stage.TaskStage;
+import xyz.firestige.deploy.infrastructure.metrics.MetricsRegistry;
+import xyz.firestige.deploy.infrastructure.metrics.NoopMetricsRegistry;
+import xyz.firestige.deploy.infrastructure.scheduling.TenantConflictManager;
 
 /**
  * TaskExecutor（RF-18: 基于方案C的事件驱动架构重构）
@@ -182,8 +183,12 @@ public class TaskExecutor {
                     log.error("Stage 执行失败: {}, 原因: {}, taskId: {}", 
                         stageName, stageResult.getFailureInfo().getErrorMessage(), taskId);
                     
+                    // RF-19: 前置检查状态转换
                     if (stateTransitionService.canTransition(task, TaskStatus.FAILED, context)) {
                         taskDomainService.failTask(task, stageResult.getFailureInfo(), context);
+                        log.info("任务状态已更新为 FAILED, taskId: {}", taskId);
+                    } else {
+                        log.warn("当前状态不允许转换为 FAILED: {}, taskId: {}", task.getStatus(), taskId);
                     }
                     
                     stopHeartbeat();
@@ -202,6 +207,7 @@ public class TaskExecutor {
                 
                 // 检查暂停请求
                 if (context.isPauseRequested()) {
+                    // RF-19: 前置检查状态转换
                     if (stateTransitionService.canTransition(task, TaskStatus.PAUSED, context)) {
                         taskDomainService.pauseTask(task, context);
                         log.info("任务暂停, taskId: {}", taskId);
@@ -216,11 +222,15 @@ public class TaskExecutor {
                             Duration.between(startTime, LocalDateTime.now()),
                             completedStages
                         );
+                    } else {
+                        log.warn("收到暂停请求但当前状态不允许暂停: {}, taskId: {}", task.getStatus(), taskId);
+                        // 继续执行，不暂停
                     }
                 }
                 
                 // 检查取消请求
                 if (context.isCancelRequested()) {
+                    // RF-19: 前置检查状态转换
                     if (stateTransitionService.canTransition(task, TaskStatus.CANCELLED, context)) {
                         taskDomainService.cancelTask(task, "用户取消", context);
                         log.info("任务取消, taskId: {}", taskId);
@@ -236,14 +246,21 @@ public class TaskExecutor {
                             Duration.between(startTime, LocalDateTime.now()),
                             completedStages
                         );
+                    } else {
+                        log.warn("收到取消请求但当前状态不允许取消: {}, taskId: {}", task.getStatus(), taskId);
+                        // 继续执行，不取消
                     }
                 }
             }
             
             // 6. 完成任务
+            // RF-19: 前置检查状态转换
             if (stateTransitionService.canTransition(task, TaskStatus.COMPLETED, context)) {
                 taskDomainService.completeTask(task, context);
                 log.info("任务完成, taskId: {}", taskId);
+            } else {
+                log.warn("所有 Stage 已完成但当前状态不允许转换为 COMPLETED: {}, taskId: {}", 
+                    task.getStatus(), taskId);
             }
             
             stopHeartbeat();
@@ -262,10 +279,14 @@ public class TaskExecutor {
         } catch (Exception e) {
             log.error("任务执行异常, taskId: {}, error: {}", taskId, e.getMessage(), e);
             
-            // 异常处理也前置检查
+            // RF-19: 异常处理也需前置检查
             if (stateTransitionService.canTransition(task, TaskStatus.FAILED, context)) {
                 FailureInfo failure = FailureInfo.of(ErrorType.BUSINESS_ERROR , e.getMessage());
                 taskDomainService.failTask(task, failure, context);
+                log.info("任务因异常失败, taskId: {}", taskId);
+            } else {
+                log.warn("任务执行异常但当前状态不允许转换为 FAILED: {}, taskId: {}", 
+                    task.getStatus(), taskId);
             }
             
             stopHeartbeat();
@@ -402,14 +423,24 @@ public class TaskExecutor {
             
             // 4. ✅ 完成回滚或标记失败
             if (anyFailed) {
+                // RF-19: 前置检查状态转换
                 if (stateTransitionService.canTransition(task, TaskStatus.ROLLBACK_FAILED, context)) {
                     FailureInfo failure = FailureInfo.of(ErrorType.BUSINESS_ERROR, "部分 Stage 回滚失败");
                     taskDomainService.failRollback(task, failure, context);
+                    log.info("回滚失败，状态已更新, taskId: {}", taskId);
+                } else {
+                    log.warn("回滚失败但当前状态不允许转换为 ROLLBACK_FAILED: {}, taskId: {}", 
+                        task.getStatus(), taskId);
                 }
                 log.error("回滚失败, taskId: {}", taskId);
             } else {
+                // RF-19: 前置检查状态转换
                 if (stateTransitionService.canTransition(task, TaskStatus.ROLLED_BACK, context)) {
                     taskDomainService.completeRollback(task, context);
+                    log.info("回滚成功，状态已更新, taskId: {}", taskId);
+                } else {
+                    log.warn("回滚成功但当前状态不允许转换为 ROLLED_BACK: {}, taskId: {}", 
+                        task.getStatus(), taskId);
                 }
                 log.info("回滚成功, taskId: {}", taskId);
             }
@@ -428,9 +459,14 @@ public class TaskExecutor {
         } catch (Exception e) {
             log.error("回滚异常, taskId: {}, error: {}", taskId, e.getMessage(), e);
             
+            // RF-19: 异常时的状态转换检查
             if (stateTransitionService.canTransition(task, TaskStatus.ROLLBACK_FAILED, context)) {
                 FailureInfo failure = FailureInfo.of(ErrorType.SYSTEM_ERROR, e.getMessage());
                 taskDomainService.failRollback(task, failure, context);
+                log.info("回滚异常，状态已更新为 ROLLBACK_FAILED, taskId: {}", taskId);
+            } else {
+                log.warn("回滚异常但当前状态不允许转换为 ROLLBACK_FAILED: {}, taskId: {}", 
+                    task.getStatus(), taskId);
             }
             
             releaseTenantLock();

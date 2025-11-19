@@ -7,11 +7,11 @@ import java.util.concurrent.Semaphore;
 import java.util.function.BiConsumer;
 import java.util.stream.Collectors;
 
-import jakarta.validation.constraints.NotNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.transaction.annotation.Transactional;
 
+import jakarta.validation.constraints.NotNull;
 import xyz.firestige.deploy.application.dto.TenantConfig;
 import xyz.firestige.deploy.application.plan.DeploymentPlanCreator;
 import xyz.firestige.deploy.application.plan.PlanCreationContext;
@@ -21,23 +21,21 @@ import xyz.firestige.deploy.domain.plan.PlanCreationResult;
 import xyz.firestige.deploy.domain.plan.PlanDomainService;
 import xyz.firestige.deploy.domain.plan.PlanOperationResult;
 import xyz.firestige.deploy.domain.plan.PlanStatus;
-import xyz.firestige.deploy.domain.task.StateTransitionService;
+import xyz.firestige.deploy.domain.shared.exception.ErrorType;
+import xyz.firestige.deploy.domain.shared.exception.FailureInfo;
 import xyz.firestige.deploy.domain.task.TaskAggregate;
 import xyz.firestige.deploy.domain.task.TaskDomainService;
 import xyz.firestige.deploy.domain.task.TaskOperationResult;
 import xyz.firestige.deploy.domain.task.TaskRepository;
 import xyz.firestige.deploy.domain.task.TaskRuntimeContext;
 import xyz.firestige.deploy.domain.task.TaskRuntimeRepository;
-import xyz.firestige.deploy.domain.shared.exception.ErrorType;
-import xyz.firestige.deploy.domain.shared.exception.FailureInfo;
-import xyz.firestige.deploy.facade.TaskStatusInfo;
 import xyz.firestige.deploy.domain.task.TaskStatus;
+import xyz.firestige.deploy.facade.TaskStatusInfo;
 import xyz.firestige.deploy.infrastructure.execution.TaskExecutor;
 import xyz.firestige.deploy.infrastructure.execution.TaskWorkerCreationContext;
 import xyz.firestige.deploy.infrastructure.execution.TaskWorkerFactory;
 import xyz.firestige.deploy.infrastructure.execution.stage.TaskStage;
 import xyz.firestige.deploy.infrastructure.scheduling.TenantConflictManager;
-import xyz.firestige.deploy.infrastructure.state.TaskStateManager;
 
 /**
  * 部署应用服务（RF-17: 依赖注入优化版）
