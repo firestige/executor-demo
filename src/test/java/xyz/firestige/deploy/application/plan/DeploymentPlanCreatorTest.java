@@ -9,6 +9,9 @@ import xyz.firestige.deploy.application.validation.BusinessValidator;
 import xyz.firestige.deploy.config.ExecutorProperties;
 import xyz.firestige.deploy.domain.plan.PlanAggregate;
 import xyz.firestige.deploy.domain.plan.PlanDomainService;
+import xyz.firestige.deploy.domain.shared.vo.PlanId;
+import xyz.firestige.deploy.domain.shared.vo.TaskId;
+import xyz.firestige.deploy.domain.shared.vo.TenantId;
 import xyz.firestige.deploy.infrastructure.execution.stage.CompositeServiceStage;
 import xyz.firestige.deploy.infrastructure.execution.stage.StageFactory;
 import xyz.firestige.deploy.infrastructure.execution.stage.TaskStage;
@@ -69,7 +72,7 @@ class DeploymentPlanCreatorTest {
                 .thenReturn(new ValidationSummary());
 
         // Mock Plan 创建
-        PlanAggregate plan = new PlanAggregate(String.valueOf(planId));
+        PlanAggregate plan = new PlanAggregate(PlanId.of(planId));
         plan.setMaxConcurrency(1);
         when(mockPlanService.createPlan(any(), anyInt(), anyInt()))
                 .thenReturn(plan);
@@ -77,7 +80,7 @@ class DeploymentPlanCreatorTest {
         // Mock Task 创建
         String taskId = "task-" + faker.idNumber().valid();
         String tenantId = faker.idNumber().valid();
-        TaskAggregate task = new TaskAggregate(taskId, String.valueOf(planId), tenantId);
+        TaskAggregate task = new TaskAggregate(TaskId.of(taskId), PlanId.of(planId), TenantId.of(tenantId));
         when(mockTaskService.createTask(any(), any()))
                 .thenReturn(task);
 

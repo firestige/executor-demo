@@ -5,6 +5,7 @@ import org.junit.jupiter.api.Test;
 import xyz.firestige.deploy.application.dto.DeployUnitIdentifier;
 import xyz.firestige.deploy.application.dto.MediaRoutingConfig;
 import xyz.firestige.deploy.application.dto.TenantConfig;
+import xyz.firestige.deploy.domain.shared.vo.RouteRule;
 import xyz.firestige.deploy.domain.stage.config.ASBCGatewayConfig;
 import xyz.firestige.deploy.domain.stage.config.BlueGreenGatewayConfig;
 import xyz.firestige.deploy.domain.stage.config.PortalConfig;
@@ -150,7 +151,7 @@ class ServiceConfigFactoryCompositeTest {
     @Test
     void testMissingNetworkEndpoints() {
         // Given
-        baseTenantConfig.setNetworkEndpoints(null);
+        baseTenantConfig.setRouteRules(null);
         
         // When & Then
         assertThrows(IllegalArgumentException.class,
@@ -173,20 +174,9 @@ class ServiceConfigFactoryCompositeTest {
         config.setTenantId("tenant-001");
         config.setDeployUnit(new DeployUnitIdentifier(100L, 1L, "test-unit"));
         config.setNacosNameSpace("test-namespace");
-        
-        // 设置 NetworkEndpoint
-        List<NetworkEndpoint> endpoints = new ArrayList<>();
-        NetworkEndpoint ep1 = new NetworkEndpoint();
-        ep1.setKey("key1");
-        ep1.setValue("value1");
-        endpoints.add(ep1);
-        
-        NetworkEndpoint ep2 = new NetworkEndpoint();
-        ep2.setKey("key2");
-        ep2.setValue("value2");
-        endpoints.add(ep2);
-        
-        config.setNetworkEndpoints(endpoints);
+
+        List<RouteRule> routeRules = List.of(RouteRule.of("k", "http://source", "http://target", "http://health", "http://hc"));
+        config.setRouteRules(routeRules);
         
         return config;
     }
