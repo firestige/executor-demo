@@ -7,7 +7,11 @@ import org.springframework.context.annotation.Configuration;
 import jakarta.validation.Validation;
 import jakarta.validation.Validator;
 import jakarta.validation.ValidatorFactory;
-import xyz.firestige.deploy.application.DeploymentApplicationService;
+import xyz.firestige.deploy.application.conflict.TenantConflictCoordinator;
+import xyz.firestige.deploy.application.facade.PlanExecutionFacade;
+import xyz.firestige.deploy.application.lifecycle.PlanLifecycleService;
+import xyz.firestige.deploy.application.orchestration.PlanExecutionOrchestrator;
+import xyz.firestige.deploy.application.task.TaskOperationService;
 import xyz.firestige.deploy.application.checkpoint.CheckpointService;
 import xyz.firestige.deploy.application.plan.DeploymentPlanCreator;
 import xyz.firestige.deploy.application.validation.BusinessValidator;
@@ -202,25 +206,63 @@ public class ExecutorConfiguration {
         );
     }
 
+    /**
+     * RF-20: 拆分后的应用服务 Bean
+     */
+    
     @Bean
-    public DeploymentApplicationService deploymentApplicationService(
+    public PlanLifecycleService planLifecycleService(
             DeploymentPlanCreator deploymentPlanCreator,
+            PlanDomainService planDomainService) {
+        return new PlanLifecycleService(
+                deploymentPlanCreator,
+                planDomainService
+        );
+    }
+
+    @Bean
+    public PlanExecutionOrchestrator planExecutionOrchestrator(
             PlanDomainService planDomainService,
-            TaskDomainService taskDomainService,
-            TenantConflictManager conflictManager,
             TaskWorkerFactory taskWorkerFactory,
-            TaskRepository taskRepository,
             TaskRuntimeRepository taskRuntimeRepository,
             ExecutorProperties executorProperties) {
-        return new DeploymentApplicationService(
-                deploymentPlanCreator,
+        return new PlanExecutionOrchestrator(
                 planDomainService,
-                taskDomainService,
-                conflictManager,
                 taskWorkerFactory,
-                taskRepository,
                 taskRuntimeRepository,
                 executorProperties
+        );
+    }
+
+    @Bean
+    public TaskOperationService taskOperationService(
+            TaskDomainService taskDomainService,
+            TaskRepository taskRepository,
+            TaskRuntimeRepository taskRuntimeRepository) {
+        return new TaskOperationService(
+                taskDomainService,
+                taskRepository,
+                taskRuntimeRepository
+        );
+    }
+
+    @Bean
+    public TenantConflictCoordinator tenantConflictCoordinator(
+            TenantConflictManager conflictManager) {
+        return new TenantConflictCoordinator(conflictManager);
+    }
+
+    @Bean
+    public PlanExecutionFacade planExecutionFacade(
+            PlanLifecycleService planLifecycleService,
+            PlanExecutionOrchestrator planExecutionOrchestrator,
+            TenantConflictCoordinator tenantConflictCoordinator,
+            TaskOperationService taskOperationService) {
+        return new PlanExecutionFacade(
+                planLifecycleService,
+                planExecutionOrchestrator,
+                tenantConflictCoordinator,
+                taskOperationService
         );
     }
 
@@ -228,9 +270,13 @@ public class ExecutorConfiguration {
 
     @Bean
     public DeploymentTaskFacade deploymentTaskFacade(
-            DeploymentApplicationService deploymentApplicationService,
+            PlanLifecycleService planLifecycleService,
+            TaskOperationService taskOperationService,
             Validator validator) {  // Jakarta Validator
-        return new DeploymentTaskFacade(deploymentApplicationService, validator);
+        return new DeploymentTaskFacade(
+                planLifecycleService,
+                taskOperationService,
+                validator);
     }
 }
 
