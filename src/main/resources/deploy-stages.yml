@@ -63,14 +63,14 @@ services:
           # Step 3: Health Check Polling
           - type: endpoint-polling
             config:
-              nacosServiceNameKey: "blueGreenGatewayService"
-              validationType: "json-path"
-              validationRule: "$.version"
-              expectedValue: "1"
-            retryPolicy:
-              maxAttempts: 10
-              intervalSeconds: 3
-  
+              nacos-service-name-key: "blueGreenGatewayService"
+              validation-type: "json-path"
+              validation-rule: "$.version"
+              expected-value: "1"
+            retry-policy:
+              max-attempts: 10
+              interval-seconds: 3
+
   # Portal: Same flow as Blue-Green Gateway, but different service identifier
   portal:
     stages:
@@ -86,14 +86,14 @@ services:
 
           - type: endpoint-polling
             config:
-              nacosServiceNameKey: "portalService"
-              validationType: "json-path"
-              validationRule: "$.version"
-              expectedValue: "1"
-            retryPolicy:
-              maxAttempts: 10
-              intervalSeconds: 3
-  
+              nacos-service-name-key: "portalService"
+              validation-type: "json-path"
+              validation-rule: "$.version"
+              expected-value: "1"
+            retry-policy:
+              max-attempts: 10
+              interval-seconds: 3
+
   # ASBC Gateway: HTTP POST config request (no health check, no retry)
   asbc-gateway:
     stages:
@@ -101,9 +101,9 @@ services:
         steps:
           - type: asbc-config-request
             config:
-              httpMethod: "POST"
-              validationType: "http-status"
-              expectedStatus: 200
-            retryPolicy:
-              maxAttempts: 1
-              intervalSeconds: 0
+              http-method: "POST"
+              validation-type: "http-status"
+              expected-status: 200
+            retry-policy:
+              max-attempts: 1
+              interval-seconds: 0

@@ -139,7 +139,8 @@ Fields:
 
 1. **TEMPLATE_VARIABLE_REPLACEMENT_IMPLEMENTATION.md** - 模板变量替换方案完整文档
 2. **KEYVALUEWRITESTEP_METADATA_IMPLEMENTATION.md** - Metadata 写入功能实施方案
-3. 本报告 - 实施完成总结
+3. **ENDPOINT_POLLING_FALLBACK_FIX.md** - EndpointPollingStep Fallback 问题分析与修复
+4. **本报告** - 实施完成总结
 
 ## 后续优化建议
 
@@ -179,19 +180,27 @@ metadata.put("environment", System.getProperty("env", "prod"));
 1. ✅ 实现了 `KeyValueWriteStep` 自动写入 metadata field
 2. ✅ 通过运行时上下文传递 `planVersion`，不破坏 DDD 架构
 3. ✅ 同时完成了模板变量替换功能（支持 `{tenantId}` 等占位符）
-4. ✅ 编译通过，核心测试通过
-5. ✅ 提供了完整的技术文档
+4. ✅ 修复了 `EndpointPollingStep` 的 fallback 逻辑（配置命名不匹配问题）
+5. ✅ 编译通过，核心测试通过
+6. ✅ 提供了完整的技术文档
 
 **实施方式符合架构设计原则**：
 - 单一职责原则：每个组件职责明确
 - 开闭原则：通过配置和上下文扩展，无需修改现有代码
 - 依赖倒置原则：通过接口和抽象传递依赖
 
+**额外修复**：
+- ✅ EndpointPollingStep Fallback 逻辑修复（详见 ENDPOINT_POLLING_FALLBACK_FIX.md）
+  - 问题：YAML 配置使用驼峰命名，代码使用连字符命名，导致无法正确获取 fallback 实例
+  - 修复：统一配置文件命名格式为连字符命名
+  - 影响：blue-green-gateway 和 portal 服务的服务发现降级功能
+
 **下一步行动建议**：
 1. 运行完整的集成测试验证端到端流程
 2. 在测试环境验证 Redis 数据写入正确性
-3. 根据需要添加性能优化（Pipeline）
-4. 监控 metadata 写入情况
+3. 测试 Nacos 不可用时的 fallback 功能
+4. 根据需要添加性能优化（Pipeline）
+5. 监控 metadata 写入情况
 
 ---
 
