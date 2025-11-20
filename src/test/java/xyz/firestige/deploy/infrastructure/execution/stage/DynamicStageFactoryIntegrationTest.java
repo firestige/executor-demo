@@ -3,7 +3,6 @@ package xyz.firestige.deploy.infrastructure.execution.stage;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.web.client.RestTemplate;
 import xyz.firestige.deploy.application.dto.DeployUnitIdentifier;
@@ -20,9 +19,9 @@ import xyz.firestige.deploy.infrastructure.execution.stage.steps.ASBCConfigReque
 import xyz.firestige.deploy.infrastructure.execution.stage.steps.EndpointPollingStep;
 import xyz.firestige.deploy.infrastructure.execution.stage.steps.KeyValueWriteStep;
 import xyz.firestige.deploy.infrastructure.execution.stage.steps.MessageBroadcastStep;
-import xyz.firestige.entity.deploy.NetworkEndpoint;
+import xyz.firestige.deploy.infrastructure.template.TemplateResolver;
+import xyz.firestige.deploy.infrastructure.template.VariableContextBuilder;
 
-import java.util.ArrayList;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -43,15 +42,19 @@ class DynamicStageFactoryIntegrationTest {
         configLoader = new DeploymentConfigLoader();
         configLoader.loadConfig();
         
-        // 2. 创建服务配置工厂组合器
+        // 2. 创建模板解析器
+        TemplateResolver templateResolver = new TemplateResolver();
+        VariableContextBuilder variableContextBuilder = new VariableContextBuilder();
+
+        // 3. 创建服务配置工厂组合器
         List<ServiceConfigFactory> factories = List.of(
-                new BlueGreenGatewayConfigFactory(),
-                new PortalConfigFactory(),
+                new BlueGreenGatewayConfigFactory(configLoader, templateResolver),
+                new PortalConfigFactory(configLoader, templateResolver),
                 new ASBCGatewayConfigFactory()
         );
         configFactoryComposite = new ServiceConfigFactoryComposite(factories);
         
-        // 3. 创建步骤注册表（使用实际对象，避免 Mockito/ByteBuddy 问题）
+        // 4. 创建步骤注册表（使用实际对象，避免 Mockito/ByteBuddy 问题）
         StringRedisTemplate redisTemplate = new StringRedisTemplate();
         RestTemplate restTemplate = new RestTemplate();
         
@@ -60,10 +63,12 @@ class DynamicStageFactoryIntegrationTest {
                 restTemplate,   // 真实 RestTemplate
                 configLoader,
                 new ObjectMapper(),
+                templateResolver,
+                variableContextBuilder,
                 null   // nacosNamingService (optional)
         );
         
-        // 4. 创建动态工厂
+        // 5. 创建动态工厂
         stageFactory = new DynamicStageFactory(
                 configFactoryComposite,
                 configLoader,

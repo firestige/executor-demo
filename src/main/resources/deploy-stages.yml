@@ -13,7 +13,7 @@ infrastructure:
   # Redis Configuration
   redis:
     hashKeyPrefix: "icc_ai_ops_srv:tenant_config:"
-    pubsubTopic: "deploy.config.notify"
+    pubsubTopic: "icc_ai_ops_srv:tenant_config:topic"
   
   # Nacos Service Discovery Configuration
   nacos:
@@ -58,8 +58,8 @@ services:
           # Step 2: Redis Pub/Sub Broadcast
           - type: message-broadcast
             config:
-              message: "blue-green-gateway"
-          
+              message: '{"tenantId":"{tenantId}","appName":"icc-bg-gateway"}'
+
           # Step 3: Health Check Polling
           - type: endpoint-polling
             config:
@@ -82,8 +82,8 @@ services:
           
           - type: message-broadcast
             config:
-              message: "portal"
-          
+              message: '{"tenantId":"{tenantId}","appName":"portal"}'
+
           - type: endpoint-polling
             config:
               nacosServiceNameKey: "portalService"

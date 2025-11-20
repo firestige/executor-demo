@@ -243,9 +243,8 @@ public class EndpointPollingStep extends AbstractConfigurableStep {
     }
     
     private String buildHealthCheckUrl(ServiceInstance instance, String path) {
-        // 替换路径中的 {tenantId} 占位符
-        String resolvedPath = path.replace("{tenantId}", serviceConfig.getTenantId().getValue());
-        return String.format("http://%s:%d%s", instance.ip(), instance.port(), resolvedPath);
+        // 路径已经在 StepRegistry 中解析完成，直接使用
+        return String.format("http://%s:%d%s", instance.ip(), instance.port(), path);
     }
     
     private boolean validateResponse(String response, String validationType, String rule, String expectedValue) {

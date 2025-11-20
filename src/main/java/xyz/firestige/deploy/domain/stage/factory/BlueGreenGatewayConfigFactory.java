@@ -8,6 +8,8 @@ import xyz.firestige.deploy.domain.stage.config.ServiceConfig;
 import xyz.firestige.deploy.domain.stage.model.BlueGreenGatewayRedisValue;
 import xyz.firestige.deploy.domain.stage.model.RouteInfo;
 import xyz.firestige.deploy.domain.shared.vo.RouteRule;
+import xyz.firestige.deploy.infrastructure.config.DeploymentConfigLoader;
+import xyz.firestige.deploy.infrastructure.template.TemplateResolver;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -21,15 +23,24 @@ import java.util.Map;
  * 2. 从 TenantConfig.deployUnit 提取当前和上一次的部署单元名称
  * 3. 构建 BlueGreenGatewayRedisValue 对象
  * 4. 从 TenantConfig.nacosNameSpace 和固定 serviceName 构建服务发现信息
- * 5. 使用默认或配置的健康检查路径
+ * 5. 从 Infrastructure 配置读取健康检查路径模板并替换占位符
  */
 @Component
 public class BlueGreenGatewayConfigFactory implements ServiceConfigFactory {
     
     private static final String SERVICE_TYPE = "blue-green-gateway";
     private static final String NACOS_SERVICE_NAME = "blue-green-gateway-service";  // TODO: 从配置读取
-    private static final String DEFAULT_HEALTH_CHECK_PATH = "/actuator/health";
-    
+
+    private final DeploymentConfigLoader configLoader;
+    private final TemplateResolver templateResolver;
+
+    public BlueGreenGatewayConfigFactory(
+            DeploymentConfigLoader configLoader,
+            TemplateResolver templateResolver) {
+        this.configLoader = configLoader;
+        this.templateResolver = templateResolver;
+    }
+
     @Override
     public boolean supports(String serviceType) {
         return SERVICE_TYPE.equals(serviceType);
@@ -132,14 +143,28 @@ public class BlueGreenGatewayConfigFactory implements ServiceConfigFactory {
     }
 
     /**
-     * 提取健康检查路径
-     * 优先级：TenantConfig.healthCheckEndpoints > 默认值
+     * 提取健康检查路径并替换模板变量
+     * 优先级：TenantConfig.healthCheckEndpoints > Infrastructure.healthCheck.defaultPath
      */
     private String extractHealthCheckPath(TenantConfig tenantConfig) {
+        String pathTemplate;
+
+        // 1. 优先从 TenantConfig 获取
         List<String> healthCheckEndpoints = tenantConfig.getHealthCheckEndpoints();
         if (healthCheckEndpoints != null && !healthCheckEndpoints.isEmpty()) {
-            return healthCheckEndpoints.get(0);  // 使用第一个
+            pathTemplate = healthCheckEndpoints.get(0);
+        } else {
+            // 2. 从 Infrastructure 配置获取默认模板
+            pathTemplate = configLoader.getInfrastructure()
+                    .getHealthCheck()
+                    .getDefaultPath();
         }
-        return DEFAULT_HEALTH_CHECK_PATH;
+
+        // 3. 替换模板变量 {tenantId}
+        Map<String, String> variables = Map.of(
+            "tenantId", tenantConfig.getTenantId().getValue()
+        );
+
+        return (String) templateResolver.resolve(pathTemplate, variables);
     }
 }

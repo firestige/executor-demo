@@ -5,6 +5,8 @@ import xyz.firestige.deploy.application.dto.TenantConfig;
 import xyz.firestige.deploy.domain.shared.vo.TenantId;
 import xyz.firestige.deploy.domain.stage.config.PortalConfig;
 import xyz.firestige.deploy.domain.stage.config.ServiceConfig;
+import xyz.firestige.deploy.infrastructure.config.DeploymentConfigLoader;
+import xyz.firestige.deploy.infrastructure.template.TemplateResolver;
 
 import java.util.List;
 import java.util.Map;
@@ -20,8 +22,17 @@ public class PortalConfigFactory implements ServiceConfigFactory {
     
     private static final String SERVICE_TYPE = "portal";
     private static final String NACOS_SERVICE_NAME = "portal-service";  // TODO: 从配置读取
-    private static final String DEFAULT_HEALTH_CHECK_PATH = "/actuator/health";
-    
+
+    private final DeploymentConfigLoader configLoader;
+    private final TemplateResolver templateResolver;
+
+    public PortalConfigFactory(
+            DeploymentConfigLoader configLoader,
+            TemplateResolver templateResolver) {
+        this.configLoader = configLoader;
+        this.templateResolver = templateResolver;
+    }
+
     @Override
     public boolean supports(String serviceType) {
         return SERVICE_TYPE.equals(serviceType);
@@ -62,10 +73,24 @@ public class PortalConfigFactory implements ServiceConfigFactory {
     }
     
     private String extractHealthCheckPath(TenantConfig tenantConfig) {
+        String pathTemplate;
+
+        // 1. 优先从 TenantConfig 获取
         List<String> healthCheckEndpoints = tenantConfig.getHealthCheckEndpoints();
         if (healthCheckEndpoints != null && !healthCheckEndpoints.isEmpty()) {
-            return healthCheckEndpoints.get(0);
+            pathTemplate = healthCheckEndpoints.get(0);
+        } else {
+            // 2. 从 Infrastructure 配置获取默认模板
+            pathTemplate = configLoader.getInfrastructure()
+                    .getHealthCheck()
+                    .getDefaultPath();
         }
-        return DEFAULT_HEALTH_CHECK_PATH;
+
+        // 3. 替换模板变量 {tenantId}
+        Map<String, String> variables = Map.of(
+            "tenantId", tenantConfig.getTenantId().getValue()
+        );
+
+        return (String) templateResolver.resolve(pathTemplate, variables);
     }
 }

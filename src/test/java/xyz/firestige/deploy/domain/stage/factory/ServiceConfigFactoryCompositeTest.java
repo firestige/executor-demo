@@ -10,12 +10,15 @@ import xyz.firestige.deploy.domain.stage.config.ASBCGatewayConfig;
 import xyz.firestige.deploy.domain.stage.config.BlueGreenGatewayConfig;
 import xyz.firestige.deploy.domain.stage.config.PortalConfig;
 import xyz.firestige.deploy.domain.stage.config.ServiceConfig;
+import xyz.firestige.deploy.infrastructure.config.DeploymentConfigLoader;
+import xyz.firestige.deploy.infrastructure.template.TemplateResolver;
 import xyz.firestige.entity.deploy.NetworkEndpoint;
 
 import java.util.ArrayList;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.*;
 
 /**
  * 服务配置工厂组合器测试
@@ -27,10 +30,14 @@ class ServiceConfigFactoryCompositeTest {
     
     @BeforeEach
     void setUp() {
+        // 创建 mock 依赖
+        DeploymentConfigLoader configLoader = mock(DeploymentConfigLoader.class);
+        TemplateResolver templateResolver = new TemplateResolver();
+
         // 创建工厂实例
         List<ServiceConfigFactory> factories = List.of(
-                new BlueGreenGatewayConfigFactory(),
-                new PortalConfigFactory(),
+                new BlueGreenGatewayConfigFactory(configLoader, templateResolver),
+                new PortalConfigFactory(configLoader, templateResolver),
                 new ASBCGatewayConfigFactory()
         );
         factoryComposite = new ServiceConfigFactoryComposite(factories);
