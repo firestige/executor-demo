@@ -2,6 +2,7 @@ package xyz.firestige.deploy.domain.task.event;
 
 import xyz.firestige.deploy.application.orchestration.ExecutionMode;
 import xyz.firestige.deploy.domain.shared.vo.TaskId;
+import xyz.firestige.deploy.domain.task.TaskInfo;
 import xyz.firestige.deploy.domain.task.TaskStatus;
 
 /**
@@ -12,22 +13,11 @@ public class TaskCreatedEvent extends TaskStatusEvent {
     /**
      * 配置数量
      */
-    private int configCount;
+    private final int configCount;
 
-    /**
-     * 执行模式
-     */
-    private ExecutionMode executionMode;
-
-    public TaskCreatedEvent() {
-        super();
-        setStatus(TaskStatus.CREATED);
-    }
-
-    public TaskCreatedEvent(TaskId taskId, int configCount, ExecutionMode executionMode) {
-        super(taskId, TaskStatus.CREATED);
+    public TaskCreatedEvent(TaskInfo info, int configCount, ExecutionMode executionMode) {
+        super(info);
         this.configCount = configCount;
-        this.executionMode = executionMode;
         setMessage("任务已创建，配置数量: " + configCount);
     }
 
@@ -35,18 +25,6 @@ public class TaskCreatedEvent extends TaskStatusEvent {
 
     public int getConfigCount() {
         return configCount;
-    }
-
-    public void setConfigCount(int configCount) {
-        this.configCount = configCount;
-    }
-
-    public ExecutionMode getExecutionMode() {
-        return executionMode;
-    }
-
-    public void setExecutionMode(ExecutionMode executionMode) {
-        this.executionMode = executionMode;
     }
 }
 

@@ -1,5 +1,6 @@
 package xyz.firestige.deploy.domain.plan.event;
 
+import xyz.firestige.deploy.domain.plan.PlanInfo;
 import xyz.firestige.deploy.domain.plan.PlanStatus;
 import xyz.firestige.deploy.domain.shared.vo.PlanId;
 
@@ -11,12 +12,8 @@ public class PlanFailedEvent extends PlanStatusEvent {
 
     private String failureSummary;
 
-    public PlanFailedEvent() {
-        super();
-    }
-
-    public PlanFailedEvent(PlanId planId, String failureSummary) {
-        super(planId, PlanStatus.FAILED, "Plan 执行失败: " + failureSummary);
+    public PlanFailedEvent(PlanInfo info, String failureSummary) {
+        super(info, "Plan 执行失败: " + failureSummary);
         this.failureSummary = failureSummary;
     }
 

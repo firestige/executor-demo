@@ -1,5 +1,6 @@
 package xyz.firestige.deploy.domain.plan.event;
 
+import xyz.firestige.deploy.domain.plan.PlanInfo;
 import xyz.firestige.deploy.domain.plan.PlanStatus;
 import xyz.firestige.deploy.domain.shared.vo.PlanId;
 
@@ -9,11 +10,7 @@ import xyz.firestige.deploy.domain.shared.vo.PlanId;
  */
 public class PlanPausedEvent extends PlanStatusEvent {
 
-    public PlanPausedEvent() {
-        super();
-    }
-
-    public PlanPausedEvent(PlanId planId) {
-        super(planId, PlanStatus.PAUSED, "Plan 已暂停");
+    public PlanPausedEvent(PlanInfo info) {
+        super(info, "Plan 已暂停");
     }
 }

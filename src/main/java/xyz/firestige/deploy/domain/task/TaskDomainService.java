@@ -68,7 +68,7 @@ public class TaskDomainService {
         // 生成 Task ID
         TaskId taskId = generateTaskId(planId, config.getTenantId());
 
-        // 创建 Task 聚合
+        // 创建 Task 聚合根
         TaskAggregate task = new TaskAggregate(taskId, planId, config.getTenantId());
         // ✅ 调用聚合的业务方法
         task.markAsPending();
@@ -94,7 +94,7 @@ public class TaskDomainService {
             TaskAggregate task,
             List<TaskStage> stages) {
         logger.debug("[TaskDomainService] 构建 Task Stages: {}", task.getTaskId());
-        task.setTotalStages(stages.size());
+        task.setTotalStages(stages);
 
         // 保存到仓储
         taskRuntimeRepository.saveStages(task.getTaskId(), stages);
@@ -169,7 +169,7 @@ public class TaskDomainService {
             throw new IllegalStateException("任务当前状态不允许暂停: " + task.getStatus());
         }
         
-        task.pause();
+        task.applyPauseAtStageBoundary();
         saveAndPublishEvents(task);
     }
 
@@ -415,12 +415,7 @@ public class TaskDomainService {
             int total = stages.size();
             
             // ✅ 发布进度补偿事件（告知监控系统从检查点恢复）
-            TaskRetryStartedEvent retryEvent = new TaskRetryStartedEvent(
-                    target.getTaskId(),
-                    true,  // fromCheckpoint = true
-                    completed,
-                    total
-                );
+            TaskRetryStartedEvent retryEvent = new TaskRetryStartedEvent(TaskInfo.from(target), true);
             domainEventPublisher.publish(retryEvent);
             
             logger.info("[TaskDomainService] 已发布检查点恢复进度事件: taskId={}, progress={}/{}", 

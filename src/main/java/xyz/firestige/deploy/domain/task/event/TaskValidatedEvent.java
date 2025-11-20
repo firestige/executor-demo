@@ -1,7 +1,6 @@
 package xyz.firestige.deploy.domain.task.event;
 
-import xyz.firestige.deploy.domain.shared.vo.TaskId;
-import xyz.firestige.deploy.domain.task.TaskStatus;
+import xyz.firestige.deploy.domain.task.TaskInfo;
 
 /**
  * 任务校验通过事件
@@ -11,15 +10,10 @@ public class TaskValidatedEvent extends TaskStatusEvent {
     /**
      * 已校验的配置数量
      */
-    private int validatedCount;
+    private final int validatedCount;
 
-    public TaskValidatedEvent() {
-        super();
-        setStatus(TaskStatus.PENDING);
-    }
-
-    public TaskValidatedEvent(TaskId taskId, int validatedCount) {
-        super(taskId, TaskStatus.PENDING);
+    public TaskValidatedEvent(TaskInfo info, int validatedCount) {
+        super(info);
         this.validatedCount = validatedCount;
         setMessage("任务校验通过，有效配置数量: " + validatedCount);
     }
@@ -28,10 +22,6 @@ public class TaskValidatedEvent extends TaskStatusEvent {
 
     public int getValidatedCount() {
         return validatedCount;
-    }
-
-    public void setValidatedCount(int validatedCount) {
-        this.validatedCount = validatedCount;
     }
 }
 

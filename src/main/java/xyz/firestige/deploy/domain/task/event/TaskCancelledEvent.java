@@ -1,36 +1,22 @@
 package xyz.firestige.deploy.domain.task.event;
 
-import xyz.firestige.deploy.domain.shared.vo.PlanId;
-import xyz.firestige.deploy.domain.shared.vo.TaskId;
-import xyz.firestige.deploy.domain.shared.vo.TenantId;
-import xyz.firestige.deploy.domain.task.TaskStatus;
+import xyz.firestige.deploy.domain.task.TaskInfo;
 
 /**
  * 任务取消事件
  */
 public class TaskCancelledEvent extends TaskStatusEvent {
 
-    private String cancelledBy;
-    private String lastStage;
+    private final String cancelledBy;
+    private final String lastStage;
 
-    public TaskCancelledEvent() {
-        super();
-        setStatus(TaskStatus.CANCELLED);
-        setMessage("任务已取消");
-    }
-
-    public TaskCancelledEvent(TaskId taskId) {
-        super(taskId, TaskStatus.CANCELLED);
-        setMessage("任务已取消");
-    }
-
-    public TaskCancelledEvent(TaskId taskId, TenantId tenantId, PlanId planId) {
-        super(taskId, tenantId, planId, TaskStatus.CANCELLED);
-        setMessage("任务已取消");
+    public TaskCancelledEvent(TaskInfo info, String cancelledBy, String lastStage) {
+        super(info);
+        this.cancelledBy = cancelledBy;
+        this.lastStage = lastStage;
+        setMessage("任务已取消，取消者: " + cancelledBy + ", 最后执行的 Stage: " + lastStage);
     }
 
     public String getCancelledBy() { return cancelledBy; }
-    public void setCancelledBy(String cancelledBy) { this.cancelledBy = cancelledBy; }
     public String getLastStage() { return lastStage; }
-    public void setLastStage(String lastStage) { this.lastStage = lastStage; }
 }

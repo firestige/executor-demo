@@ -1,7 +1,6 @@
 package xyz.firestige.deploy.domain.task.event;
 
-import xyz.firestige.deploy.domain.shared.vo.TaskId;
-import xyz.firestige.deploy.domain.task.TaskStatus;
+import xyz.firestige.deploy.domain.task.TaskInfo;
 
 import java.time.Duration;
 import java.util.ArrayList;
@@ -15,21 +14,15 @@ public class TaskCompletedEvent extends TaskStatusEvent {
     /**
      * 执行耗时
      */
-    private Duration duration;
+    private final Duration duration;
 
     /**
      * 已完成的 Stage 列表
      */
-    private List<String> completedStages;
+    private final List<String> completedStages;
 
-    public TaskCompletedEvent() {
-        super();
-        setStatus(TaskStatus.COMPLETED);
-        this.completedStages = new ArrayList<>();
-    }
-
-    public TaskCompletedEvent(TaskId taskId, Duration duration, List<String> completedStages) {
-        super(taskId, TaskStatus.COMPLETED);
+    public TaskCompletedEvent(TaskInfo info, Duration duration, List<String> completedStages) {
+        super(info);
         this.duration = duration;
         this.completedStages = completedStages != null ? completedStages : new ArrayList<>();
         setMessage("任务执行完成，耗时: " + duration + ", Stage 数: " + this.completedStages.size());
@@ -41,16 +34,8 @@ public class TaskCompletedEvent extends TaskStatusEvent {
         return duration;
     }
 
-    public void setDuration(Duration duration) {
-        this.duration = duration;
-    }
-
     public List<String> getCompletedStages() {
         return completedStages;
-    }
-
-    public void setCompletedStages(List<String> completedStages) {
-        this.completedStages = completedStages;
     }
 }
 

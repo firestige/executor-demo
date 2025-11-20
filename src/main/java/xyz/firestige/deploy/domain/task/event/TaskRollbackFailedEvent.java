@@ -2,6 +2,7 @@ package xyz.firestige.deploy.domain.task.event;
 
 import xyz.firestige.deploy.domain.shared.exception.FailureInfo;
 import xyz.firestige.deploy.domain.shared.vo.TaskId;
+import xyz.firestige.deploy.domain.task.TaskInfo;
 import xyz.firestige.deploy.domain.task.TaskStatus;
 
 import java.util.ArrayList;
@@ -15,17 +16,13 @@ public class TaskRollbackFailedEvent extends TaskStatusEvent {
     /**
      * 部分回滚成功的 Stage 列表
      */
-    private List<String> partiallyRolledBackStages;
+    private final List<String> partiallyRolledBackStages;
 
-    public TaskRollbackFailedEvent() {
-        super();
-        setStatus(TaskStatus.ROLLBACK_FAILED);
-        this.partiallyRolledBackStages = new ArrayList<>();
-    }
+    private final FailureInfo failureInfo;
 
-    public TaskRollbackFailedEvent(TaskId taskId, FailureInfo failureInfo, List<String> partiallyRolledBackStages) {
-        super(taskId, TaskStatus.ROLLBACK_FAILED);
-        setFailureInfo(failureInfo);
+    public TaskRollbackFailedEvent(TaskInfo info, FailureInfo failureInfo, List<String> partiallyRolledBackStages) {
+        super(info);
+        this.failureInfo = failureInfo;
         this.partiallyRolledBackStages = partiallyRolledBackStages != null ? partiallyRolledBackStages : new ArrayList<>();
         setMessage("任务回滚失败，部分回滚成功 Stage 数: " + this.partiallyRolledBackStages.size());
     }
@@ -36,8 +33,8 @@ public class TaskRollbackFailedEvent extends TaskStatusEvent {
         return partiallyRolledBackStages;
     }
 
-    public void setPartiallyRolledBackStages(List<String> partiallyRolledBackStages) {
-        this.partiallyRolledBackStages = partiallyRolledBackStages;
+    public FailureInfo getFailureInfo() {
+        return failureInfo;
     }
 }
 

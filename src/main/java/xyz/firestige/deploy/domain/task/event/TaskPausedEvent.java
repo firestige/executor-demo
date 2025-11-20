@@ -1,7 +1,6 @@
 package xyz.firestige.deploy.domain.task.event;
 
-import xyz.firestige.deploy.domain.shared.vo.TaskId;
-import xyz.firestige.deploy.domain.task.TaskStatus;
+import xyz.firestige.deploy.domain.task.TaskInfo;
 
 /**
  * 任务暂停事件
@@ -11,20 +10,15 @@ public class TaskPausedEvent extends TaskStatusEvent {
     /**
      * 操作人
      */
-    private String pausedBy;
+    private final String pausedBy;
 
     /**
      * 暂停时的 Stage
      */
-    private String currentStage;
+    private final String currentStage;
 
-    public TaskPausedEvent() {
-        super();
-        setStatus(TaskStatus.PAUSED);
-    }
-
-    public TaskPausedEvent(TaskId taskId, String pausedBy, String currentStage) {
-        super(taskId, TaskStatus.PAUSED);
+    public TaskPausedEvent(TaskInfo info, String pausedBy, String currentStage) {
+        super(info);
         this.pausedBy = pausedBy;
         this.currentStage = currentStage;
         setMessage("任务已暂停，当前 Stage: " + currentStage);
@@ -36,16 +30,8 @@ public class TaskPausedEvent extends TaskStatusEvent {
         return pausedBy;
     }
 
-    public void setPausedBy(String pausedBy) {
-        this.pausedBy = pausedBy;
-    }
-
     public String getCurrentStage() {
         return currentStage;
-    }
-
-    public void setCurrentStage(String currentStage) {
-        this.currentStage = currentStage;
     }
 }
 

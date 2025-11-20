@@ -1,5 +1,6 @@
 package xyz.firestige.deploy.domain.plan.event;
 
+import xyz.firestige.deploy.domain.plan.PlanInfo;
 import xyz.firestige.deploy.domain.plan.PlanStatus;
 import xyz.firestige.deploy.domain.shared.vo.PlanId;
 
@@ -9,11 +10,7 @@ import xyz.firestige.deploy.domain.shared.vo.PlanId;
  */
 public class PlanResumedEvent extends PlanStatusEvent {
 
-    public PlanResumedEvent() {
-        super();
-    }
-
-    public PlanResumedEvent(PlanId planId) {
-        super(planId, PlanStatus.RUNNING, "Plan 已恢复执行");
+    public PlanResumedEvent(PlanInfo info) {
+        super(info, "Plan 已恢复执行");
     }
 }

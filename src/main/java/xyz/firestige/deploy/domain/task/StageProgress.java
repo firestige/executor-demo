@@ -1,5 +1,8 @@
 package xyz.firestige.deploy.domain.task;
 
+import xyz.firestige.deploy.infrastructure.execution.stage.TaskStage;
+
+import java.util.List;
 import java.util.Objects;
 
 /**
@@ -18,8 +21,10 @@ public final class StageProgress {
 
     private final int currentStageIndex;
     private final int totalStages;
+    private final List<String> stageNames;
 
-    private StageProgress(int currentStageIndex, int totalStages) {
+    private StageProgress(int currentStageIndex, List<String> stageNames) {
+        int totalStages = stageNames.size();
         if (totalStages <= 0) {
             throw new IllegalArgumentException("totalStages 必须大于 0");
         }
@@ -34,6 +39,7 @@ public final class StageProgress {
         }
         this.currentStageIndex = currentStageIndex;
         this.totalStages = totalStages;
+        this.stageNames = stageNames;
     }
 
     // ============================================
@@ -43,22 +49,24 @@ public final class StageProgress {
     /**
      * 创建新的 StageProgress（初始状态）
      *
-     * @param totalStages Stage 总数
+     * @param stages Stage 集合
      * @return StageProgress 实例
      */
-    public static StageProgress initial(int totalStages) {
-        return new StageProgress(0, totalStages);
+    public static StageProgress initial(List<TaskStage> stages) {
+        List<String> names = stages.stream().map(TaskStage::getName).toList();
+        return new StageProgress(0, names);
     }
 
     /**
      * 创建 StageProgress（指定当前索引）
      *
      * @param currentStageIndex 当前 Stage 索引
-     * @param totalStages Stage 总数
+     * @param stages Stage 集合
      * @return StageProgress 实例
      */
-    public static StageProgress of(int currentStageIndex, int totalStages) {
-        return new StageProgress(currentStageIndex, totalStages);
+    public static StageProgress of(int currentStageIndex, List<TaskStage> stages) {
+        List<String> names = stages.stream().map(TaskStage::getName).toList();
+        return new StageProgress(currentStageIndex, names);
     }
 
     // ============================================
@@ -70,11 +78,11 @@ public final class StageProgress {
      *
      * @return 新的 StageProgress（不可变）
      */
-    public StageProgress advance() {
+    public StageProgress next() {
         if (isCompleted()) {
             throw new IllegalStateException("已完成所有 Stage，无法继续推进");
         }
-        return new StageProgress(currentStageIndex + 1, totalStages);
+        return new StageProgress(currentStageIndex + 1, stageNames);
     }
 
     /**
@@ -83,7 +91,7 @@ public final class StageProgress {
      * @return 新的 StageProgress（currentStageIndex = 0）
      */
     public StageProgress reset() {
-        return new StageProgress(0, totalStages);
+        return new StageProgress(0, stageNames);
     }
 
     /**
@@ -122,6 +130,13 @@ public final class StageProgress {
 
     public int getCurrentStageIndex() {
         return currentStageIndex;
+    }
+
+    public String getCurrentStageName() {
+        if (isCompleted()) {
+            return null;
+        }
+        return stageNames.get(currentStageIndex);
     }
 
     public int getTotalStages() {

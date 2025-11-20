@@ -131,7 +131,7 @@ public class PlanAggregate {
         this.status = PlanStatus.READY;
 
         // ✅ RF-11: 产生领域事件
-        PlanReadyEvent event = new PlanReadyEvent(planId, taskIds.size());
+        PlanReadyEvent event = new PlanReadyEvent(PlanInfo.from(this), taskIds.size());
         addDomainEvent(event);
     }
 
@@ -156,7 +156,7 @@ public class PlanAggregate {
         this.startedAt = LocalDateTime.now();
 
         // ✅ RF-11: 产生领域事件
-        PlanStartedEvent event = new PlanStartedEvent(planId, taskIds.size());
+        PlanStartedEvent event = new PlanStartedEvent(PlanInfo.from(this), taskIds.size());
         addDomainEvent(event);
     }
 
@@ -173,7 +173,7 @@ public class PlanAggregate {
         this.status = PlanStatus.PAUSED;
 
         // ✅ RF-11: 产生领域事件
-        PlanPausedEvent event = new PlanPausedEvent(planId);
+        PlanPausedEvent event = new PlanPausedEvent(PlanInfo.from(this));
         addDomainEvent(event);
     }
 
@@ -190,7 +190,7 @@ public class PlanAggregate {
         this.status = PlanStatus.RUNNING;
 
         // ✅ RF-11: 产生领域事件
-        PlanResumedEvent event = new PlanResumedEvent(planId);
+        PlanResumedEvent event = new PlanResumedEvent(PlanInfo.from(this));
         addDomainEvent(event);
     }
 
@@ -208,7 +208,7 @@ public class PlanAggregate {
         this.endedAt = LocalDateTime.now();
 
         // ✅ RF-11: 产生领域事件
-        PlanCompletedEvent event = new PlanCompletedEvent(planId, taskIds.size());
+        PlanCompletedEvent event = new PlanCompletedEvent(PlanInfo.from(this), taskIds.size());
         addDomainEvent(event);
     }
 
@@ -225,7 +225,7 @@ public class PlanAggregate {
         this.endedAt = LocalDateTime.now();
 
         // ✅ RF-11: 产生领域事件
-        PlanFailedEvent event = new PlanFailedEvent(planId, failureSummary);
+        PlanFailedEvent event = new PlanFailedEvent(PlanInfo.from(this), failureSummary);
         addDomainEvent(event);
     }
 

@@ -1,9 +1,9 @@
 package xyz.firestige.deploy.domain.task.event;
 
-import xyz.firestige.deploy.domain.shared.vo.TaskId;
+import xyz.firestige.deploy.application.dto.TenantConfig;
+import xyz.firestige.deploy.domain.task.TaskInfo;
 import xyz.firestige.dto.deploy.TenantDeployConfig;
 import xyz.firestige.deploy.domain.shared.exception.FailureInfo;
-import xyz.firestige.deploy.domain.task.TaskStatus;
 import xyz.firestige.deploy.domain.shared.validation.ValidationError;
 
 import java.util.ArrayList;
@@ -17,23 +17,18 @@ public class TaskValidationFailedEvent extends TaskStatusEvent {
     /**
      * 校验错误列表
      */
-    private List<ValidationError> validationErrors;
+    private final List<ValidationError> validationErrors;
 
     /**
      * 无效的配置列表
      */
-    private List<TenantDeployConfig> invalidConfigs;
+    private final List<TenantConfig> invalidConfigs;
 
-    public TaskValidationFailedEvent() {
-        super();
-        setStatus(TaskStatus.VALIDATION_FAILED);
-        this.validationErrors = new ArrayList<>();
-        this.invalidConfigs = new ArrayList<>();
-    }
+    private final FailureInfo failureInfo;
 
-    public TaskValidationFailedEvent(TaskId taskId, FailureInfo failureInfo, List<ValidationError> validationErrors) {
-        super(taskId, TaskStatus.VALIDATION_FAILED);
-        setFailureInfo(failureInfo);
+    public TaskValidationFailedEvent(TaskInfo info, FailureInfo failureInfo, List<ValidationError> validationErrors) {
+        super(info);
+        this.failureInfo = failureInfo;
         this.validationErrors = validationErrors != null ? validationErrors : new ArrayList<>();
         this.invalidConfigs = new ArrayList<>();
         setMessage("任务校验失败，错误数量: " + this.validationErrors.size());
@@ -41,20 +36,24 @@ public class TaskValidationFailedEvent extends TaskStatusEvent {
 
     // Getters and Setters
 
+    public FailureInfo getFailureInfo() {
+        return failureInfo;
+    }
+
     public List<ValidationError> getValidationErrors() {
         return validationErrors;
     }
 
-    public void setValidationErrors(List<ValidationError> validationErrors) {
-        this.validationErrors = validationErrors;
-    }
-
-    public List<TenantDeployConfig> getInvalidConfigs() {
+    public List<TenantConfig> getInvalidConfigs() {
         return invalidConfigs;
     }
 
-    public void setInvalidConfigs(List<TenantDeployConfig> invalidConfigs) {
-        this.invalidConfigs = invalidConfigs;
+    public void addInvalidConfig(TenantConfig invalidConfig) {
+        this.invalidConfigs.add(invalidConfig);
+    }
+
+    public void addInvalidConfigs(List<TenantConfig> invalidConfigs) {
+        this.invalidConfigs.addAll(invalidConfigs);
     }
 }
 

@@ -1,5 +1,8 @@
 package xyz.firestige.deploy.domain.task;
 
+import org.springframework.data.redis.stream.Task;
+import xyz.firestige.deploy.domain.shared.exception.ErrorType;
+import xyz.firestige.deploy.domain.shared.exception.FailureInfo;
 import xyz.firestige.deploy.domain.shared.vo.DeployVersion;
 import xyz.firestige.deploy.domain.shared.vo.PlanId;
 import xyz.firestige.deploy.domain.shared.vo.TaskId;
@@ -18,7 +21,10 @@ import xyz.firestige.deploy.domain.task.event.TaskRollingBackEvent;
 import xyz.firestige.deploy.domain.task.event.TaskStageCompletedEvent;
 import xyz.firestige.deploy.domain.task.event.TaskStartedEvent;
 import xyz.firestige.deploy.domain.task.event.TaskStatusEvent;
+import xyz.firestige.deploy.infrastructure.execution.StageStatus;
+import xyz.firestige.deploy.infrastructure.execution.stage.TaskStage;
 
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -132,7 +138,7 @@ public class TaskAggregate {
         this.timeRange = timeRange.start();
 
         // ✅ 产生领域事件
-        TaskStartedEvent event = new TaskStartedEvent(taskId, stageProgress.getTotalStages());
+        TaskStartedEvent event = new TaskStartedEvent(TaskInfo.from(this),stageProgress.getTotalStages());
         addDomainEvent(event);
     }
 
@@ -159,30 +165,9 @@ public class TaskAggregate {
             this.pauseRequested = false;
 
             // ✅ 产生领域事件
-            TaskPausedEvent event = new TaskPausedEvent();
+            TaskPausedEvent event = new TaskPausedEvent(TaskInfo.from(this), "system", stageProgress.getCurrentStageName());
             addDomainEvent(event);
         }
-    }
-
-    /**
-     * 暂停任务（RF-18: 新方法，立即暂停）
-     * 不变式：只有 RUNNING 状态可以暂停
-     */
-    public void pause() {
-        if (status != TaskStatus.RUNNING) {
-            throw new IllegalStateException(
-                String.format("只有 RUNNING 状态才能暂停，当前状态: %s, taskId: %s", status, taskId.getValue())
-            );
-        }
-
-        this.status = TaskStatus.PAUSED;
-        this.pauseRequested = false;  // 清除标志
-
-        // ✅ 产生领域事件
-        TaskPausedEvent event = new TaskPausedEvent();
-        event.setTaskId(taskId);
-        event.setStatus(TaskStatus.PAUSED);
-        addDomainEvent(event);
     }
 
     /**
@@ -199,7 +184,7 @@ public class TaskAggregate {
         this.pauseRequested = false;
 
         // ✅ 产生领域事件
-        TaskResumedEvent event = new TaskResumedEvent();
+        TaskResumedEvent event = new TaskResumedEvent(TaskInfo.from(this), "system", stageProgress.getCurrentStageName());
         addDomainEvent(event);
     }
 
@@ -219,8 +204,7 @@ public class TaskAggregate {
         calculateDuration();
 
         // ✅ 产生领域事件
-        TaskCancelledEvent event = new TaskCancelledEvent(taskId);
-        event.setCancelledBy(cancelledBy);
+        TaskCancelledEvent event = new TaskCancelledEvent(TaskInfo.from(this), cancelledBy, stageProgress.getCurrentStageName());
         addDomainEvent(event);
     }
 
@@ -232,7 +216,7 @@ public class TaskAggregate {
         validateCanCompleteStage();
 
         this.stageResults.add(result);
-        this.stageProgress = stageProgress.advance();
+        this.stageProgress = stageProgress.next();
 
         // 检查是否所有 Stage 完成
         if (stageProgress.isCompleted()) {
@@ -244,21 +228,17 @@ public class TaskAggregate {
      * 完成当前 Stage（RF-18: 新方法，带进度信息）
      * 不变式：必须处于 RUNNING 状态
      */
-    public void completeStage(String stageName, java.time.Duration duration) {
+    public void completeStage(String stageName, Duration duration) {
         validateCanCompleteStage();
 
         // 推进进度
-        this.stageProgress = stageProgress.advance();
+        this.stageProgress = stageProgress.next();
 
         // ✅ 产生领域事件（包含进度信息）
-        TaskStageCompletedEvent event = new TaskStageCompletedEvent(
-                taskId,
-                stageName,
-                stageProgress.getCurrentStageIndex(),  // 已完成的 Stage 数
-                stageProgress.getTotalStages(),
-                duration,
-                LocalDateTime.now()
-            );
+        StageResult result = StageResult.success(stageName);
+        stageResults.add(result);
+        result.setDuration(duration);
+        TaskStageCompletedEvent event = new TaskStageCompletedEvent(TaskInfo.from(this), stageName, result);
         addDomainEvent(event);
 
         // 检查是否所有 Stage 完成
@@ -280,7 +260,8 @@ public class TaskAggregate {
         calculateDuration();
 
         // ✅ 产生领域事件
-        TaskFailedEvent event = new TaskFailedEvent();
+        List<String> completedStages = stageResults.stream().map(StageResult::getStageName).toList();
+        TaskFailedEvent event = new TaskFailedEvent(TaskInfo.from(this), result.getFailureInfo(), completedStages, result.getStageName());
         addDomainEvent(event);
     }
 
@@ -305,9 +286,8 @@ public class TaskAggregate {
         calculateDuration();
 
         // ✅ 产生领域事件
-        TaskCompletedEvent event = new TaskCompletedEvent();
-        event.setTaskId(taskId);
-        event.setStatus(TaskStatus.COMPLETED);
+        List<String> completedStages = stageResults.stream().map(StageResult::getStageName).toList();
+        TaskCompletedEvent event = new TaskCompletedEvent(TaskInfo.from(this), duration.toDuration(), completedStages);
         addDomainEvent(event);
     }
 
@@ -342,7 +322,7 @@ public class TaskAggregate {
         }
 
         // ✅ 产生领域事件
-        TaskRetryStartedEvent event = new TaskRetryStartedEvent(taskId, fromCheckpoint);
+        TaskRetryStartedEvent event = new TaskRetryStartedEvent(TaskInfo.from(this), fromCheckpoint);
         addDomainEvent(event);
     }
 
@@ -369,7 +349,7 @@ public class TaskAggregate {
         this.status = TaskStatus.RUNNING;
 
         // ✅ 产生领域事件
-        TaskRetryStartedEvent event = new TaskRetryStartedEvent(taskId, false);
+        TaskRetryStartedEvent event = new TaskRetryStartedEvent(TaskInfo.from(this), false);
         addDomainEvent(event);
     }
 
@@ -386,7 +366,7 @@ public class TaskAggregate {
         this.status = TaskStatus.ROLLING_BACK;
 
         // ✅ 产生领域事件
-        TaskRollingBackEvent event = new TaskRollingBackEvent(taskId, reason, null);
+        TaskRollingBackEvent event = new TaskRollingBackEvent(TaskInfo.from(this), reason, null);
         addDomainEvent(event);
     }
 
@@ -404,7 +384,7 @@ public class TaskAggregate {
         this.status = TaskStatus.ROLLING_BACK;
 
         // ✅ 产生领域事件
-        TaskRollingBackEvent event = new TaskRollingBackEvent(taskId, "系统触发回滚", null);
+        TaskRollingBackEvent event = new TaskRollingBackEvent(TaskInfo.from(this), "系统触发回滚", null);
         addDomainEvent(event);
     }
 
@@ -423,10 +403,10 @@ public class TaskAggregate {
         calculateDuration();
 
         // ✅ 产生领域事件
-        TaskRolledBackEvent event = new TaskRolledBackEvent(taskId, null);
-        if (prevConfigSnapshot != null) {
-            event.setPrevDeployUnitVersion(prevConfigSnapshot.getDeployUnitVersion());
-        }
+        TaskRolledBackEvent event = new TaskRolledBackEvent(TaskInfo.from(this), null);
+//        if (prevConfigSnapshot != null) {
+//            event.setPrevDeployUnitVersion(prevConfigSnapshot.getDeployUnitVersion());
+//        }
         addDomainEvent(event);
     }
 
@@ -445,7 +425,7 @@ public class TaskAggregate {
         calculateDuration();
 
         // ✅ 产生领域事件
-        TaskRollbackFailedEvent event = new TaskRollbackFailedEvent();
+        TaskRollbackFailedEvent event = new TaskRollbackFailedEvent(TaskInfo.from(this), FailureInfo.of(ErrorType.BUSINESS_ERROR, reason), null);
         event.setMessage("回滚失败: " + reason);
         addDomainEvent(event);
     }
@@ -477,9 +457,8 @@ public class TaskAggregate {
         calculateDuration();
 
         // ✅ 产生领域事件
-        TaskFailedEvent event = new TaskFailedEvent();
-        event.setTaskId(taskId);
-        event.setStatus(TaskStatus.FAILED);
+        List<String> completedStages = stageResults.stream().map(StageResult::getStageName).toList();
+        TaskFailedEvent event = new TaskFailedEvent(TaskInfo.from(this), failure, completedStages, stageProgress.getCurrentStageName());
         event.setMessage(failure.getErrorMessage());
         addDomainEvent(event);
     }
@@ -573,8 +552,8 @@ public class TaskAggregate {
     public int getTotalStages() { 
         return stageProgress != null ? stageProgress.getTotalStages() : 0; 
     }
-    public void setTotalStages(int totalStages) { 
-        this.stageProgress = StageProgress.initial(totalStages);
+    public void setTotalStages(List<TaskStage> stages) {
+        this.stageProgress = StageProgress.initial(stages);
         this.retryPolicy = RetryPolicy.initial(null);
     }
 

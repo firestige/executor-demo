@@ -1,7 +1,6 @@
 package xyz.firestige.deploy.domain.task.event;
 
-import xyz.firestige.deploy.domain.shared.vo.TaskId;
-import xyz.firestige.deploy.domain.task.TaskStatus;
+import xyz.firestige.deploy.domain.task.TaskInfo;
 
 /**
  * 任务恢复事件
@@ -11,20 +10,15 @@ public class TaskResumedEvent extends TaskStatusEvent {
     /**
      * 操作人
      */
-    private String resumedBy;
+    private final String resumedBy;
 
     /**
      * 恢复的起始 Stage
      */
-    private String resumeFromStage;
+    private final String resumeFromStage;
 
-    public TaskResumedEvent() {
-        super();
-        setStatus(TaskStatus.RESUMING);
-    }
-
-    public TaskResumedEvent(TaskId taskId, String resumedBy, String resumeFromStage) {
-        super(taskId, TaskStatus.RESUMING);
+    public TaskResumedEvent(TaskInfo info, String resumedBy, String resumeFromStage) {
+        super(info);
         this.resumedBy = resumedBy;
         this.resumeFromStage = resumeFromStage;
         setMessage("任务已恢复，从 Stage 继续: " + resumeFromStage);
@@ -36,16 +30,8 @@ public class TaskResumedEvent extends TaskStatusEvent {
         return resumedBy;
     }
 
-    public void setResumedBy(String resumedBy) {
-        this.resumedBy = resumedBy;
-    }
-
     public String getResumeFromStage() {
         return resumeFromStage;
-    }
-
-    public void setResumeFromStage(String resumeFromStage) {
-        this.resumeFromStage = resumeFromStage;
     }
 }
 

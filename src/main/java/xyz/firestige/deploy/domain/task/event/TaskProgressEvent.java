@@ -1,7 +1,6 @@
 package xyz.firestige.deploy.domain.task.event;
 
-import xyz.firestige.deploy.domain.shared.vo.TaskId;
-import xyz.firestige.deploy.domain.task.TaskStatus;
+import xyz.firestige.deploy.domain.task.TaskInfo;
 
 /**
  * 任务进度事件
@@ -11,30 +10,25 @@ public class TaskProgressEvent extends TaskStatusEvent {
     /**
      * 当前执行的 Stage
      */
-    private String currentStage;
+    private final String currentStage;
 
     /**
      * 已完成的 Stage 数量
      */
-    private int completedStages;
+    private final int completedStages;
 
     /**
      * 总 Stage 数量
      */
-    private int totalStages;
+    private final int totalStages;
 
     /**
      * 进度百分比（0-100）
      */
-    private double progress;
+    private final double progress;
 
-    public TaskProgressEvent() {
-        super();
-        setStatus(TaskStatus.RUNNING);
-    }
-
-    public TaskProgressEvent(TaskId taskId, String currentStage, int completedStages, int totalStages) {
-        super(taskId, TaskStatus.RUNNING);
+    public TaskProgressEvent(TaskInfo info, String currentStage, int completedStages, int totalStages) {
+        super(info);
         this.currentStage = currentStage;
         this.completedStages = completedStages;
         this.totalStages = totalStages;
@@ -48,32 +42,16 @@ public class TaskProgressEvent extends TaskStatusEvent {
         return currentStage;
     }
 
-    public void setCurrentStage(String currentStage) {
-        this.currentStage = currentStage;
-    }
-
     public int getCompletedStages() {
         return completedStages;
-    }
-
-    public void setCompletedStages(int completedStages) {
-        this.completedStages = completedStages;
     }
 
     public int getTotalStages() {
         return totalStages;
     }
 
-    public void setTotalStages(int totalStages) {
-        this.totalStages = totalStages;
-    }
-
     public double getProgress() {
         return progress;
-    }
-
-    public void setProgress(double progress) {
-        this.progress = progress;
     }
 }
 

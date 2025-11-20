@@ -1,5 +1,6 @@
 package xyz.firestige.deploy.domain.task;
 
+import xyz.firestige.deploy.domain.shared.vo.PlanId;
 import xyz.firestige.deploy.domain.shared.vo.TaskId;
 import xyz.firestige.deploy.domain.shared.vo.TenantId;
 
@@ -12,12 +13,16 @@ public class TaskInfo {
 
     private final TaskId taskId;
     private final TenantId tenantId;
+    private final PlanId planId;
+    private final String deployUnitName;
     private final Long deployUnitVersion;
     private final TaskStatus status;
 
-    public TaskInfo(TaskId taskId, TenantId tenantId, Long deployUnitVersion, TaskStatus status) {
+    public TaskInfo(TaskId taskId, TenantId tenantId, PlanId planId, String deployUnitName, Long deployUnitVersion, TaskStatus status) {
         this.taskId = taskId;
         this.tenantId = tenantId;
+        this.planId = planId;
+        this.deployUnitName = deployUnitName;
         this.deployUnitVersion = deployUnitVersion;
         this.status = status;
     }
@@ -29,6 +34,8 @@ public class TaskInfo {
         return new TaskInfo(
             task.getTaskId(),
             task.getTenantId(),
+            task.getPlanId(),
+            task.getDeployUnitName(),
             task.getDeployUnitVersion(),
             task.getStatus()
         );
@@ -42,6 +49,14 @@ public class TaskInfo {
 
     public TenantId getTenantId() {
         return tenantId;
+    }
+
+    public PlanId getPlanId() {
+        return planId;
+    }
+
+    public String getDeployUnitName() {
+        return deployUnitName;
     }
 
     public Long getDeployUnitVersion() {

@@ -48,6 +48,16 @@ public class PlanInfo {
         );
     }
 
+    /**
+     * 静态工厂方法：不含 Task 列表的简化版本，用于 plan 事件
+     *
+     * @param plan Plan 聚合
+     * @return PlanInfo
+     */
+    public static PlanInfo from(PlanAggregate plan) {
+        return PlanInfo.from(plan, null);
+    }
+
     // Getters only (值对象不可变，无 Setters)
 
     public PlanId getPlanId() {
