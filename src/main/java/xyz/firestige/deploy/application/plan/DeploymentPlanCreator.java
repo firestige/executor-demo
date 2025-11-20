@@ -14,6 +14,8 @@ import xyz.firestige.deploy.infrastructure.execution.stage.TaskStage;
 import xyz.firestige.deploy.domain.task.TaskAggregate;
 import xyz.firestige.deploy.domain.task.TaskDomainService;
 import xyz.firestige.deploy.domain.task.TaskInfo;
+import xyz.firestige.deploy.domain.task.TaskRuntimeContext;
+import xyz.firestige.deploy.domain.task.TaskRuntimeRepository;
 import xyz.firestige.deploy.domain.shared.validation.ValidationSummary;
 
 import java.util.List;
@@ -43,18 +45,21 @@ public class DeploymentPlanCreator {
     private final StageFactory stageFactory;
     private final BusinessValidator businessValidator;
     private final ExecutorProperties executorProperties;
+    private final TaskRuntimeRepository taskRuntimeRepository;
 
     public DeploymentPlanCreator(
             PlanDomainService planDomainService,
             TaskDomainService taskDomainService,
             StageFactory stageFactory,
             BusinessValidator businessValidator,
-            ExecutorProperties executorProperties) {
+            ExecutorProperties executorProperties,
+            TaskRuntimeRepository taskRuntimeRepository) {
         this.planDomainService = planDomainService;
         this.taskDomainService = taskDomainService;
         this.stageFactory = stageFactory;
         this.businessValidator = businessValidator;
         this.executorProperties = executorProperties;
+        this.taskRuntimeRepository = taskRuntimeRepository;
     }
 
     /**
@@ -115,6 +120,16 @@ public class DeploymentPlanCreator {
         PlanId planId = config.getPlanId();
         // 创建 Task 聚合
         TaskAggregate task = taskDomainService.createTask(planId, config);
+
+        // 创建并保存 TaskRuntimeContext（包含 planVersion）
+        TaskRuntimeContext runtimeContext = new TaskRuntimeContext(
+            planId,
+            task.getTaskId(),
+            task.getTenantId()
+        );
+        // 将 planVersion 存储到运行时上下文中，供 Step 使用
+        runtimeContext.addVariable("planVersion", config.getPlanVersion());
+        taskRuntimeRepository.saveContext(task.getTaskId(), runtimeContext);
 
         // 构建 Task 的 Stages
         List<TaskStage> stages = buildStagesForTask(task, config);

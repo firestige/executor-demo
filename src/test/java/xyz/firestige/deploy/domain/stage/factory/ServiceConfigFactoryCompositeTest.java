@@ -11,6 +11,7 @@ import xyz.firestige.deploy.domain.stage.config.BlueGreenGatewayConfig;
 import xyz.firestige.deploy.domain.stage.config.PortalConfig;
 import xyz.firestige.deploy.domain.stage.config.ServiceConfig;
 import xyz.firestige.deploy.infrastructure.config.DeploymentConfigLoader;
+import xyz.firestige.deploy.infrastructure.config.model.InfrastructureConfig;
 import xyz.firestige.deploy.infrastructure.template.TemplateResolver;
 import xyz.firestige.entity.deploy.NetworkEndpoint;
 
@@ -34,6 +35,14 @@ class ServiceConfigFactoryCompositeTest {
         DeploymentConfigLoader configLoader = mock(DeploymentConfigLoader.class);
         TemplateResolver templateResolver = new TemplateResolver();
 
+        // Mock InfrastructureConfig 和 HealthCheckConfig
+        InfrastructureConfig infrastructureConfig = mock(InfrastructureConfig.class);
+        InfrastructureConfig.HealthCheckConfig healthCheckConfig = mock(InfrastructureConfig.HealthCheckConfig.class);
+
+        when(configLoader.getInfrastructure()).thenReturn(infrastructureConfig);
+        when(infrastructureConfig.getHealthCheck()).thenReturn(healthCheckConfig);
+        when(healthCheckConfig.getDefaultPath()).thenReturn("/actuator/health");
+
         // 创建工厂实例
         List<ServiceConfigFactory> factories = List.of(
                 new BlueGreenGatewayConfigFactory(configLoader, templateResolver),
@@ -56,7 +65,7 @@ class ServiceConfigFactoryCompositeTest {
         assertTrue(config instanceof BlueGreenGatewayConfig);
         
         BlueGreenGatewayConfig bgConfig = (BlueGreenGatewayConfig) config;
-        assertEquals("tenant-001", bgConfig.getTenantId());
+        assertEquals("tenant-001", bgConfig.getTenantId().getValue());
         assertEquals(1L, bgConfig.getConfigVersion());
         assertEquals("test-namespace", bgConfig.getNacosNamespace());
         assertEquals("/actuator/health", bgConfig.getHealthCheckPath());
@@ -80,7 +89,7 @@ class ServiceConfigFactoryCompositeTest {
         assertTrue(config instanceof PortalConfig);
         
         PortalConfig portalConfig = (PortalConfig) config;
-        assertEquals("tenant-001", portalConfig.getTenantId());
+        assertEquals("tenant-001", portalConfig.getTenantId().getValue());
         assertEquals(1L, portalConfig.getConfigVersion());
         assertEquals("test-namespace", portalConfig.getNacosNamespace());
         
@@ -106,7 +115,7 @@ class ServiceConfigFactoryCompositeTest {
         assertTrue(config instanceof ASBCGatewayConfig);
         
         ASBCGatewayConfig asbcConfig = (ASBCGatewayConfig) config;
-        assertEquals("tenant-001", asbcConfig.getTenantId());
+        assertEquals("tenant-001", asbcConfig.getTenantId().getValue());
         assertEquals(1L, asbcConfig.getConfigVersion());
         assertNotNull(asbcConfig.getFixedInstances());
         assertFalse(asbcConfig.getFixedInstances().isEmpty());

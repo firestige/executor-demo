@@ -17,6 +17,7 @@ import xyz.firestige.deploy.infrastructure.execution.stage.StageFactory;
 import xyz.firestige.deploy.infrastructure.execution.stage.TaskStage;
 import xyz.firestige.deploy.domain.task.TaskAggregate;
 import xyz.firestige.deploy.domain.task.TaskDomainService;
+import xyz.firestige.deploy.domain.task.TaskRuntimeRepository;
 import xyz.firestige.deploy.domain.shared.validation.ValidationError;
 import xyz.firestige.deploy.domain.shared.validation.ValidationSummary;
 import xyz.firestige.dto.deploy.TenantDeployConfig;
@@ -41,6 +42,7 @@ class DeploymentPlanCreatorTest {
     private TaskDomainService mockTaskService;
     private StageFactory mockStageFactory;
     private BusinessValidator mockValidator;
+    private TaskRuntimeRepository mockTaskRuntimeRepository;
 
     private DeploymentPlanCreator creator;
 
@@ -50,11 +52,13 @@ class DeploymentPlanCreatorTest {
         mockTaskService = mock(TaskDomainService.class);
         mockStageFactory = mock(StageFactory.class);
         mockValidator = mock(BusinessValidator.class);
+        mockTaskRuntimeRepository = mock(TaskRuntimeRepository.class);
         ExecutorProperties executorProperties = new ExecutorProperties();
 
         creator = new DeploymentPlanCreator(
                 mockPlanService, mockTaskService,
-                mockStageFactory, mockValidator, executorProperties
+                mockStageFactory, mockValidator, executorProperties,
+                mockTaskRuntimeRepository
         );
     }
 

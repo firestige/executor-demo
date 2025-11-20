@@ -68,12 +68,25 @@ public class KeyValueWriteStep extends AbstractConfigurableStep {
         // 4. 获取 JSON 字符串（使用新的 Redis value 对象）
         String jsonValue = getRedisValueJson();
 
-        // 5. 写入 Redis Hash
+        // 5. 第一次写入：业务数据
         redisTemplate.opsForHash().put(hashKey, hashField, jsonValue);
         
         log.info("[KeyValueWriteStep] Redis Hash written: key={}, field={}, valueLength={}",
                 hashKey, hashField, jsonValue.length());
         log.debug("[KeyValueWriteStep] JSON value: {}", jsonValue);
+
+        // 6. 第二次写入：metadata（包含 planVersion）
+        Long planVersion = ctx.getAdditionalData("planVersion", Long.class);
+        if (planVersion != null) {
+            String metadataJson = objectMapper.writeValueAsString(
+                Map.of("version", planVersion)
+            );
+            redisTemplate.opsForHash().put(hashKey, "metadata", metadataJson);
+            log.info("[KeyValueWriteStep] Redis Hash metadata written: key={}, field=metadata, version={}",
+                    hashKey, planVersion);
+        } else {
+            log.warn("[KeyValueWriteStep] planVersion not found in context, skipping metadata write");
+        }
     }
     
     /**

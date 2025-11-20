@@ -189,13 +189,15 @@ public class ExecutorConfiguration {
             TaskDomainService taskDomainService,
             StageFactory stageFactory,
             BusinessValidator businessValidator,
-            ExecutorProperties executorProperties) {
+            ExecutorProperties executorProperties,
+            TaskRuntimeRepository taskRuntimeRepository) {
         return new DeploymentPlanCreator(
                 planDomainService,
                 taskDomainService,
                 stageFactory,
                 businessValidator,
-                executorProperties
+                executorProperties,
+                taskRuntimeRepository
         );
     }
 
