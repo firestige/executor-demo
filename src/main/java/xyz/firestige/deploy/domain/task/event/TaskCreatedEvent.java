@@ -5,6 +5,9 @@ import xyz.firestige.deploy.domain.shared.vo.TaskId;
 import xyz.firestige.deploy.domain.task.TaskInfo;
 import xyz.firestige.deploy.domain.task.TaskStatus;
 
+import java.util.ArrayList;
+import java.util.List;
+
 /**
  * 任务创建事件
  */
@@ -13,18 +16,18 @@ public class TaskCreatedEvent extends TaskStatusEvent {
     /**
      * 配置数量
      */
-    private final int configCount;
+    private final List<String> stageNames;
 
-    public TaskCreatedEvent(TaskInfo info, int configCount, ExecutionMode executionMode) {
+    public TaskCreatedEvent(TaskInfo info, List<String> stageNames) {
         super(info);
-        this.configCount = configCount;
-        setMessage("任务已创建，配置数量: " + configCount);
+        this.stageNames = stageNames;
+        setMessage("任务已创建，配置数量: [" + String.join(", ", stageNames) + "]");
     }
 
     // Getters and Setters
 
-    public int getConfigCount() {
-        return configCount;
+    public List<String> getStageNames() {
+        return stageNames;
     }
 }
 

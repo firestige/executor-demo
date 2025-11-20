@@ -1,5 +1,6 @@
 package xyz.firestige.deploy.infrastructure.execution.stage;
 
+import com.alibaba.nacos.client.naming.NacosNamingService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -47,7 +48,7 @@ public class StepRegistry {
             ObjectMapper objectMapper,
             TemplateResolver templateResolver,
             VariableContextBuilder variableContextBuilder,
-            @Autowired(required = false) Object nacosNamingService) {
+            @Autowired(required = false) NacosNamingService nacosNamingService) {
         
         this.redisTemplate = redisTemplate;
         this.restTemplate = restTemplate;

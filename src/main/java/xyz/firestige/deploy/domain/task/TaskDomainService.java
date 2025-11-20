@@ -9,6 +9,7 @@ import xyz.firestige.deploy.application.dto.TenantConfig;
 import xyz.firestige.deploy.domain.shared.vo.PlanId;
 import xyz.firestige.deploy.domain.shared.vo.TaskId;
 import xyz.firestige.deploy.domain.shared.vo.TenantId;
+import xyz.firestige.deploy.domain.task.event.TaskCreatedEvent;
 import xyz.firestige.deploy.domain.task.event.TaskRetryStartedEvent;
 import xyz.firestige.deploy.infrastructure.execution.stage.TaskStage;
 import xyz.firestige.deploy.domain.shared.event.DomainEventPublisher;
@@ -98,6 +99,11 @@ public class TaskDomainService {
 
         // 保存到仓储
         taskRuntimeRepository.saveStages(task.getTaskId(), stages);
+
+        List<String> names = stages.stream().map(TaskStage::getName).toList();
+        // 发布 TaskCreated 事件
+        TaskCreatedEvent createdEvent = new TaskCreatedEvent(TaskInfo.from(task), names);
+        domainEventPublisher.publish(createdEvent);
 
         logger.debug("[TaskDomainService] Task Stages 构建完成: {}, stage数量: {}", task.getTaskId(), stages.size());
     }

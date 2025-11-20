@@ -1,5 +1,7 @@
 package xyz.firestige.deploy.domain.task;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
+
 import java.util.Objects;
 
 /**

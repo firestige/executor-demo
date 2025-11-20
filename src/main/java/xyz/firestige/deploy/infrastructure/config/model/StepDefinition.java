@@ -1,5 +1,7 @@
 package xyz.firestige.deploy.infrastructure.config.model;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
+
 import java.util.Map;
 
 /**
@@ -9,7 +11,8 @@ import java.util.Map;
 public class StepDefinition {
     
     private String type;                      // 步骤类型
-    private Map<String, Object> config;       // 步骤配置
+    private Map<String, Object> config;// 步骤配置
+    @JsonProperty("retry-policy")
     private RetryPolicy retryPolicy;          // 重试策略
     
     public String getType() {
@@ -40,7 +43,9 @@ public class StepDefinition {
      * 重试策略
      */
     public static class RetryPolicy {
+        @JsonProperty("max-attempts")
         private int maxAttempts;
+        @JsonProperty("interval-seconds")
         private int intervalSeconds;
         
         public int getMaxAttempts() {
