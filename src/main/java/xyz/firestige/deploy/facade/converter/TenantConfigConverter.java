@@ -66,6 +66,7 @@ public class TenantConfigConverter {
         // 基本标识
         internal.setTenantId(external.getTenantId());
         internal.setPlanId(external.getPlanId());
+        internal.setPlanVersion(external.getPlanVersion());
 
         // 部署单元信息
         if (external.getDeployUnitName() != null) {
@@ -126,10 +127,10 @@ public class TenantConfigConverter {
      */
     private List<String> resolveServiceNames(TenantDeployConfig external) {
         // 策略 1：显式指定
-        if (external.getServiceNames() != null && !external.getServiceNames().isEmpty()) {
-            log.debug("Using explicitly provided service names for tenant {}", external.getTenantId());
-            return new ArrayList<>(external.getServiceNames());
-        }
+//        if (external.getServiceNames() != null && !external.getServiceNames().isEmpty()) {
+//            log.debug("Using explicitly provided service names for tenant {}", external.getTenantId());
+//            return new ArrayList<>(external.getServiceNames());
+//        }
 
         // 策略 2：使用配置文件默认值
         List<String> defaultNames = configLoader.getDefaultServiceNames();
