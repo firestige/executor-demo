@@ -47,69 +47,30 @@
 
 ---
 
-### RF-19-02: ASBCConfigRequestStep 请求响应重构 🔴
+### RF-19-02: ASBC Gateway Stage 实施 ✅
 **优先级**: P0 - 最高  
 **预计时间**: 4-6 小时  
-**状态**: 🟡 待设计评审  
-**责任人**: 待分配  
+**实际时间**: 3 小时  
+**状态**: ✅ 已完成 (2025-11-21)  
+**责任人**: GitHub Copilot  
 
-**需求细节**:
+**完成内容**:
+- ✅ ASBCResponse 模型类（Response, Data, Item）
+- ✅ ASBCDataPreparer（解析 calledNumberRules，构建请求）
+- ✅ ASBCResultValidator（检查 failList，构建详细错误信息）
+- ✅ DynamicStageFactory.createASBCStage()
+- ✅ 100% 复用 HttpRequestStep
 
-**1. 请求格式修改**:
-```bash
-curl -X POST "https://${ip}:${port}/api/sbc/traffic-switch" \
--H "Authorization: Bearer ${access_token}" \
--H "Content-Type: application/json" \
--d '{
-  "calledNumberMatch": ["96765", "96755"],
-  "targetTrunkGroupName": "ka-gw"
-}'
-```
-
-**2. 响应格式解析**:
-```json
-{
-  "code": 0,
-  "msg": "ok",
-  "data": {
-    "successList": [{
-      "code": 0,
-      "msg": "ok",
-      "calledNumberMatch": "96765",
-      "targetTrunkGroupName": "ka-gw"
-    }],
-    "failList": [{
-      "code": 500,
-      "msg": "too many calledNumberMatch!",
-      "calledNumberMatch": "96765",
-      "targetTrunkGroupName": "ka-gw"
-    }]
-  }
-}
-```
-
-**3. 失败信息处理**:
-- 在 failureInfo 中明确提示哪些 calledNumberMatch 成功，哪些失败
-- 如果 failList 不为空，整个 Step 是否失败？还是部分成功？
-
-**待确认设计点**:
-1. ✅ calledNumberRules 的拆分逻辑（逗号分隔？JSON 数组？）
-2. ✅ MediaRoutingConfig 模型是否需要调整
-3. ✅ 响应解析失败的处理策略
-4. ✅ 部分成功的判定逻辑（全部成功才算成功？还是有成功就算成功？）
-5. ✅ failureInfo 的格式设计（JSON？纯文本？）
-6. ✅ access_token 的获取方式（配置？动态获取？）
-7. ✅ 请求 URL 的构建方式（ip, port 的来源）
-
-**相关文件**:
-- `src/main/java/xyz/firestige/deploy/infrastructure/execution/stage/steps/ASBCConfigRequestStep.java`
-- `src/main/java/xyz/firestige/deploy/application/dto/TenantConfig.java`（MediaRoutingConfig）
-
-**设计方案**: 待讨论
+**实施细节**:
+- calledNumberRules: 逗号分隔字符串 → List<String>
+- 不修改 MediaRoutingConfig（只在 Step 中转换）
+- failList 不为空即失败，构建详细的成功/失败列表
+- Auth disabled（不填 Authorization header）
+- Endpoint 暂时硬编码（TODO: 从 Nacos 获取）  
 
 ---
 
-### RF-19-03: 新增 OBServiceStage 🟡
+### RF-19-03: OBServiceStage 实施 🔴
 **优先级**: P1 - 中等  
 **预计时间**: 6-8 小时  
 **状态**: 🟡 待设计评审  

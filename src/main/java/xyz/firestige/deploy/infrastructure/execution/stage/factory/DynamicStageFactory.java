@@ -1,12 +1,17 @@
 package xyz.firestige.deploy.infrastructure.execution.stage.factory;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestTemplate;
 import xyz.firestige.deploy.application.dto.MediaRoutingConfig;
 import xyz.firestige.deploy.application.dto.TenantConfig;
+import xyz.firestige.deploy.infrastructure.config.DeploymentConfigLoader;
 import xyz.firestige.deploy.infrastructure.execution.stage.ConfigurableServiceStage;
+import xyz.firestige.deploy.infrastructure.execution.stage.StageFactory;
 import xyz.firestige.deploy.infrastructure.execution.stage.TaskStage;
 import xyz.firestige.deploy.infrastructure.execution.stage.asbc.ASBCResponse;
 import xyz.firestige.deploy.infrastructure.execution.stage.asbc.ASBCResponseData;
@@ -14,7 +19,11 @@ import xyz.firestige.deploy.infrastructure.execution.stage.asbc.ASBCResultItem;
 import xyz.firestige.deploy.infrastructure.execution.stage.http.HttpResponseData;
 import xyz.firestige.deploy.infrastructure.execution.stage.portal.PortalResponse;
 import xyz.firestige.deploy.infrastructure.execution.stage.preparer.DataPreparer;
+import xyz.firestige.deploy.infrastructure.execution.stage.redis.ConfigWriteResult;
+import xyz.firestige.deploy.infrastructure.execution.stage.steps.ConfigWriteStep;
 import xyz.firestige.deploy.infrastructure.execution.stage.steps.HttpRequestStep;
+import xyz.firestige.deploy.infrastructure.execution.stage.steps.MessageBroadcastStep;
+import xyz.firestige.deploy.infrastructure.execution.stage.steps.PollingStep;
 import xyz.firestige.deploy.infrastructure.execution.stage.validator.ResultValidator;
 import xyz.firestige.deploy.infrastructure.execution.stage.validator.ValidationResult;
 
@@ -31,14 +40,24 @@ import java.util.Map;
  * @since RF-19 三层抽象架构
  */
 @Component
-public class DynamicStageFactory {
+public class DynamicStageFactory implements StageFactory {
 
     private static final Logger log = LoggerFactory.getLogger(DynamicStageFactory.class);
 
     private final RestTemplate restTemplate;
+    private final StringRedisTemplate redisTemplate;
+    private final DeploymentConfigLoader configLoader;
+    private final ObjectMapper objectMapper;
 
-    public DynamicStageFactory(RestTemplate restTemplate) {
+    public DynamicStageFactory(
+            RestTemplate restTemplate,
+            StringRedisTemplate redisTemplate,
+            DeploymentConfigLoader configLoader,
+            ObjectMapper objectMapper) {
         this.restTemplate = restTemplate;
+        this.redisTemplate = redisTemplate;
+        this.configLoader = configLoader;
+        this.objectMapper = objectMapper;
     }
 
     /**
@@ -64,8 +83,13 @@ public class DynamicStageFactory {
             log.debug("添加 Portal Stage");
         }
 
-        // TODO: Stage 3: OBService (待实现)
-        // TODO: Stage 4: Blue-Green Gateway (已存在)
+        // Stage 3: Blue-Green Gateway (RF-19 迁移完成)
+        if (tenantConfig.getRouteRules() != null && !tenantConfig.getRouteRules().isEmpty()) {
+            stages.add(createBlueGreenGatewayStage(tenantConfig));
+            log.debug("添加 Blue-Green Gateway Stage");
+        }
+
+        // TODO: Stage 4: OBService (待实现)
 
         log.info("构建完成，共 {} 个 Stage", stages.size());
         return stages;
@@ -281,6 +305,223 @@ public class DynamicStageFactory {
                 return ValidationResult.failure("响应解析失败: " + e.getMessage());
             }
         };
+    }
+
+    // ========================================
+    // Blue-Green Gateway Stage (RF-19 迁移)
+    // ========================================
+
+    private TaskStage createBlueGreenGatewayStage(TenantConfig tenantConfig) {
+        List<ConfigurableServiceStage.StepConfig> stepConfigs = new ArrayList<>();
+
+        // Step 1: Redis Config Write
+        stepConfigs.add(ConfigurableServiceStage.StepConfig.builder()
+            .stepName("bg-config-write")
+            .dataPreparer(createBGConfigWriteDataPreparer(tenantConfig))
+            .step(new ConfigWriteStep(redisTemplate))
+            .resultValidator(createBGConfigWriteValidator())
+            .build());
+
+        // Step 2: Redis Pub/Sub Broadcast
+        stepConfigs.add(ConfigurableServiceStage.StepConfig.builder()
+            .stepName("bg-message-broadcast")
+            .dataPreparer(createBGMessageBroadcastDataPreparer(tenantConfig))
+            .step(new MessageBroadcastStep(redisTemplate))
+            .resultValidator(createBGMessageBroadcastValidator())
+            .build());
+
+        // Step 3: Health Check Polling (使用 PollingStep + 函数注入)
+        stepConfigs.add(ConfigurableServiceStage.StepConfig.builder()
+            .stepName("bg-health-check")
+            .dataPreparer(createBGHealthCheckDataPreparer(tenantConfig))
+            .step(new PollingStep("bg-health-check"))
+            .resultValidator(createBGHealthCheckValidator())
+            .build());
+
+        return new ConfigurableServiceStage("blue-green-gateway", stepConfigs);
+    }
+
+    // ---- Blue-Green Gateway: ConfigWrite ----
+
+    private DataPreparer createBGConfigWriteDataPreparer(TenantConfig config) {
+        return (ctx) -> {
+            String redisKeyPrefix = configLoader.getInfrastructure().getRedis().getHashKeyPrefix();
+            String key = redisKeyPrefix + config.getTenantId().getValue();
+            String field = "icc-bg-gateway";
+
+            // 构建 Redis value (JSON)
+            Map<String, Object> redisValue = new HashMap<>();
+            redisValue.put("tenantId", config.getTenantId().getValue());
+            redisValue.put("sourceUnit", extractSourceUnit(config));
+            redisValue.put("targetUnit", extractTargetUnit(config));
+            redisValue.put("routes", convertRouteRulesToMap(config));
+
+            String value;
+            try {
+                value = objectMapper.writeValueAsString(redisValue);
+            } catch (JsonProcessingException e) {
+                throw new RuntimeException("Failed to serialize Redis value", e);
+            }
+
+            ctx.addVariable("key", key);
+            ctx.addVariable("field", field);
+            ctx.addVariable("value", value);
+
+            log.debug("BG ConfigWrite 数据准备完成: key={}, field={}", key, field);
+        };
+    }
+
+    private ResultValidator createBGConfigWriteValidator() {
+        return (ctx) -> {
+            ConfigWriteResult result = ctx.getAdditionalData("configWriteResult", ConfigWriteResult.class);
+            if (result != null && result.isSuccess()) {
+                return ValidationResult.success("配置写入成功");
+            }
+            return ValidationResult.failure("配置写入失败");
+        };
+    }
+
+    // ---- Blue-Green Gateway: MessageBroadcast ----
+
+    private DataPreparer createBGMessageBroadcastDataPreparer(TenantConfig config) {
+        return (ctx) -> {
+            String topic = configLoader.getInfrastructure().getRedis().getPubsubTopic();
+
+            Map<String, Object> messageBody = new HashMap<>();
+            messageBody.put("tenantId", config.getTenantId().getValue());
+            messageBody.put("appName", "icc-bg-gateway");
+            messageBody.put("timestamp", System.currentTimeMillis());
+
+            String message;
+            try {
+                message = objectMapper.writeValueAsString(messageBody);
+            } catch (JsonProcessingException e) {
+                throw new RuntimeException("Failed to serialize message", e);
+            }
+
+            ctx.addVariable("topic", topic);
+            ctx.addVariable("message", message);
+
+            log.debug("BG MessageBroadcast 数据准备完成: topic={}", topic);
+        };
+    }
+
+    private ResultValidator createBGMessageBroadcastValidator() {
+        return (ctx) -> ValidationResult.success("消息广播成功");
+    }
+
+    // ---- Blue-Green Gateway: HealthCheck (PollingStep + 函数注入) ----
+
+    private DataPreparer createBGHealthCheckDataPreparer(TenantConfig config) {
+        return (ctx) -> {
+            // 从 YAML 读取健康检查配置
+            int intervalMs = configLoader.getInfrastructure().getHealthCheck().getIntervalSeconds() * 1000;
+            int maxAttempts = configLoader.getInfrastructure().getHealthCheck().getMaxAttempts();
+            String healthCheckPath = extractHealthCheckPath(config);
+
+            // 获取实例列表（Nacos 优先，fallback 降级）
+            List<String> endpoints = resolveEndpoints("blueGreenGatewayService", "blue-green-gateway");
+            List<String> healthCheckUrls = new ArrayList<>();
+            for (String endpoint : endpoints) {
+                healthCheckUrls.add("http://" + endpoint + healthCheckPath);
+            }
+
+            ctx.addVariable("pollInterval", intervalMs);
+            ctx.addVariable("pollMaxAttempts", maxAttempts);
+
+            // 函数注入：健康检查逻辑
+            ctx.addVariable("pollCondition", (PollingStep.PollCondition) (pollCtx) -> {
+                // 所有实例都必须健康
+                for (String url : healthCheckUrls) {
+                    try {
+                        String response = restTemplate.getForObject(url, String.class);
+
+                        // 简单验证：检查响应是否包含 version 字段
+                        if (response == null || !response.contains("version")) {
+                            log.debug("健康检查未通过: url={}", url);
+                            return false;
+                        }
+                    } catch (Exception e) {
+                        log.debug("健康检查异常: url={}, error={}", url, e.getMessage());
+                        return false;
+                    }
+                }
+                return true; // 所有实例都健康
+            });
+
+            log.debug("BG HealthCheck 数据准备完成: endpoints={}, interval={}ms, maxAttempts={}",
+                healthCheckUrls.size(), intervalMs, maxAttempts);
+        };
+    }
+
+    private ResultValidator createBGHealthCheckValidator() {
+        return (ctx) -> {
+            Boolean isHealthy = ctx.getAdditionalData("pollingResult", Boolean.class);
+            if (isHealthy != null && isHealthy) {
+                return ValidationResult.success("所有实例健康检查通过");
+            }
+            return ValidationResult.failure("健康检查失败");
+        };
+    }
+
+    // ---- Blue-Green Gateway: 辅助方法 ----
+
+    private String extractSourceUnit(TenantConfig config) {
+        if (config.getPreviousConfig() != null
+            && config.getPreviousConfig().getDeployUnit() != null) {
+            return config.getPreviousConfig().getDeployUnit().name();
+        }
+        // 首次部署，source = target
+        return extractTargetUnit(config);
+    }
+
+    private String extractTargetUnit(TenantConfig config) {
+        if (config.getDeployUnit() != null) {
+            return config.getDeployUnit().name();
+        }
+        throw new IllegalArgumentException("deployUnit.name is required");
+    }
+
+    private List<Map<String, String>> convertRouteRulesToMap(TenantConfig config) {
+        List<Map<String, String>> routes = new ArrayList<>();
+        if (config.getRouteRules() != null) {
+            for (var rule : config.getRouteRules()) {
+                Map<String, String> routeMap = new HashMap<>();
+                routeMap.put("id", rule.id());
+                routeMap.put("sourceUri", rule.sourceUri().toString());
+                routeMap.put("targetUri", rule.targetUri().toString());
+                routes.add(routeMap);
+            }
+        }
+        return routes;
+    }
+
+    private String extractHealthCheckPath(TenantConfig config) {
+        // 优先从 TenantConfig 获取
+        if (config.getHealthCheckEndpoints() != null && !config.getHealthCheckEndpoints().isEmpty()) {
+            return config.getHealthCheckEndpoints().get(0);
+        }
+        // 降级到 Infrastructure 默认值，替换 {tenantId}
+        String template = configLoader.getInfrastructure().getHealthCheck().getDefaultPath();
+        return template.replace("{tenantId}", config.getTenantId().getValue());
+    }
+
+    /**
+     * 解析服务实例列表（Nacos 优先，fallback 降级）
+     */
+    private List<String> resolveEndpoints(String nacosServiceKey, String fallbackKey) {
+        // TODO: 实现 Nacos 查询逻辑（需要 NacosNamingService）
+        // 当前直接使用 fallback
+        List<String> fallbackInstances = configLoader.getInfrastructure()
+            .getFallbackInstances()
+            .get(fallbackKey);
+
+        if (fallbackInstances == null || fallbackInstances.isEmpty()) {
+            throw new IllegalStateException("No fallback instances configured for: " + fallbackKey);
+        }
+
+        log.debug("使用 fallback 实例: service={}, count={}", fallbackKey, fallbackInstances.size());
+        return fallbackInstances;
     }
 }
 

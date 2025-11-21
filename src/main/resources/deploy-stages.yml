@@ -1,14 +1,8 @@
-# Deployment Stage Configuration
-# Defines infrastructure settings and service configurations
+# Deployment Stage Configuration for RF-19
+# RF-19 使用代码编排（DynamicStageFactory），不依赖 YAML 配置 stages
+# 此文件仅保留基础设施配置
 
-# ========== Default Service Names ==========
-# 默认的服务切换顺序（当外部未指定时使用）
-defaultServiceNames:
-  - blue-green-gateway
-  - portal
-  - asbc-gateway
-
-# ========== Infrastructure Configuration (Fixed Configuration) ==========
+# ========== Infrastructure Configuration ==========
 infrastructure:
   # Redis Configuration
   redis:
@@ -20,90 +14,66 @@ infrastructure:
     services:
       blueGreenGatewayService: "blue-green-gateway-service"
       portalService: "portal-service"
-  
-  # Service Discovery Fallback Configuration: Use fixed IPs when Nacos unavailable
+      asbcService: "asbc-gateway-service"
+      obService: "ob-service"
+
+  # Service Discovery Fallback Configuration
+  # Use fixed IPs when Nacos unavailable
   fallbackInstances:
     blue-green-gateway:
       - "192.168.1.10:8080"
       - "192.168.1.11:8080"
     portal:
       - "192.168.1.20:8080"
-      - "192.168.1.21:8080"
-  
-  # ASBC Gateway Configuration (Fixed instances, no service discovery)
-  asbc:
-    fixedInstances:
+    asbc:
       - "192.168.1.100:8080"
       - "192.168.1.101:8080"
-    configEndpoint: "/api/v1/config"
-  
-  # Health Check Configuration
+    ob-service:
+      - "192.168.1.30:8080"
+
+  # Authentication Configuration
+  # RF-19: enabled=false 不填 Authorization header
+  #        enabled=true + tokenProvider=random 生成随机 hex
+  auth:
+    asbc:
+      enabled: false
+      tokenProvider: "random"
+    portal:
+      enabled: false
+    ob-service:
+      enabled: false
+
+  # Health Check Configuration (for Blue-Green Gateway)
   healthCheck:
     defaultPath: "/actuator/bg-sdk/{tenantId}"
     intervalSeconds: 3
     maxAttempts: 10
 
-# ========== Service Configurations (Business Flow Configuration) ==========
-services:
-  # Blue-Green Gateway: Redis Write → Pub/Sub Broadcast → Health Check
-  blue-green-gateway:
-    stages:
-      - name: deploy-stage
-        steps:
-          # Step 1: Redis Hash Write
-          - type: key-value-write
-            config:
-              hashField: "icc-bg-gateway"
+# ========== Default Service Names ==========
+# 默认的服务切换顺序（当外部未指定时使用）
+defaultServiceNames:
+  - asbc-gateway
+  - portal
+  - blue-green-gateway
 
-          # Step 2: Redis Pub/Sub Broadcast
-          - type: message-broadcast
-            config:
-              message: '{"tenantId":"{tenantId}","appName":"icc-bg-gateway"}'
+# ========== 注意 ==========
+# RF-19 使用 DynamicStageFactory 进行代码编排
+# Stage 和 Step 的创建逻辑在代码中实现，不依赖 YAML 配置
+#
+# Stage 创建位置：
+# - DynamicStageFactory.buildStages(TenantConfig)
+# - 根据 TenantConfig 动态创建 ASBC、Portal、OBService 等 Stage
+#
+# Step 类型（通用，可复用）：
+# - HttpRequestStep: HTTP 请求（ASBC、Portal 复用）
+# - ConfigWriteStep: Redis HSET（OBService、蓝绿网关复用）
+# - PollingStep: 轮询（OBService 使用）
+# - MessageBroadcastStep: Redis Pub/Sub（蓝绿网关使用）
+# - EndpointPollingStep: 健康检查（蓝绿网关使用）
+#
+# 业务逻辑位置：
+# - DataPreparer: 准备 Step 执行数据
+# - ResultValidator: 验证 Step 执行结果
+# - ConfigurableServiceStage: 编排 Preparer + Step + Validator
 
-          # Step 3: Health Check Polling
-          - type: endpoint-polling
-            config:
-              nacos-service-name-key: "blueGreenGatewayService"
-              validation-type: "json-path"
-              validation-rule: "$.version"
-              expected-value: "1"
-            retry-policy:
-              max-attempts: 10
-              interval-seconds: 3
 
-  # Portal: Same flow as Blue-Green Gateway, but different service identifier
-  portal:
-    stages:
-      - name: deploy-stage
-        steps:
-          - type: key-value-write
-            config:
-              hashField: "portal"
-          
-          - type: message-broadcast
-            config:
-              message: '{"tenantId":"{tenantId}","appName":"portal"}'
-
-          - type: endpoint-polling
-            config:
-              nacos-service-name-key: "portalService"
-              validation-type: "json-path"
-              validation-rule: "$.version"
-              expected-value: "1"
-            retry-policy:
-              max-attempts: 10
-              interval-seconds: 3
-
-  # ASBC Gateway: HTTP POST config request (no health check, no retry)
-  asbc-gateway:
-    stages:
-      - name: deploy-stage
-        steps:
-          - type: asbc-config-request
-            config:
-              http-method: "POST"
-              validation-type: "http-status"
-              expected-status: 200
-            retry-policy:
-              max-attempts: 1
-              interval-seconds: 0
