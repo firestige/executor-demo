@@ -150,9 +150,20 @@ public class DynamicStageFactory implements StageFactory {
 
             Map<String, String> headers = new HashMap<>();
             headers.put("Content-Type", "application/json");
-            // auth disabled, 不填 Authorization header
 
-            // 4. 放入 TaskRuntimeContext
+            // 4. 从 auth 配置读取认证信息
+            var authConfig = configLoader.getInfrastructure().getAuthConfig("asbc");
+            if (authConfig != null && authConfig.isEnabled()) {
+                String token = generateToken(authConfig.getTokenProvider());
+                if (token != null) {
+                    headers.put("Authorization", "Bearer " + token);
+                    log.debug("ASBC auth enabled, token provider: {}", authConfig.getTokenProvider());
+                }
+            } else {
+                log.debug("ASBC auth disabled");
+            }
+
+            // 5. 放入 TaskRuntimeContext
             ctx.addVariable("url", endpoint);
             ctx.addVariable("method", "POST");
             ctx.addVariable("headers", headers);
@@ -657,6 +668,53 @@ public class DynamicStageFactory implements StageFactory {
             }
             return ValidationResult.failure("OB 配置写入失败");
         };
+    }
+
+    // ========================================
+    // 辅助方法
+    // ========================================
+
+    /**
+     * 生成认证 Token
+     *
+     * @param tokenProvider token 提供方式（random, oauth2, custom）
+     * @return token 字符串
+     */
+    private String generateToken(String tokenProvider) {
+        if (tokenProvider == null) {
+            return null;
+        }
+
+        switch (tokenProvider.toLowerCase()) {
+            case "random":
+                // 生成随机 hex token（32位）
+                return generateRandomHex(32);
+
+            case "oauth2":
+                // TODO: 实现 OAuth2 token 获取
+                log.warn("OAuth2 token provider not implemented yet");
+                return null;
+
+            case "custom":
+                // TODO: 实现自定义 token 获取
+                log.warn("Custom token provider not implemented yet");
+                return null;
+
+            default:
+                log.warn("Unknown token provider: {}", tokenProvider);
+                return null;
+        }
+    }
+
+    /**
+     * 生成随机 Hex 字符串
+     */
+    private String generateRandomHex(int length) {
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < length; i++) {
+            sb.append(Integer.toHexString((int) (Math.random() * 16)));
+        }
+        return sb.toString();
     }
 }
 

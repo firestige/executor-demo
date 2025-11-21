@@ -53,7 +53,7 @@ public class DeploymentE2ETest {
         cfg.setSourceTenantDeployConfig(null);
         facade.createSwitchTask(List.of(cfg));
 
-//        countDownLatch.await();
+        countDownLatch.await();
     }
 
     @EventListener(PlanStatusEvent.class)

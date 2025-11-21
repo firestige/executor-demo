@@ -16,7 +16,8 @@ public class InfrastructureConfig {
     private Map<String, List<String>> fallbackInstances;  // 服务发现降级配置
     private ASBCConfig asbc;
     private HealthCheckConfig healthCheck;
-    
+    private Map<String, AuthConfig> auth;  // 服务认证配置
+
     public RedisConfig getRedis() {
         return redis;
     }
@@ -57,6 +58,21 @@ public class InfrastructureConfig {
         this.healthCheck = healthCheck;
     }
     
+    public Map<String, AuthConfig> getAuth() {
+        return auth;
+    }
+
+    public void setAuth(Map<String, AuthConfig> auth) {
+        this.auth = auth;
+    }
+
+    /**
+     * 获取指定服务的认证配置
+     */
+    public AuthConfig getAuthConfig(String serviceName) {
+        return auth != null ? auth.get(serviceName) : null;
+    }
+
     /**
      * Redis 配置
      */
@@ -154,6 +170,32 @@ public class InfrastructureConfig {
         
         public void setMaxAttempts(int maxAttempts) {
             this.maxAttempts = maxAttempts;
+        }
+    }
+
+    /**
+     * 认证配置
+     *
+     * @since RF-19
+     */
+    public static class AuthConfig {
+        private boolean enabled;
+        private String tokenProvider;  // random, oauth2, custom
+
+        public boolean isEnabled() {
+            return enabled;
+        }
+
+        public void setEnabled(boolean enabled) {
+            this.enabled = enabled;
+        }
+
+        public String getTokenProvider() {
+            return tokenProvider;
+        }
+
+        public void setTokenProvider(String tokenProvider) {
+            this.tokenProvider = tokenProvider;
         }
     }
 }
