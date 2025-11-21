@@ -21,7 +21,7 @@ public class TaskCreatedEvent extends TaskStatusEvent {
     public TaskCreatedEvent(TaskInfo info, List<String> stageNames) {
         super(info);
         this.stageNames = stageNames;
-        setMessage("任务已创建，配置数量: [" + String.join(", ", stageNames) + "]");
+        setMessage("任务已创建，包含 Stage: [" + String.join(", ", stageNames) + "]");
     }
 
     // Getters and Setters
