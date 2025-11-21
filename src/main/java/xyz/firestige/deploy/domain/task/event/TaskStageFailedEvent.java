@@ -1,5 +1,6 @@
 package xyz.firestige.deploy.domain.task.event;
 
+import xyz.firestige.deploy.domain.shared.event.WithFailureInfo;
 import xyz.firestige.deploy.domain.shared.exception.FailureInfo;
 import xyz.firestige.deploy.domain.task.TaskInfo;
 import xyz.firestige.deploy.infrastructure.execution.StageStatus;
@@ -7,7 +8,7 @@ import xyz.firestige.deploy.infrastructure.execution.StageStatus;
 /**
  * Stage 失败事件
  */
-public class TaskStageFailedEvent extends TaskStageStatusEvent {
+public class TaskStageFailedEvent extends TaskStageStatusEvent implements WithFailureInfo {
 
     private final FailureInfo failureInfo;
 
@@ -17,6 +18,7 @@ public class TaskStageFailedEvent extends TaskStageStatusEvent {
         setMessage("Stage 执行失败: " + stageName);
     }
 
+    @Override
     public FailureInfo getFailureInfo() {
         return failureInfo;
     }

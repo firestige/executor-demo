@@ -1,6 +1,7 @@
 package xyz.firestige.deploy.domain.task.event;
 
 import xyz.firestige.deploy.application.dto.TenantConfig;
+import xyz.firestige.deploy.domain.shared.event.WithFailureInfo;
 import xyz.firestige.deploy.domain.task.TaskInfo;
 import xyz.firestige.dto.deploy.TenantDeployConfig;
 import xyz.firestige.deploy.domain.shared.exception.FailureInfo;
@@ -12,7 +13,7 @@ import java.util.List;
 /**
  * 任务校验失败事件
  */
-public class TaskValidationFailedEvent extends TaskStatusEvent {
+public class TaskValidationFailedEvent extends TaskStatusEvent implements WithFailureInfo {
 
     /**
      * 校验错误列表
@@ -36,6 +37,7 @@ public class TaskValidationFailedEvent extends TaskStatusEvent {
 
     // Getters and Setters
 
+    @Override
     public FailureInfo getFailureInfo() {
         return failureInfo;
     }
