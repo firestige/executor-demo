@@ -13,6 +13,7 @@ import xyz.firestige.deploy.domain.task.TaskRuntimeContext;
 import xyz.firestige.deploy.infrastructure.config.DeploymentConfigLoader;
 import xyz.firestige.deploy.infrastructure.execution.stage.AbstractConfigurableStep;
 
+import java.time.Duration;
 import java.util.Map;
 import java.util.Objects;
 
@@ -70,6 +71,7 @@ public class KeyValueWriteStep extends AbstractConfigurableStep {
 
         // 5. 第一次写入：业务数据
         redisTemplate.opsForHash().put(hashKey, hashField, jsonValue);
+        redisTemplate.expire(hashKey, Duration.ofHours(1)); // 设置过期时间为 1 小时（可根据需求调整）TODO: 配置化
         
         log.info("[KeyValueWriteStep] Redis Hash written: key={}, field={}, valueLength={}",
                 hashKey, hashField, jsonValue.length());
