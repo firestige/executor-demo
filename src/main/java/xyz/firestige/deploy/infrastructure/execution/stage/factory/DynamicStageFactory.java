@@ -89,10 +89,22 @@ public class DynamicStageFactory implements StageFactory {
             log.debug("添加 Blue-Green Gateway Stage");
         }
 
-        // TODO: Stage 4: OBService (待实现)
+        // Stage 4: OBService (RF-19-03 完成)
+        if (shouldCreateOBServiceStage(tenantConfig)) {
+            stages.add(createOBServiceStage(tenantConfig));
+            log.debug("添加 OBService Stage");
+        }
 
         log.info("构建完成，共 {} 个 Stage", stages.size());
         return stages;
+    }
+
+    /**
+     * 判断是否需要创建 OBService Stage
+     */
+    private boolean shouldCreateOBServiceStage(TenantConfig tenantConfig) {
+        // 需要有 DeployUnit 信息
+        return tenantConfig.getDeployUnit() != null;
     }
 
     // ========================================
@@ -522,6 +534,129 @@ public class DynamicStageFactory implements StageFactory {
 
         log.debug("使用 fallback 实例: service={}, count={}", fallbackKey, fallbackInstances.size());
         return fallbackInstances;
+    }
+
+    // ========================================
+    // OBService Stage (RF-19-03)
+    // ========================================
+
+    private TaskStage createOBServiceStage(TenantConfig tenantConfig) {
+        List<ConfigurableServiceStage.StepConfig> stepConfigs = new ArrayList<>();
+
+        // Step 1: Polling (轮询 AgentService.judgeAgent)
+        stepConfigs.add(ConfigurableServiceStage.StepConfig.builder()
+            .stepName("ob-agent-polling")
+            .dataPreparer(createOBPollingDataPreparer(tenantConfig))
+            .step(new PollingStep("ob-agent-polling"))
+            .resultValidator(createOBPollingValidator())
+            .build());
+
+        // Step 2: ConfigWrite (写入 ObConfig 到 Redis)
+        stepConfigs.add(ConfigurableServiceStage.StepConfig.builder()
+            .stepName("ob-config-write")
+            .dataPreparer(createOBConfigWriteDataPreparer(tenantConfig))
+            .step(new ConfigWriteStep(redisTemplate))
+            .resultValidator(createOBConfigWriteValidator())
+            .build());
+
+        return new ConfigurableServiceStage("ob-service", stepConfigs);
+    }
+
+    // ---- OBService: Polling ----
+
+    private DataPreparer createOBPollingDataPreparer(TenantConfig config) {
+        return (ctx) -> {
+            // 从 YAML 读取轮询配置（使用健康检查的配置作为默认值）
+            int intervalMs = configLoader.getInfrastructure().getHealthCheck().getIntervalSeconds() * 1000;
+            int maxAttempts = configLoader.getInfrastructure().getHealthCheck().getMaxAttempts();
+
+            ctx.addVariable("pollInterval", intervalMs);
+            ctx.addVariable("pollMaxAttempts", maxAttempts);
+
+            // 函数注入：调用 AgentService.judgeAgent
+            ctx.addVariable("pollCondition", (PollingStep.PollCondition) (pollCtx) -> {
+                // 注意：AgentService 需要在运行时注入
+                // 这里我们从 TaskRuntimeContext 获取 AgentService 实例
+                Object agentService = pollCtx.getAdditionalData("agentService");
+                if (agentService == null) {
+                    log.warn("AgentService 未注入，OB 轮询跳过");
+                    return true; // 降级：直接返回成功
+                }
+
+                try {
+                    // 使用反射调用 judgeAgent 方法
+                    var method = agentService.getClass().getMethod(
+                        "judgeAgent", String.class, Long.class);
+                    Boolean result = (Boolean) method.invoke(
+                        agentService,
+                        config.getTenantId().getValue(),
+                        config.getPlanId().getValue()
+                    );
+
+                    log.debug("AgentService.judgeAgent() 返回: {}", result);
+                    return result != null && result;
+
+                } catch (Exception e) {
+                    log.warn("调用 AgentService.judgeAgent() 异常: {}", e.getMessage());
+                    return false; // 出错时继续轮询
+                }
+            });
+
+            log.debug("OB Polling 数据准备完成: interval={}ms, maxAttempts={}",
+                intervalMs, maxAttempts);
+        };
+    }
+
+    private ResultValidator createOBPollingValidator() {
+        return (ctx) -> {
+            Boolean isReady = ctx.getAdditionalData("pollingResult", Boolean.class);
+            if (isReady != null && isReady) {
+                return ValidationResult.success("Agent 就绪");
+            }
+            return ValidationResult.failure("Agent 轮询超时");
+        };
+    }
+
+    // ---- OBService: ConfigWrite ----
+
+    private DataPreparer createOBConfigWriteDataPreparer(TenantConfig config) {
+        return (ctx) -> {
+            String redisKeyPrefix = configLoader.getInfrastructure().getRedis().getHashKeyPrefix();
+            String key = redisKeyPrefix + config.getTenantId().getValue();
+            String field = "ob-campaign";
+
+            // 构建 ObConfig
+            xyz.firestige.deploy.domain.stage.model.ObConfig obConfig =
+                new xyz.firestige.deploy.domain.stage.model.ObConfig(
+                    config.getTenantId().getValue(),
+                    extractSourceUnit(config),
+                    extractTargetUnit(config)
+                );
+
+            // 序列化为 JSON
+            String value;
+            try {
+                value = objectMapper.writeValueAsString(obConfig);
+            } catch (JsonProcessingException e) {
+                throw new RuntimeException("Failed to serialize ObConfig", e);
+            }
+
+            ctx.addVariable("key", key);
+            ctx.addVariable("field", field);
+            ctx.addVariable("value", value);
+
+            log.debug("OB ConfigWrite 数据准备完成: key={}, field={}", key, field);
+        };
+    }
+
+    private ResultValidator createOBConfigWriteValidator() {
+        return (ctx) -> {
+            ConfigWriteResult result = ctx.getAdditionalData("configWriteResult", ConfigWriteResult.class);
+            if (result != null && result.isSuccess()) {
+                return ValidationResult.success("OB 配置写入成功");
+            }
+            return ValidationResult.failure("OB 配置写入失败");
+        };
     }
 }
 
