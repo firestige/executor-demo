@@ -1,6 +1,5 @@
 package xyz.firestige.deploy.domain.task;
 
-import org.springframework.data.redis.stream.Task;
 import xyz.firestige.deploy.domain.shared.exception.ErrorType;
 import xyz.firestige.deploy.domain.shared.exception.FailureInfo;
 import xyz.firestige.deploy.domain.shared.vo.DeployVersion;
@@ -8,6 +7,8 @@ import xyz.firestige.deploy.domain.shared.vo.PlanId;
 import xyz.firestige.deploy.domain.shared.vo.TaskId;
 import xyz.firestige.deploy.domain.shared.vo.TenantId;
 import xyz.firestige.deploy.domain.shared.vo.TimeRange;
+import xyz.firestige.deploy.domain.task.event.TaskStageFailedEvent;
+import xyz.firestige.deploy.domain.task.event.TaskStageStartedEvent;
 import xyz.firestige.deploy.infrastructure.execution.StageResult;
 import xyz.firestige.deploy.domain.task.event.TaskCancelledEvent;
 import xyz.firestige.deploy.domain.task.event.TaskCompletedEvent;
@@ -21,7 +22,6 @@ import xyz.firestige.deploy.domain.task.event.TaskRollingBackEvent;
 import xyz.firestige.deploy.domain.task.event.TaskStageCompletedEvent;
 import xyz.firestige.deploy.domain.task.event.TaskStartedEvent;
 import xyz.firestige.deploy.domain.task.event.TaskStatusEvent;
-import xyz.firestige.deploy.infrastructure.execution.StageStatus;
 import xyz.firestige.deploy.infrastructure.execution.stage.TaskStage;
 
 import java.time.Duration;
@@ -209,6 +209,30 @@ public class TaskAggregate {
     }
 
     /**
+     * 开始执行 Stage（RF-19-01 新增）
+     * 不变式：必须处于 RUNNING 状态
+     *
+     * @param stageName Stage 名称
+     * @param totalSteps Stage 包含的 Step 总数
+     */
+    public void startStage(String stageName, int totalSteps) {
+        if (status != TaskStatus.RUNNING) {
+            throw new IllegalStateException(
+                String.format("只有 RUNNING 状态才能开始 Stage，当前状态: %s, taskId: %s", status, taskId.getValue())
+            );
+        }
+
+        // ✅ 产生领域事件
+        TaskStageStartedEvent event =
+            new TaskStageStartedEvent(
+                TaskInfo.from(this),
+                stageName,
+                totalSteps
+            );
+        addDomainEvent(event);
+    }
+
+    /**
      * 完成当前 Stage（原有方法，保持兼容）
      * 不变式：必须处于 RUNNING 状态
      */
@@ -248,7 +272,7 @@ public class TaskAggregate {
     }
 
     /**
-     * Stage 失败
+     * Stage 失败（原有方法，保持兼容）
      * 不变式：必须处于 RUNNING 状态
      */
     public void failStage(StageResult result) {
@@ -262,6 +286,34 @@ public class TaskAggregate {
         // ✅ 产生领域事件
         List<String> completedStages = stageResults.stream().map(StageResult::getStageName).toList();
         TaskFailedEvent event = new TaskFailedEvent(TaskInfo.from(this), result.getFailureInfo(), completedStages, result.getStageName());
+        addDomainEvent(event);
+    }
+
+    /**
+     * Stage 失败（RF-19-01 新增：专门产生 TaskStageFailedEvent）
+     * 不变式：必须处于 RUNNING 状态
+     *
+     * @param stageName 失败的 Stage 名称
+     * @param failureInfo 失败信息
+     */
+    public void failStage(String stageName, FailureInfo failureInfo) {
+        if (status != TaskStatus.RUNNING) {
+            throw new IllegalStateException(
+                String.format("只有 RUNNING 状态才能记录 Stage 失败，当前状态: %s, taskId: %s", status, taskId.getValue())
+            );
+        }
+
+        // 业务逻辑：记录失败的 Stage（但不改变 Task 状态，由外部决定）
+        StageResult result = StageResult.failure(stageName, failureInfo);
+        this.stageResults.add(result);
+
+        // ✅ 产生领域事件：TaskStageFailedEvent
+        TaskStageFailedEvent event =
+            new TaskStageFailedEvent(
+                TaskInfo.from(this),
+                stageName,
+                failureInfo
+            );
         addDomainEvent(event);
     }
 

@@ -142,6 +142,24 @@ public class TaskDomainService {
     }
 
     /**
+     * 开始执行 Stage（RF-19-01 新增）
+     *
+     * @param task Task 聚合
+     * @param stageName Stage 名称
+     * @param totalSteps Stage 包含的 Step 总数
+     */
+    public void startStage(TaskAggregate task, String stageName, int totalSteps) {
+        logger.debug("[TaskDomainService] 开始执行 Stage: {}, stage: {}", task.getTaskId(), stageName);
+
+        if (task.getStatus() != TaskStatus.RUNNING) {
+            throw new IllegalStateException("只有运行中的任务才能开始 Stage，当前状态: " + task.getStatus());
+        }
+
+        task.startStage(stageName, totalSteps);  // ✅ 聚合产生事件
+        saveAndPublishEvents(task);  // ✅ 领域服务发布事件
+    }
+
+    /**
      * 完成 Stage
      */
     public void completeStage(TaskAggregate task, String stageName, java.time.Duration duration, TaskRuntimeContext context) {
@@ -153,6 +171,25 @@ public class TaskDomainService {
         
         task.completeStage(stageName, duration);
         saveAndPublishEvents(task);
+    }
+
+    /**
+     * Stage 失败（RF-19-01 新增）
+     *
+     * @param task Task 聚合
+     * @param stageName 失败的 Stage 名称
+     * @param failureInfo 失败信息
+     */
+    public void failStage(TaskAggregate task, String stageName, FailureInfo failureInfo) {
+        logger.warn("[TaskDomainService] Stage 失败: {}, stage: {}, reason: {}",
+            task.getTaskId(), stageName, failureInfo.getErrorMessage());
+
+        if (task.getStatus() != TaskStatus.RUNNING) {
+            throw new IllegalStateException("只有运行中的任务才能记录 Stage 失败，当前状态: " + task.getStatus());
+        }
+
+        task.failStage(stageName, failureInfo);  // ✅ 聚合产生事件
+        saveAndPublishEvents(task);  // ✅ 领域服务发布事件
     }
 
     /**

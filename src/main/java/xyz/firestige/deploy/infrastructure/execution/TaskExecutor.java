@@ -163,7 +163,11 @@ public class TaskExecutor {
             for (int i = startIndex; i < stages.size(); i++) {
                 TaskStage stage = stages.get(i);
                 String stageName = stage.getName();
-                
+                int totalSteps = stage.getSteps().size();
+
+                // RF-19-01: ✅ 通过领域服务开始 Stage（产生 TaskStageStartedEvent）
+                taskDomainService.startStage(task, stageName, totalSteps);
+
                 // 执行 Stage
                 log.info("开始执行 Stage: {}, taskId: {}", stageName, taskId);
                 context.injectMdc(stageName);
@@ -171,8 +175,8 @@ public class TaskExecutor {
                 StageResult stageResult = stage.execute(context);
                 
                 if (stageResult.isSuccess()) {
-                    // ✅ Stage 成功
-                    Duration duration =stageResult.getDuration();
+                    // ✅ Stage 成功（产生 TaskStageCompletedEvent）
+                    Duration duration = stageResult.getDuration();
                     taskDomainService.completeStage(task, stageName, duration, context);
                     
                     completedStages.add(stageResult);
@@ -181,10 +185,13 @@ public class TaskExecutor {
                     log.info("Stage 执行成功: {}, 耗时: {}ms, taskId: {}", 
                         stageName, stageResult.getDuration().toMillis(), taskId);
                 } else {
-                    // ✅ Stage 失败：前置检查
-                    log.error("Stage 执行失败: {}, 原因: {}, taskId: {}", 
+                    // RF-19-01: ✅ Stage 失败：先记录 Stage 失败（产生 TaskStageFailedEvent）
+                    log.error("Stage 执行失败: {}, 原因: {}, taskId: {}",
                         stageName, stageResult.getFailureInfo().getErrorMessage(), taskId);
                     
+                    taskDomainService.failStage(task, stageName, stageResult.getFailureInfo());
+
+                    // 再标记 Task 失败
                     // RF-19: 前置检查状态转换
                     if (stateTransitionService.canTransition(task, TaskStatus.FAILED, context)) {
                         taskDomainService.failTask(task, stageResult.getFailureInfo(), context);
