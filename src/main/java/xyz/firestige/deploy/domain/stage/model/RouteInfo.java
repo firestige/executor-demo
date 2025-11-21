@@ -14,7 +14,7 @@ import com.fasterxml.jackson.annotation.JsonProperty;
  */
 public class RouteInfo {
 
-    @JsonProperty("id")
+    @JsonProperty("routeId")
     private String id;
 
     @JsonProperty("sourceUri")
