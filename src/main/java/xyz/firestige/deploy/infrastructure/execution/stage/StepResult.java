@@ -34,11 +34,17 @@ public class StepResult {
         this.durationMillis = Duration.between(startTime, endTime).toMillis();
     }
 
+    // Getters
     public String getStepName() { return stepName; }
     public boolean isSuccess() { return success; }
     public String getMessage() { return message; }
     public LocalDateTime getStartTime() { return startTime; }
     public LocalDateTime getEndTime() { return endTime; }
     public long getDurationMillis() { return durationMillis; }
+
+    // Setter for message (允许在成功时也设置消息)
+    public void setMessage(String message) {
+        this.message = message;
+    }
 }
 
