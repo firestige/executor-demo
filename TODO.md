@@ -144,7 +144,36 @@ curl -X POST "https://${ip}:${port}/api/sbc/traffic-switch" \
 
 ---
 
-### RF-19-04: PortalStage 通知重构 🟡
+### RF-19-04: Portal Stage 实施 🟡
+**优先级**: P1  
+**预计时间**: 1 小时  
+**状态**: 🟡 规格已确认，待实施  
+**责任人**: GitHub Copilot  
+
+**接口规格**: [RF19_04_PORTAL_SPECIFICATION.md](./RF19_04_PORTAL_SPECIFICATION.md)
+
+**Portal 接口**:
+- Endpoint: `POST /icc-agent-portal/inner/v1/notify/bgSwitch`
+- 请求: `{tenantId, targetDeployUnit, timestamp}`
+- 响应: `{code, msg}`
+- 成功判断: `code == "0"`
+
+**实施内容**:
+- [ ] PortalResponse 模型类
+- [ ] PortalDataPreparer（准备请求数据）
+- [ ] PortalResultValidator（验证响应）
+- [ ] DynamicStageFactory.createPortalStage()
+
+**复用情况**:
+- ✅ 完全复用 HttpRequestStep
+- ✅ 业务逻辑在 Preparer + Validator
+- ✅ 验证了三层抽象的可扩展性
+
+**相关文件**:
+- `HttpRequestStep.java` (复用)
+- `PortalResponse.java` (新增)
+- Portal DataPreparer 和 Validator (新增)
+- `DynamicStageFactory.java` (新增方法)
 **优先��**: P1 - 中等  
 **预计时间**: 3-4 小时  
 **状态**: 🟡 待设计评审  
