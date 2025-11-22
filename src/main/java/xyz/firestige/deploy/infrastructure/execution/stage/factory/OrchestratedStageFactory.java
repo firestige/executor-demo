@@ -3,6 +3,7 @@ package xyz.firestige.deploy.infrastructure.execution.stage.factory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Primary;
 import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 import xyz.firestige.deploy.application.dto.TenantConfig;
@@ -24,7 +25,7 @@ import java.util.stream.Collectors;
  * @since RF-19-06 策略化重构
  */
 @Component
-// @Primary 将在对比验证通过后启用
+@Primary
 public class OrchestratedStageFactory implements StageFactory {
 
     private static final Logger log = LoggerFactory.getLogger(OrchestratedStageFactory.class);

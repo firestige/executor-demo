@@ -38,7 +38,9 @@ import java.util.Map;
  * 根据 TenantConfig 动态创建 Stage 列表
  *
  * @since RF-19 三层抽象架构
+ * @deprecated 已由 OrchestratedStageFactory 替代（RF-19-06 策略化重构）
  */
+@Deprecated
 @Component
 public class DynamicStageFactory implements StageFactory {
 
