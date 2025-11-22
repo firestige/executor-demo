@@ -44,11 +44,48 @@
 
 ---
 
-## 📋 当前待办事项（无紧急任务）
+## 🚨 新的最高优先级任务 (P0)
 
-当前所有 RF-19 重构任务已完成，系统架构已统一到 RF-19 三层抽象架构。
+### RF-19-05: 环境变量占位符机制设计与实现 (P0)
+**目标**: 支持在 deploy-stages.yml 中用 `{$VAR:default}` 格式引用环境变量，增强多环境配置灵活性，减少直接硬编码的 IP / 端口 / 前缀。
+**范围**:
+- 语法: `{$VAR_NAME}` 或 `{$VAR_NAME:defaultValue}`
+- 解析时机: YAML 反序列化后，对所有 String 深度遍历替换
+- 失败策略: 缺省且无默认值 → 启动失败并列出全部缺失变量
+- 安全策略: 支持 _SECRET 变量不打印实际值
+**交付**:
+- 占位符解析器（含缓存）
+- 集成 DeploymentConfigLoader 或 TemplateResolver
+- 单元测试 + 集成测试（覆盖存在/缺失/默认值）
+- 文档: ENV_PLACEHOLDER_GUIDE.md
 
-**后续优化建议**（可选，非必需）：
+### RF-19-06: DynamicStageFactory 策略化重构 (P0)
+**目标**: 将当前庞大的 `DynamicStageFactory` 拆分为多策略（StageAssembler）+ 统一 orchestrator，满足开闭原则与可测试性。
+**接口设计**:
+```
+public interface StageAssembler {
+  String stageName();
+  int order();
+  boolean supports(TenantConfig cfg);
+  TaskStage buildStage(TenantConfig cfg, SharedStageResources r);
+}
+```
+**实现**:
+- 新建 `SharedStageResources` 聚合依赖 (RestTemplate, RedisTemplate, DeploymentConfigLoader, ObjectMapper, AgentService ...)
+- 每个现有 Stage 拆分为单独 Assembler Bean
+- 新建 `OrchestratedStageFactory` 读取所有策略 → 排序 → 过滤 supports → build
+- 旧 `DynamicStageFactory` 逐步退役（双运行期对比 → 替换 → 删除）
+**交付**:
+- 接口 + 资源类 + 4 个策略实现
+- 运行期差异对比日志 (diff)
+- 单元测试（每个 assembler）+ 集成测试（组合顺序）
+- 文档: STAGE_ASSEMBLER_STRATEGY_DESIGN.md
+
+---
+
+## 📋 当前待办事项（旧）
+
+(已完成的 RF-19 任务已归档；以下为保留的优化建议)
 1. 实现 Nacos 服务发现（当前使用 fallback）
 2. 实现 OAuth2 token provider（当前只有 random）
 3. 添加更多单元测试和集成测试
