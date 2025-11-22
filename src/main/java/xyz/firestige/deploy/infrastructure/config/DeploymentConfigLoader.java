@@ -8,7 +8,6 @@ import org.springframework.core.io.ClassPathResource;
 import org.springframework.stereotype.Component;
 import xyz.firestige.deploy.infrastructure.config.model.DeploymentConfig;
 import xyz.firestige.deploy.infrastructure.config.model.InfrastructureConfig;
-import xyz.firestige.deploy.infrastructure.config.model.ServiceTypeConfig;
 
 import jakarta.annotation.PostConstruct;
 import java.io.IOException;
@@ -22,6 +21,9 @@ import java.util.List;
  * 1. 从 classpath 加载 deploy-stages.yml
  * 2. 解析为配置对象
  * 3. 提供配置查询接口
+ *
+ * RF-19: 只提供 infrastructure 和 defaultServiceNames 访问
+ * Stage/Step 编排已迁移到 DynamicStageFactory 代码编排
  */
 @Component
 public class DeploymentConfigLoader {
@@ -70,32 +72,6 @@ public class DeploymentConfigLoader {
         }
         return config.getInfrastructure();
     }
-    
-    /**
-     * 获取服务类型配置（通过服务名称）
-     */
-    public ServiceTypeConfig getServiceType(String serviceName) {
-        if (config == null || config.getServices() == null) {
-            throw new IllegalStateException("Service configuration not loaded");
-        }
-        return config.getServices().get(serviceName);
-    }
-
-    /**
-     * 获取服务配置（别名方法，语义更清晰）
-     */
-    public ServiceTypeConfig getServiceConfig(String serviceName) {
-        return getServiceType(serviceName);
-    }
-
-    /**
-     * 检查是否支持指定的服务
-     */
-    public boolean supportsServiceType(String serviceName) {
-        return config != null
-                && config.getServices() != null
-                && config.getServices().containsKey(serviceName);
-    }
 
     /**
      * 获取默认服务名称列表
@@ -118,16 +94,6 @@ public class DeploymentConfigLoader {
     }
 
     /**
-     * 获取所有已配置的服务名称
-     */
-    public List<String> getAllServiceNames() {
-        if (config == null || config.getServices() == null) {
-            return List.of();
-        }
-        return List.copyOf(config.getServices().keySet());
-    }
-    
-    /**
      * 验证配置完整性
      */
     private void validateConfig() {
@@ -139,11 +105,6 @@ public class DeploymentConfigLoader {
             throw new IllegalStateException("Infrastructure configuration is missing");
         }
         
-        if (config.getServices() == null || config.getServices().isEmpty()) {
-            throw new IllegalStateException("No services configured");
-        }
-        
-        log.info("Configuration validated: {} services configured",
-                config.getServices().size());
+        log.info("Configuration validated successfully");
     }
 }
