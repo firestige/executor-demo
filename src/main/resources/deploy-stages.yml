@@ -1,35 +1,36 @@
 # Deployment Stage Configuration for RF-19
 # RF-19 使用代码编排（DynamicStageFactory），不依赖 YAML 配置 stages
 # 此文件仅保留基础设施配置
+# 占位符语法示例: {$VAR_NAME:defaultValue} 若环境变量 VAR_NAME 存在则使用其值，否则使用 defaultValue
 
 # ========== Infrastructure Configuration ==========
 infrastructure:
   # Redis Configuration
   redis:
-    hashKeyPrefix: "icc_ai_ops_srv:tenant_config:"
-    pubsubTopic: "icc_ai_ops_srv:tenant_config:topic"
-  
+    hashKeyPrefix: "{$REDIS_HASH_PREFIX:icc_ai_ops_srv:tenant_config:}"
+    pubsubTopic: "{$REDIS_PUBSUB_TOPIC:icc_ai_ops_srv:tenant_config:topic}"
+
   # Nacos Service Discovery Configuration
   nacos:
     services:
-      blueGreenGatewayService: "blue-green-gateway-service"
-      portalService: "portal-service"
-      asbcService: "asbc-gateway-service"
-      obService: "ob-service"
+      blueGreenGatewayService: "{$NACOS_BG_SERVICE_NAME:blue-green-gateway-service}"
+      portalService: "{$NACOS_PORTAL_SERVICE_NAME:portal-service}"
+      asbcService: "{$NACOS_ASBC_SERVICE_NAME:asbc-gateway-service}"
+      obService: "{$NACOS_OB_SERVICE_NAME:ob-service}"
 
   # Service Discovery Fallback Configuration
-  # Use fixed IPs when Nacos unavailable
+  # Use fixed IPs when Nacos unavailable (可用环境变量覆盖)
   fallbackInstances:
     blue-green-gateway:
-      - "192.168.1.10:8080"
-      - "192.168.1.11:8080"
+      - "{$BG_GW_IP1:192.168.1.10:8080}"
+      - "{$BG_GW_IP2:192.168.1.11:8080}"
     portal:
-      - "192.168.1.20:8080"
+      - "{$PORTAL_IP1:192.168.1.20:8080}"
     asbc:
-      - "192.168.1.100:8080"
-      - "192.168.1.101:8080"
+      - "{$ASBC_IP1:192.168.1.100:8080}"
+      - "{$ASBC_IP2:192.168.1.101:8080}"
     ob-service:
-      - "192.168.1.30:8080"
+      - "{$OB_SVC_IP1:192.168.1.30:8080}"
 
   # Authentication Configuration
   # RF-19: enabled=false 不填 Authorization header
@@ -37,15 +38,16 @@ infrastructure:
   auth:
     asbc:
       enabled: false
-      tokenProvider: "random"
+      tokenProvider: "{$ASBC_TOKEN_PROVIDER:random}"
     portal:
       enabled: false
     ob-service:
       enabled: false
 
   # Health Check Configuration (for Blue-Green Gateway)
+  # 注意: intervalSeconds/maxAttempts 为数值类型暂不使用占位符（解析器仅处理字符串）
   healthCheck:
-    defaultPath: "/actuator/bg-sdk/{tenantId}"
+    defaultPath: "{$HEALTH_CHECK_PATH:/actuator/bg-sdk/{tenantId}}"
     intervalSeconds: 3
     maxAttempts: 10
 
@@ -59,7 +61,10 @@ defaultServiceNames:
 # ========== 注意 ==========
 # RF-19 使用 DynamicStageFactory 进行代码编排
 # Stage 和 Step 的创建逻辑在代码中实现，不依赖 YAML 配置
-#
+# 环境变量占位符会在启动时被解析（DeploymentConfigLoader -> EnvironmentPlaceholderResolver）
+# 未设置且无默认值的占位符会导致启动失败（除非允许缺失: -Ddeploy.env.placeholder.allow-missing=true）
+# 敏感变量可使用 *_SECRET 后缀以在日志中脱敏显示
+
 # Stage 创建位置：
 # - DynamicStageFactory.buildStages(TenantConfig)
 # - 根据 TenantConfig 动态创建 ASBC、Portal、OBService 等 Stage
@@ -69,11 +74,8 @@ defaultServiceNames:
 # - ConfigWriteStep: Redis HSET（OBService、蓝绿网关复用）
 # - PollingStep: 轮询（OBService 使用）
 # - MessageBroadcastStep: Redis Pub/Sub（蓝绿网关使用）
-# - EndpointPollingStep: 健康检查（蓝绿网关使用）
 #
 # 业务逻辑位置：
 # - DataPreparer: 准备 Step 执行数据
 # - ResultValidator: 验证 Step 执行结果
 # - ConfigurableServiceStage: 编排 Preparer + Step + Validator
-
-
