@@ -44,7 +44,10 @@ public class DeploymentConfigLoader {
             log.info("Loading deployment configuration from {}", CONFIG_FILE);
             this.config = loadFromYaml(CONFIG_FILE);
             log.info("Deployment configuration loaded successfully");
-            
+            // 环境变量占位符解析
+            boolean allowMissing = Boolean.parseBoolean(System.getProperty("deploy.env.placeholder.allow-missing", "false"));
+            EnvironmentPlaceholderResolver resolver = new EnvironmentPlaceholderResolver(allowMissing);
+            resolver.resolve(this.config);
             // 验证配置
             validateConfig();
         } catch (IOException e) {
