@@ -1,6 +1,7 @@
 package xyz.firestige.deploy.e2e;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -19,6 +20,7 @@ import java.util.concurrent.CountDownLatch;
 
 @SpringBootTest(classes = {TestApplication.class})
 @ComponentScan(basePackages = {"xyz.firestige.deploy"})
+@EnabledIfSystemProperty(named = "runE2E", matches = "true")
 public class DeploymentE2ETest {
     private static final Logger logger = LoggerFactory.getLogger(DeploymentE2ETest.class);
 
