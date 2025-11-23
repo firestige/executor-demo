@@ -83,8 +83,12 @@
 ### [T-013]
 - 新增门面层设计文档：facade-layer.md（DeploymentTaskFacade vs PlanExecutionFacade 边界与时序）
 
-### [补充视图]
-- 新增桥接视图：plan-to-execution-bridge.puml（Plan 事件 → 应用层监听器 → Facade → Orchestrator → Executor）
+### [T-015]
+- 完成 executorCreator 补完：TaskOperationService 注入 TaskWorkerFactory，内部创建 TaskExecutor
+- rollbackTaskByTenant 和 retryTaskByTenant 改为异步执行（CompletableFuture），通过领域事件通知结果
+- 移除 DeploymentTaskFacade 中的 null 参数传递
+- 更新 ExecutorConfiguration 注入 TaskWorkerFactory
+- 设计检查：调用链路干净，无泄露，符合分层原则（Facade 不依赖 Infrastructure）
 
 ### [里程碑]
 - 完成技术文档清理：删除 `docs/backup` 与 `docs/temp` 目录（所有过程性文档已迁移或合并至正式文档与视图中）

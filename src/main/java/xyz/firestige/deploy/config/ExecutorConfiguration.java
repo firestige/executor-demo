@@ -231,11 +231,13 @@ public class ExecutorConfiguration {
     public TaskOperationService taskOperationService(
             TaskDomainService taskDomainService,
             TaskRepository taskRepository,
-            TaskRuntimeRepository taskRuntimeRepository) {
+            TaskRuntimeRepository taskRuntimeRepository,
+            TaskWorkerFactory taskWorkerFactory) {
         return new TaskOperationService(
                 taskDomainService,
                 taskRepository,
-                taskRuntimeRepository
+                taskRuntimeRepository,
+                taskWorkerFactory
         );
     }
 

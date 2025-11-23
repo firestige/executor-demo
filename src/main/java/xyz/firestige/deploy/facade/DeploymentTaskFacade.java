@@ -157,8 +157,8 @@ public class DeploymentTaskFacade {
      * 根据租户 ID 回滚任务
      */
     public void rollbackTaskByTenant(TenantId tenantId) {
-        logger.info("[Facade] 回滚租户任务: {}", tenantId);
-        TaskOperationResult result = taskOperationService.rollbackTaskByTenant(tenantId, null);  // TODO: 需要传入 executorCreator
+        logger.info("[DeploymentTaskFacade] 回滚租户任务: {}", tenantId);
+        TaskOperationResult result = taskOperationService.rollbackTaskByTenant(tenantId);  // T-015: 异步执行，监听领域事件
         handleTaskOperationResult(result, "回滚任务");
         logger.info("[Facade] 租户任务回滚成功: {}", tenantId);
     }
@@ -167,8 +167,8 @@ public class DeploymentTaskFacade {
      * 根据租户 ID 重试任务
      */
     public void retryTaskByTenant(TenantId tenantId, boolean fromCheckpoint) {
-        logger.info("[Facade] 重试租户任务: {}, fromCheckpoint: {}", tenantId, fromCheckpoint);
-        TaskOperationResult result = taskOperationService.retryTaskByTenant(tenantId, fromCheckpoint, null);  // TODO: 需要传入 executorCreator
+        logger.info("[DeploymentTaskFacade] 重试租户任务: {}, fromCheckpoint: {}", tenantId, fromCheckpoint);
+        TaskOperationResult result = taskOperationService.retryTaskByTenant(tenantId, fromCheckpoint);  // T-015: 异步执行，监听领域事件
         handleTaskOperationResult(result, "重试任务");
         logger.info("[Facade] 租户任务重试成功: {}", tenantId);
     }

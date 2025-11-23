@@ -18,8 +18,10 @@ import xyz.firestige.deploy.domain.task.TaskStatus;
 import xyz.firestige.deploy.facade.TaskStatusInfo;
 import xyz.firestige.deploy.infrastructure.execution.TaskExecutor;
 import xyz.firestige.deploy.infrastructure.execution.TaskWorkerCreationContext;
+import xyz.firestige.deploy.infrastructure.execution.TaskWorkerFactory;
 
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
 import java.util.function.Function;
 
 /**
@@ -30,15 +32,17 @@ import java.util.function.Function;
  * 2. 任务状态查询
  * 3. 任务的暂停/恢复/取消/重试/回滚
  * <p>
- * 依赖（3个）：
+ * 依赖（4个）：
  * - TaskDomainService：任务领域服务
  * - TaskRepository：任务仓储
  * - TaskRuntimeRepository：任务运行时仓储
+ * - TaskWorkerFactory：任务执行器工厂（T-015 新增）
  * <p>
  * 设计说明：
  * - 聚焦于单个任务的操作
  * - 不涉及 Plan 级别的编排
  * - 事务边界在方法级别
+ * - 重试/回滚异步执行，通过领域事件通知结果
  *
  * @since RF-20 - 服务拆分
  */
@@ -49,15 +53,18 @@ public class TaskOperationService {
     private final TaskDomainService taskDomainService;
     private final TaskRepository taskRepository;
     private final TaskRuntimeRepository taskRuntimeRepository;
+    private final TaskWorkerFactory taskWorkerFactory;
 
     public TaskOperationService(
             TaskDomainService taskDomainService,
             TaskRepository taskRepository,
-            TaskRuntimeRepository taskRuntimeRepository) {
+            TaskRuntimeRepository taskRuntimeRepository,
+            TaskWorkerFactory taskWorkerFactory) {
         this.taskDomainService = taskDomainService;
         this.taskRepository = taskRepository;
         this.taskRuntimeRepository = taskRuntimeRepository;
-        
+        this.taskWorkerFactory = taskWorkerFactory;
+
         logger.info("[TaskOperationService] 初始化完成");
     }
 
@@ -88,17 +95,17 @@ public class TaskOperationService {
     }
 
     /**
-     * 根据租户 ID 回滚任务
+     * 根据租户 ID 回滚任务（异步执行）
+     * <p>
+     * T-015: 移除 executorCreator 参数，内部创建 TaskExecutor
+     * 通过领域事件通知回滚结果（TaskRollingBackEvent / TaskRolledBackEvent / TaskRollbackFailedEvent）
      *
      * @param tenantId 租户 ID
-     * @param executorCreator TaskExecutor 创建器（由外部提供）
-     * @return 操作结果
+     * @return 操作结果（立即返回，实际回滚异步执行）
      */
     @Transactional
-    public TaskOperationResult rollbackTaskByTenant(
-            TenantId tenantId,
-            Function<TaskWorkerCreationContext, TaskExecutor> executorCreator) {
-        logger.info("[TaskOperationService] 回滚租户任务: {}", tenantId);
+    public TaskOperationResult rollbackTaskByTenant(TenantId tenantId) {
+        logger.info("[TaskOperationService] 回滚租户任务（异步）: {}", tenantId);
 
         // Step 1: 调用领域服务准备回滚
         TaskWorkerCreationContext context = taskDomainService.prepareRollbackByTenant(tenantId);
@@ -110,45 +117,43 @@ public class TaskOperationService {
             );
         }
 
-        // Step 2: 创建或复用 TaskExecutor
+        // Step 2: 创建 TaskExecutor（内部注入）
         TaskExecutor executor = context.hasExistingExecutor()
             ? context.getExistingExecutor()
-            : executorCreator.apply(context);
+            : taskWorkerFactory.create(context);
 
-        // Step 3: 执行回滚
-        var result = executor.invokeRollback();
+        // Step 3: 异步执行回滚
+        CompletableFuture.runAsync(() -> {
+            try {
+                var result = executor.invokeRollback();
+                logger.info("[TaskOperationService] 租户任务回滚完成: {}, status: {}",
+                            tenantId, result.getFinalStatus());
+            } catch (Exception e) {
+                logger.error("[TaskOperationService] 租户任务回滚异常: {}", tenantId, e);
+            }
+        });
 
-        // Step 4: 发布回滚结果事件
-        TaskStatus finalStatus = context.getTask().getStatus();
-        if (finalStatus == TaskStatus.ROLLED_BACK) {
-            // 聚合产生的事件已由 TaskDomainService 发布
-        } else if (finalStatus == TaskStatus.ROLLBACK_FAILED) {
-            // 记录失败日志
-        }
-
-        logger.info("[TaskOperationService] 租户任务回滚结束: {}, status: {}",
-                    tenantId, result.getFinalStatus());
+        logger.info("[TaskOperationService] 租户任务回滚已提交异步执行: {}", tenantId);
         return TaskOperationResult.success(
             context.getTask().getTaskId(),
-            finalStatus,
-            "租户任务回滚结束: " + result.getFinalStatus()
+            context.getTask().getStatus(),
+            "回滚任务已提交异步执行，请监听领域事件获取结果"
         );
     }
 
     /**
-     * 根据租户 ID 重试任务
+     * 根据租户 ID 重试任务（异步执行）
+     * <p>
+     * T-015: 移除 executorCreator 参数，内部创建 TaskExecutor
+     * 通过领域事件通知重试结果（TaskRetryStartedEvent / TaskCompletedEvent / TaskFailedEvent）
      *
      * @param tenantId 租户 ID
      * @param fromCheckpoint 是否从 checkpoint 恢复
-     * @param executorCreator TaskExecutor 创建器（由外部提供）
-     * @return 操作结果
+     * @return 操作结果（立即返回，实际重试异步执行）
      */
     @Transactional
-    public TaskOperationResult retryTaskByTenant(
-            TenantId tenantId,
-            boolean fromCheckpoint,
-            Function<TaskWorkerCreationContext, TaskExecutor> executorCreator) {
-        logger.info("[TaskOperationService] 重试租户任务: {}, fromCheckpoint: {}",
+    public TaskOperationResult retryTaskByTenant(TenantId tenantId, boolean fromCheckpoint) {
+        logger.info("[TaskOperationService] 重试租户任务（异步）: {}, fromCheckpoint: {}",
                     tenantId, fromCheckpoint);
 
         // Step 1: 调用领域服务准备重试
@@ -161,20 +166,27 @@ public class TaskOperationService {
             );
         }
 
-        // Step 2: 创建或复用 TaskExecutor
+        // Step 2: 创建 TaskExecutor（内部注入）
         TaskExecutor executor = context.hasExistingExecutor()
             ? context.getExistingExecutor()
-            : executorCreator.apply(context);
+            : taskWorkerFactory.create(context);
 
-        // Step 3: 执行重试
-        var result = executor.retry(fromCheckpoint);
+        // Step 3: 异步执行重试
+        CompletableFuture.runAsync(() -> {
+            try {
+                var result = executor.retry(fromCheckpoint);
+                logger.info("[TaskOperationService] 租户任务重试完成: {}, status: {}",
+                            tenantId, result.getFinalStatus());
+            } catch (Exception e) {
+                logger.error("[TaskOperationService] 租户任务重试异常: {}", tenantId, e);
+            }
+        });
 
-        logger.info("[TaskOperationService] 租户任务重试启动: {}, status: {}",
-                    tenantId, result.getFinalStatus());
+        logger.info("[TaskOperationService] 租户任务重试已提交异步执行: {}", tenantId);
         return TaskOperationResult.success(
             context.getTask().getTaskId(),
-            result.getFinalStatus(),
-            "租户任务重试启动"
+            context.getTask().getStatus(),
+            "重试任务已提交异步执行，请监听领域事件获取结果"
         );
     }
 
