@@ -2,48 +2,38 @@
 !theme plain
 hide empty description
 
+title Plan状态机（简化版 - 2025-11-24更新）
+
 [*] --> CREATED : 创建计划
 
-CREATED --> VALIDATING : 开始验证
-
-VALIDATING --> FAILED : 验证失败
-VALIDATING --> READY : 验证通过
+CREATED --> READY : 添加Task\n验证通过
 
 READY --> RUNNING : 提交执行
 READY --> CANCELLED : 取消
 
 RUNNING --> PAUSED : 暂停\n[plan级暂停]
-RUNNING --> PARTIAL_FAILED : 部分任务失败
 RUNNING --> COMPLETED : 所有任务完成
-RUNNING --> ROLLING_BACK : 回滚请求
+RUNNING --> FAILED : 执行失败
+RUNNING --> CANCELLED : 用户取消
 
 PAUSED --> RUNNING : 恢复
 PAUSED --> CANCELLED : 取消
 
-PARTIAL_FAILED --> RUNNING : 重试失败任务
-PARTIAL_FAILED --> ROLLING_BACK : 回滚所有任务
-PARTIAL_FAILED --> FAILED : 放弃
-
-COMPLETED --> ROLLING_BACK : 回滚请求
-
-ROLLING_BACK --> ROLLED_BACK : 回滚成功
-ROLLING_BACK --> FAILED : 回滚失败
-
-ROLLED_BACK --> [*]
+COMPLETED --> [*]
 FAILED --> [*]
 CANCELLED --> [*]
 
 note right of CREATED
   **初始状态**
   - Plan 创建时的状态
-  - 包含多个 Task
-  - 配置 maxConcurrency
+  - taskIds 初始为空列表
+  - 可添加 Task
 end note
 
 note right of READY
   **就绪状态**
-  - 验证通过，等待提交
-  - 所有 Task 已初始化
+  - 至少包含 1 个 Task
+  - 准备开始执行
 end note
 
 note right of RUNNING
@@ -52,6 +42,11 @@ note right of RUNNING
   - 遵循 maxConcurrency 限制
   - 监控任务执行状态
   - 记录 startedAt
+
+  **设计说明**：
+  - Plan 不感知 Task 的内部状态
+  - Task 回滚时，Plan 仍保持 RUNNING
+  - 部分失败由应用层处理
 end note
 
 note right of PAUSED
@@ -61,44 +56,38 @@ note right of PAUSED
   - 可恢复或取消
 end note
 
-note right of PARTIAL_FAILED
-  **部分失败**
-  - 部分任务失败
-  - 部分任务成功/运行中
-  - 可重试失败任务
-  - 可回滚所有任务
-end note
-
 note right of COMPLETED
-  **完成状态**
+  **完成状态**（终态）
   - 所有任务成功
   - 记录 endedAt
   - 计算总进度
-  - 可回滚（业务需要）
-end note
-
-note left of ROLLING_BACK
-  **回滚中**
-  - 回滚所有已执行任务
-  - 按 Task 并行/串行回滚
-end note
-
-note left of ROLLED_BACK
-  **回滚完成**
-  - 所有任务已回滚
-  - 记录 endedAt
-  - 终态
 end note
 
 note left of FAILED
-  **失败**
-  - 验证失败
-  - 回滚失败
-  - 部分失败放弃
-  - 终态
+  **失败**（终态）
+  - 计划执行失败
+  - 记录失败原因
 end note
 
 note left of CANCELLED
+  **已取消**（终态）
+  - 用户主动取消
+  - 记录取消原因
+end note
+
+note bottom
+  **重要变更 (2025-11-24)**：
+  - 移除 VALIDATING 状态（校验在创建时完成）
+  - 移除 PARTIAL_FAILED 状态（应用层处理）
+  - 移除 ROLLING_BACK/ROLLED_BACK 状态（Task内部操作，Plan不感知）
+
+  **设计理念**：
+  - Plan 聚合专注于任务列表管理和生命周期
+  - 不感知 Task 的内部状态转换（如回滚）
+  - 符合 DDD 聚合边界原则（AP-01）
+end note
+
+@enduml
   **已取消**
   - 用户取消
   - 终态

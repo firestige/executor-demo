@@ -108,7 +108,8 @@
 | 执行入口 | `infrastructure/execution/TaskExecutor.java` | 核心编排逻辑（执行/暂停/重试）|
 | 编排层 | `application/orchestration/TaskExecutionOrchestrator.java` | 并发与线程池调度 |
 | Checkpoint | `application/checkpoint/CheckpointService.java` | 断点保存/加载/清理接口 |
-| 冲突管理 | `infrastructure/scheduling/TenantConflictManager.java` | 同租户并发互斥策略 |
+| 冲突协调 | `application/conflict/TenantConflictCoordinator.java` | 租户冲突协调（应用层） |
+| 冲突管理 | `infrastructure/scheduling/TenantConflictManager.java` | 租户并发互斥（底层锁：内存/Redis） |
 | 视图文件 | `docs/views/process-view.puml` | 状态机 / 执行 / 重试 / 暂停 / Stage 内部 |
 | 架构总纲 | `docs/architecture-overview.md` | 全局原则与索引 |
 
@@ -162,11 +163,12 @@
 ```
 场景：多实例部署后，发现同一租户任务在不同实例上重复执行（租户锁失效）。
 诊断方向：
-1. 确认当前租户锁实现（TenantConflictManager 是本地 Map 还是分布式锁）
-2. 检查 tryAcquire / release 调用时机与异常处理
-3. 列出可能的漏锁场景（异常未释放 / 实例崩溃未清理 / 锁超时）
-4. 提出快速止血方案（回退单实例 / 引入 Redis 锁）
-5. 长期方案（锁版本化 + 心跳续租 + 自动过期清理）
+1. 确认当前租户锁实现（TenantConflictManager 是内存 InMemory 还是分布式 Redis 锁）
+2. 检查 TenantConflictCoordinator 的冲突检测逻辑（Plan 创建前、Task 执行前）
+3. 检查租户锁的释放时机（Task 完成、失败、取消后）
+4. 排查是否有锁泄漏（未释放）或死锁（锁超时未续租）
+5. 提出快速止血方案（回退单实例 / 确认 Redis 锁配置）
+6. 长期方案（锁版本化 + 心跳续租 + 自动过期清理）
 ```
 
 ---

@@ -127,8 +127,12 @@
 | 步骤 | StageStep | 实现 execute() | RedisKeyValueWriteStep, HttpRequestStep |
 | Checkpoint 存储 | CheckpointRepository | 新增实现 | Redis / InMemory |
 | Metrics | MetricsRegistry | 新增具体记录实现 | Noop → Micrometer |
-| 租户锁 | TenantConflictManager | 新增分布式实现 | 内存 → Redis 锁 |
+| 租户锁 | TenantConflictManager | 新增分布式实现 | 内存（InMemory）→ Redis 锁（RedisTenantLockManager）|
 | 回滚策略 | rollback() | 新增补偿逻辑 | 自定义 Stage 回滚步骤 |
+
+**说明**：
+- `TenantConflictManager` 可扩展为分布式锁实现（已在 T-016 中实现 Redis 锁）
+- `TenantConflictCoordinator` 封装冲突检测逻辑，屏蔽底层锁实现细节
 
 约束：扩展不能破坏聚合不变式；不得跳过状态校验；不得在 Stage 内部进行暂停。
 

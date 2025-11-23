@@ -6,6 +6,78 @@
 ---
 
 ## 2025-11-24
+
+### [文档更新 M-01 ~ M-08]
+- **完成 Minor 文档更新任务**：实施全部 8 个文档更新建议
+- **M-01 & M-02**: 更新 `architecture-overview.md` §4 应用服务列表
+  - 补充 T-016 投影更新器（TaskStateProjectionUpdater、PlanStateProjectionUpdater）
+  - 补充查询服务（TaskQueryService）
+  - 添加 T-016 新增组件清单表格
+- **M-03**: 补充 `architecture-overview.md` §9.2 事件监听器章节
+  - 详细说明投影更新机制（CQRS + Event Sourcing）
+  - 说明一致性模型（命令侧 vs 查询侧）
+  - 说明故障降级机制
+  - 明确设计理念（仅兜底使用）
+- **M-04**: 更新 `architecture-overview.md` §8 Checkpoint 机制
+  - 拆分为 3 个子章节：Checkpoint、投影持久化、租户锁、查询 API
+  - 详细说明 T-016 扩展的持久化能力
+  - 补充 TTL 策略和使用场景
+- **M-05**: 补充 `README.md` 查询 API 使用约束
+  - 添加设计理念章节（CQRS + Event Sourcing）
+  - 说明技术实现（投影更新器、查询服务、AutoConfiguration）
+  - 添加相关文档链接
+- **M-06**: 更新 `state-management.md` 状态转换矩阵
+  - 更新 §3 Plan 状态转换矩阵，标注已移除的 4 个状态
+  - 更新 §4 Task 状态转换矩阵，标注已移除的 3 个状态
+  - 更新 §5 失败与恢复路径，移除 VALIDATION_FAILED，补充校验失败处理说明
+  - 添加设计理念和移除理由说明
+- **M-07**: 补充 `persistence.md` §6 Redis Key 规范
+  - 扩展为 6 个子章节：Key 设计总览、数据结构详解、命名空间配置、索引设计、TTL 策略、监控告警
+  - 补充完整的数据结构示例（JSON、Hash、String）
+  - 添加多环境隔离配置示例
+  - 补充索引设计和未来扩展方向
+  - 添加监控指标和告警规则
+- **M-08**: 添加 `architecture-overview.md` §10 AutoConfiguration 使用指南
+  - 详细说明 ExecutorPersistenceAutoConfiguration 装配逻辑
+  - 提供开发/生产/测试环境配置示例
+  - 完整列出所有配置属性
+  - 说明条件装配逻辑和优先级
+  - 说明故障降级流程和监控建议
+  - 提供自定义配置示例
+- **影响文档**（3 个）：
+  - `docs/architecture-overview.md`（M-01, M-02, M-03, M-04, M-08）
+  - `docs/design/state-management.md`（M-06）
+  - `docs/design/persistence.md`（M-07）
+  - `README.md`（M-05）
+- **文档质量提升**：
+  - 补充 T-016 最新实现细节
+  - 明确设计理念和使用约束
+  - 提供完整配置示例和监控建议
+  - 标注已移除状态，避免误导
+
+### [架构对照与命名澄清]
+- **完成架构设计与实现对照检查**：生成完整对照分析报告（architecture-implementation-comparison-report.md）
+  - 一致性评分：85%（核心架构 95%，文档同步 75%）
+  - 核心发现：DDD 战术模式完整，T-016 持久化方案完整落地，文档存在滞后
+- **完成状态枚举精简（I-01, I-02）**：
+  - 移除 PlanStatus 4个未使用状态、TaskStatus 3个未使用状态
+  - 更新 PlantUML 图和代码注释
+  - 详见状态枚举分析报告（status-enum-analysis-report.md）
+- **完成命名一致性澄清（I-03）**：
+  - **架构澄清**：实际代码有两个不同职责的类
+    - `TenantConflictManager` (Infrastructure层)：底层锁管理（内存/Redis）
+    - `TenantConflictCoordinator` (Application层)：应用层冲突协调
+  - **文档更新**（4个文件）：
+    - `execution-engine.md` §2：更新架构角色表，添加两层架构说明
+    - `architecture-overview.md` §7：更新并发策略表，详细描述两层架构
+    - `architecture-prompt.md`：更新关键文件索引和诊断模板
+    - `onboarding-prompt.md`：更新核心概念、误区说明、代码入口
+  - **结论**：不是命名不一致，而是两个不同职责的类组成的两层架构
+- **对照报告更新**：
+  - I-01, I-02, I-03 全部标记为已解决 ✅
+  - Important 差异：0 个（全部已解决）
+  - Minor 差异：8 个（文档更新建议，非阻塞）
+
 ### [T-016]
 - **任务完成**：崩溃恢复能力增强 - 状态持久化设计与实施（4个Phase全部完成）
 - **Phase 1**：租户锁迁移到 Redis 分布式锁（RedisTenantLockManager）

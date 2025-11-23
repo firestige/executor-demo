@@ -107,20 +107,140 @@ TTL 策略：默认 7d，可配置。过期后自动清理，避免历史断点�
 
 ---
 ## 6. 键空间与命名规范
-| 类型 | Key 模板 | 示例 | TTL | 说明 |
-|------|----------|------|-----|------|
-| Checkpoint | executor:ckpt:{taskId} | executor:ckpt:task-123 | 7天 | 断点 JSON 序列化对象 |
-| **Task投影 (T-016)** | executor:task:{taskId} | executor:task:task-123 | 7天 | Task 状态投影 Hash |
-| **Plan投影 (T-016)** | executor:plan:{planId} | executor:plan:plan-456 | 7天 | Plan 状态投影 Hash |
-| **租户索引 (T-016)** | executor:index:tenant:{tenantId} | executor:index:tenant:t-001 | 7天 | TenantId → TaskId 映射 |
-| **租户锁 (T-016)** | executor:lock:tenant:{tenantId} | executor:lock:tenant:t-001 | 2.5小时 | 分布式租户锁（SET NX）|
-| 可扩展（未来） | executor:metrics:{counter} | executor:metrics:task_failed | - | 简易计数器或统计缓存 |
 
-**命名空间配置**（T-016 新增）：
-- 可通过 `executor.persistence.namespace` 配置前缀
-- 可通过 `executor.persistence.projection-ttl` 和 `lock-ttl` 配置 TTL
+### 6.1 Key 设计总览（T-016 完整版）
 
-命名策略：`{env?}:{product}:{category}:{entity}:{id}` 可在未来扩展（当前不强制）。
+| 类型 | Key 模板 | 示例 | 数据结构 | TTL | 说明 |
+|------|----------|------|---------|-----|------|
+| Checkpoint | `executor:ckpt:{taskId}` | `executor:ckpt:task-123` | String (JSON) | 7天 | 断点 JSON 序列化对象 |
+| **Task投影** | `executor:task:{taskId}` | `executor:task:task-123` | Hash | 30天 | Task 状态投影（字段：taskId, status, tenantId, etc.） |
+| **Plan投影** | `executor:plan:{planId}` | `executor:plan:plan-456` | Hash | 30天 | Plan 状态投影（字段：planId, status, taskIds, etc.） |
+| **租户索引** | `executor:index:tenant:{tenantId}` | `executor:index:tenant:t-001` | String | 30天 | TenantId → TaskId 映射（单个租户只有一个活跃任务）|
+| **租户锁** | `executor:lock:tenant:{tenantId}` | `executor:lock:tenant:t-001` | String | 2.5小时 | 分布式租户锁（SET NX + TTL）|
+
+### 6.2 数据结构详解
+
+#### Checkpoint (String - JSON)
+```json
+{
+  "lastCompletedStageIndex": 2,
+  "completedStages": ["stage-0", "stage-1", "stage-2"],
+  "contextData": {
+    "customKey": "customValue"
+  },
+  "savedAt": "2025-11-24T10:30:00"
+}
+```
+
+#### Task 投影 (Hash)
+```
+HGETALL executor:task:task-123
+taskId: task-123
+tenantId: tenant-001
+planId: plan-456
+status: RUNNING
+pauseRequested: false
+stageNames: ["stage-0","stage-1","stage-2"]
+lastCompletedStageIndex: 1
+createdAt: 2025-11-24T10:00:00
+updatedAt: 2025-11-24T10:30:00
+```
+
+#### Plan 投影 (Hash)
+```
+HGETALL executor:plan:plan-456
+planId: plan-456
+status: RUNNING
+taskIds: ["task-123","task-124"]
+progress: 0.5
+maxConcurrency: 5
+createdAt: 2025-11-24T10:00:00
+updatedAt: 2025-11-24T10:30:00
+```
+
+#### 租户索引 (String)
+```
+GET executor:index:tenant:tenant-001
+task-123
+```
+
+#### 租户锁 (String)
+```
+SET executor:lock:tenant:tenant-001 task-123 NX EX 9000
+```
+
+### 6.3 命名空间配置
+
+**配置项**（`application.yml`）：
+```yaml
+executor:
+  persistence:
+    redis:
+      namespace: "executor"    # 默认前缀
+      ttl:
+        checkpoint: 604800     # 7 天（秒）
+        projection: 2592000    # 30 天（秒）
+        lock: 9000             # 2.5 小时（秒）
+```
+
+**多环境隔离**：
+```yaml
+# 生产环境
+executor.persistence.redis.namespace: prod-executor
+
+# 测试环境
+executor.persistence.redis.namespace: test-executor
+```
+
+**实际 Key 示例**：
+- 生产：`prod-executor:task:task-123`
+- 测试：`test-executor:task:task-123`
+
+### 6.4 索引设计
+
+**租户 → 任务索引**：
+- **目的**：支持按租户查询任务（`queryTasksByTenant`）
+- **更新时机**：TaskCreated 事件触发时建立
+- **清理时机**：TaskCompleted / TaskFailed / TaskCancelled 事件触发时删除
+- **冲突处理**：同一租户同时只有一个活跃任务（租户锁保证）
+
+**未来扩展**：
+- Plan → 任务列表索引（`executor:index:plan:{planId}` → Set of taskIds）
+- 状态索引（`executor:index:status:RUNNING` → Set of taskIds）
+- 时间范围索引（`executor:index:time:{date}` → Set of taskIds）
+
+### 6.5 TTL 策略与清理
+
+| 数据类型 | 默认 TTL | 清理策略 | 原因 |
+|---------|---------|---------|------|
+| Checkpoint | 7天 | 任务完成/失败时主动删除 + TTL 兜底 | 断点数据仅短期有效，长期保留无意义 |
+| Task/Plan 投影 | 30天 | 仅 TTL 自动过期 | 保留较长时间供审计和问题排查 |
+| 租户索引 | 30天 | 任务终态时主动删除 + TTL 兜底 | 与投影保持一致的保留期 |
+| 租户锁 | 2.5小时 | 任务完成时主动释放 + TTL 防泄漏 | 短 TTL 防止崩溃后锁泄漏 |
+
+**手动清理命令**（运维）：
+```bash
+# 清理指定前缀的所有 Key
+redis-cli --scan --pattern "executor:*" | xargs redis-cli del
+
+# 清理特定类型
+redis-cli --scan --pattern "executor:ckpt:*" | xargs redis-cli del
+redis-cli --scan --pattern "executor:task:*" | xargs redis-cli del
+```
+
+### 6.6 监控与告警
+
+**关键指标**：
+- Key 数量：`INFO keyspace` 监控 `executor:*` 前缀 Key 数量
+- 锁泄漏：`SCAN executor:lock:*` 检查过期未释放的锁
+- 投影延迟：对比聚合更新时间与投影更新时间（updatedAt）
+
+**告警规则**：
+- Checkpoint Key 数量 > 10000：可能有大量失败任务未清理
+- 租户锁 Key 数量 > 100：可能有锁泄漏
+- 投影更新延迟 > 5 秒：事件监听器可能异常
+
+---
 
 ---
 ## 7. 查询 API（T-016：最小兜底）

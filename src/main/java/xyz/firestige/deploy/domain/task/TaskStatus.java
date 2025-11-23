@@ -2,26 +2,34 @@ package xyz.firestige.deploy.domain.task;
 
 /**
  * 任务状态枚举
+ * <p>
+ * 状态转换说明：
+ * - CREATED → PENDING: 创建后准备执行
+ * - PENDING → RUNNING: 开始执行
+ * - RUNNING → PAUSED: 协作式暂停（Stage边界）
+ * - PAUSED → RUNNING: 恢复执行（原子操作，无中间状态）
+ * - RUNNING → COMPLETED: 所有Stage完成
+ * - RUNNING → FAILED: Stage失败
+ * - FAILED → RUNNING: 重试
+ * - FAILED → ROLLING_BACK: 开始回滚
+ * - ROLLING_BACK → ROLLED_BACK: 回滚成功
+ * - ROLLING_BACK → ROLLBACK_FAILED: 回滚失败
+ * - ROLLED_BACK → RUNNING: 回滚后重试
+ * <p>
+ * 设计说明：
+ * - 校验在创建时完成，不需要独立状态
+ * - 恢复是原子操作，不需要 RESUMING 中间状态
+ * - 回滚状态封装在 Task 内部，Plan 不感知
  */
 public enum TaskStatus {
 
     /**
-     * 任务已创建（校验前）
+     * 任务已创建（初始状态）
      */
     CREATED("已创建"),
 
     /**
-     * 正在校验
-     */
-    VALIDATING("校验中"),
-
-    /**
-     * 校验失败
-     */
-    VALIDATION_FAILED("校验失败"),
-
-    /**
-     * 待执行（校验通过）
+     * 待执行（准备就绪）
      */
     PENDING("待执行"),
 
@@ -31,17 +39,12 @@ public enum TaskStatus {
     RUNNING("执行中"),
 
     /**
-     * 已暂停
+     * 已暂停（在Stage边界暂停）
      */
     PAUSED("已暂停"),
 
     /**
-     * 恢复中
-     */
-    RESUMING("恢复中"),
-
-    /**
-     * 已完成
+     * 已完成（终态）
      */
     COMPLETED("已完成"),
 
@@ -56,17 +59,17 @@ public enum TaskStatus {
     ROLLING_BACK("回滚中"),
 
     /**
-     * 回滚失败
+     * 回滚失败（终态）
      */
     ROLLBACK_FAILED("回滚失败"),
 
     /**
-     * 已回滚
+     * 已回滚（终态）
      */
     ROLLED_BACK("已回滚"),
 
     /**
-     * 已取消
+     * 已取消（终态）
      */
     CANCELLED("已取消");
 
@@ -84,19 +87,17 @@ public enum TaskStatus {
      * 是否为终态
      */
     public boolean isTerminal() {
-        return this == COMPLETED ||
-               this == VALIDATION_FAILED ||
-               this == ROLLED_BACK ||
-               this == CANCELLED;
+        return this == COMPLETED
+            || this == ROLLBACK_FAILED
+            || this == ROLLED_BACK
+            || this == CANCELLED;
     }
 
     /**
      * 是否为失败状态
      */
     public boolean isFailure() {
-        return this == VALIDATION_FAILED ||
-               this == FAILED ||
-               this == ROLLBACK_FAILED;
+        return this == FAILED || this == ROLLBACK_FAILED;
     }
 
     /**

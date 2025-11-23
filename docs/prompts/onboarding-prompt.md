@@ -60,7 +60,8 @@
 | Checkpoint 持久化 | `application.checkpoint.CheckpointService` + `infrastructure.persistence.checkpoint.RedisCheckpointRepository` | 保存/读取/清理断点 |
 | 暂停/恢复 | TaskAggregate: `requestPause()` + `applyPauseAtStageBoundary()` + `resume()` | 协作式暂停在 Stage 边界应用 |
 | 回滚 | TaskAggregate: `startRollback()/completeRollback()/failRollback()` | 逆序执行补偿逻辑 |
-| 租户冲突控制 | `infrastructure.scheduling.TenantConflictManager` | 单实例互斥，未来扩展分布式锁 |
+| 租户冲突协调 | `application.conflict.TenantConflictCoordinator` | 应用层冲突检测（Plan 创建前、Task 执行前） |
+| 租户冲突管理 | `infrastructure.scheduling.TenantConflictManager` | 底层锁管理（内存/Redis），支持分布式部署 |
 
 ---
 ## 6. 常用领域不变式（快速核对）

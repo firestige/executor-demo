@@ -217,6 +217,22 @@ for (String tenantId : failedTenants) {
 - ❌ **不要用于业务逻辑**：正常业务流程应依赖事件通知机制
 - ✅ **仅兜底使用**：系统重启后状态恢复的保险绳
 
+### 设计理念（T-016）
+
+**CQRS + Event Sourcing**：
+- **命令侧**：聚合负责业务逻辑，状态驻留内存（InMemory Repository）
+- **查询侧**：事件监听器异步更新状态投影到 Redis
+- **最终一致性**：投影与聚合之间允许毫秒级延迟，可接受
+- **故障降级**：Redis 不可用时自动降级为内存投影（重启后丢失）
+
+**技术实现**：
+- `TaskStateProjectionUpdater`：监听 Task 事件，更新投影
+- `PlanStateProjectionUpdater`：监听 Plan 事件，更新投影
+- `TaskQueryService`：提供 3 个核心查询方法
+- `AutoConfiguration`：自动装配，条件选择 Redis/InMemory
+
+> 详见：[T-016 实施报告](./docs/temp/task-016-final-implementation-report.md)、[持久化设计](./docs/design/persistence.md)
+
 ### 配置说明
 
 #### 开发环境（内存存储）

@@ -53,10 +53,33 @@
 ---
 
 ## 4. 分层结构（High-Level Layering）
-- Facade：统一入口（DeploymentTaskFacade），参数校验 + DTO 转换
-- Application：PlanLifecycleService、TaskOperationService、TaskExecutionOrchestrator（线程池与并发控制）
-- Domain：PlanAggregate、TaskAggregate、领域服务、值对象、状态枚举、事件层次
-- Infrastructure：执行引擎（TaskExecutor / TaskStage / StageStep）、仓储实现（InMemory/Redis）、冲突管理、心跳与指标
+
+### 4.1 核心分层
+- **Facade**：统一入口（DeploymentTaskFacade），参数校验 + DTO 转换
+- **Application**：
+  - 生命周期管理：PlanLifecycleService、TaskOperationService
+  - 编排调度：TaskExecutionOrchestrator（线程池与并发控制）
+  - 冲突协调：TenantConflictCoordinator（应用层冲突检测）
+  - Checkpoint 管理：CheckpointService
+  - **查询服务**（T-016）：TaskQueryService（最小兜底查询）
+  - **投影更新**（T-016）：TaskStateProjectionUpdater、PlanStateProjectionUpdater（事件监听器）
+- **Domain**：PlanAggregate、TaskAggregate、领域服务、值对象、状态枚举、事件层次
+- **Infrastructure**：
+  - 执行引擎：TaskExecutor / TaskStage / StageStep
+  - 仓储实现：InMemory/Redis（Checkpoint、投影存储）
+  - 冲突管理：TenantConflictManager（底层锁管理）
+  - 心跳与指标：HeartbeatScheduler
+
+### 4.2 T-016 新增组件（投影持久化与查询）
+| 组件 | 层次 | 职责 |
+|------|------|------|
+| TaskQueryService | Application | 最小兜底查询（按租户查询、Plan 状态、Checkpoint 检查） |
+| TaskStateProjectionUpdater | Application | 监听 Task 事件，更新 Task 状态投影到 Redis |
+| PlanStateProjectionUpdater | Application | 监听 Plan 事件，更新 Plan 状态投影到 Redis |
+| RedisTaskStateProjectionStore | Infrastructure | Task 状态投影 Redis 存储实现 |
+| RedisPlanStateProjectionStore | Infrastructure | Plan 状态投影 Redis 存储实现 |
+| RedisTenantTaskIndexStore | Infrastructure | 租户 → 任务映射索引 Redis 存储 |
+| RedisTenantLockManager | Infrastructure | Redis 分布式租户锁实现 |
 
 > 详见：分层与包结构视图：[development-view.puml](./views/development-view.puml) | 补充说明文档：[development-view.md](./views/development-view.md)
 
@@ -85,14 +108,21 @@
 ## 7. 并发与隔离策略
 | 策略 | 说明 |
 |------|------|
-| 租户锁 (TenantConflictManager) | 同一租户在任意时刻仅一个 RUNNING/PAUSED 任务 |
+| 租户锁（两层架构） | **TenantConflictManager**（Infrastructure）：底层锁管理（内存/Redis）<br>**TenantConflictCoordinator**（Application）：应用层协调与冲突检测<br>同一租户在任意时刻仅一个 RUNNING/PAUSED 任务 |
 | 全局并发 (maxConcurrency) | Plan 级并发额度控制任务提交速率 |
 | 协作式暂停 | 仅在完成当前 Stage 后检查暂停标志 |
 | 心跳与进度 | HeartbeatScheduler 每 10s 上报 TaskProgressEvent |
 
+**租户锁架构说明**：
+- `TenantConflictManager`：基础设施层，提供 tryAcquire/release/renew 等锁操作，支持内存和 Redis 两种实现
+- `TenantConflictCoordinator`：应用层，封装冲突检测逻辑，协调 Plan 创建和 Task 执行的租户冲突检查
+- 详见：[conflict-coordination.md](./design/conflict-coordination.md)
+
 ---
 
 ## 8. Checkpoint 与恢复机制
+
+### 8.1 Checkpoint（断点续传）
 | 要素 | 描述 |
 |------|------|
 | 存储 | RedisCheckpointRepository（JSON 序列化 + TTL 可配置），InMemoryCheckpointRepository（测试/回退）|
@@ -100,9 +130,38 @@
 | 保存时机 | Stage 成功、失败、暂停、异常中断 |
 | 恢复策略 | 从 (lastCompletedStageIndex + 1) 开始执行；补偿一次进度事件 |
 | 回滚交互 | 回滚不依赖 Checkpoint（按已完成列表逆序）|
-| **投影持久化（T-016）** | **事件驱动更新 Task/Plan 状态投影到 Redis，支持重启后查询** |
-| **租户锁（T-016）** | **Redis SET NX 分布式锁，TTL 2.5小时，防止多实例冲突** |
-| **查询API（T-016）** | **最小兜底查询：queryTaskStatusByTenant、queryPlanStatus、hasCheckpoint** |
+| TTL 策略 | 默认 7 天，可配置（`executor.persistence.redis.ttl.checkpoint`）|
+
+### 8.2 投影持久化（T-016：CQRS + Event Sourcing）
+| 要素 | 描述 |
+|------|------|
+| **状态投影** | **事件驱动更新 Task/Plan 状态投影到 Redis，支持重启后查询** |
+| 投影内容（Task） | taskId, tenantId, planId, status, pauseRequested, stageNames, lastCompletedStageIndex, createdAt, updatedAt |
+| 投影内容（Plan） | planId, status, taskIds, progress, createdAt, updatedAt |
+| 租户索引 | TenantId → TaskId 映射，支持按租户查询任务 |
+| TTL 策略 | 默认 30 天，可配置（`executor.persistence.redis.ttl.projection`）|
+| 更新机制 | 事件监听器（TaskStateProjectionUpdater、PlanStateProjectionUpdater）异步更新 |
+| 一致性 | 最终一致性（毫秒级延迟），可接受 |
+
+### 8.3 租户锁（T-016：分布式部署支持）
+| 要素 | 描述 |
+|------|------|
+| **租户锁** | **Redis SET NX 分布式锁，TTL 2.5小时，防止多实例冲突** |
+| 实现 | RedisTenantLockManager（原子获取/释放/续租/存在检查）|
+| Fallback | InMemoryTenantLockManager（单实例场景）|
+| TTL 策略 | 默认 9000 秒（2.5 小时），可配置（`executor.persistence.redis.ttl.lock`）|
+| 续租机制 | 任务执行期间定期续租，防止锁过期 |
+
+### 8.4 查询 API（T-016：最小兜底查询）
+| 要素 | 描述 |
+|------|------|
+| **查询API** | **最小兜底查询：queryTasksByTenant、queryPlanStatus、hasCheckpoint** |
+| 使用场景 | 仅用于重启后状态恢复，不建议常规调用 |
+| 数据源 | Redis 投影存储（Task/Plan 状态投影、租户索引）|
+| 性能 | 直接 Redis 读取，毫秒级响应 |
+| 设计约束 | 避免演变为查询平台，保持最小化（3 个核心方法）|
+
+> 详见：[persistence.md](./design/persistence.md)、[checkpoint-mechanism.md](./design/checkpoint-mechanism.md)、[task-016-final-implementation-report.md](./temp/task-016-final-implementation-report.md)
 
 ---
 
@@ -124,11 +183,267 @@
   - PlanResumedListener：接收 PlanResumedEvent → PlanExecutionFacade.resumePlanExecution(planId)
   - PlanPausedListener：接收 PlanPausedEvent → 记录审计/通知；暂停在 TaskExecutor Stage 边界协作式生效
   - PlanCompletionListener：接收 PlanCompleted/Failed → 调用 PlanSchedulingStrategy.onPlanCompleted 清理冲突标记
-- 与编排/执行的桥接：监听器仅做“事件到应用门面/策略”的委托，业务逻辑仍在 Facade/Orchestrator/Executor 中实现
+- 与编排/执行的桥接：监听器仅做"事件到应用门面/策略"的委托，业务逻辑仍在 Facade/Orchestrator/Executor 中实现
+
+### 9.2 事件监听与投影更新（T-016：CQRS + Event Sourcing）
+- **投影更新机制**：
+  - **TaskStateProjectionUpdater**：监听 Task 相关事件（TaskCreated、TaskStarted、TaskPaused、TaskCompleted、TaskFailed、TaskStageCompleted），异步更新 Task 状态投影到 Redis
+  - **PlanStateProjectionUpdater**：监听 Plan 相关事件（PlanReady、PlanStarted、PlanPaused、PlanCompleted、PlanFailed），异步更新 Plan 状态投影到 Redis
+  - **租户任务索引**：TaskCreated 事件触发时建立 TenantId → TaskId 映射索引
+- **一致性模型**：
+  - 命令侧（Command）：聚合负责业务逻辑，保存到内存仓储
+  - 查询侧（Query）：事件监听器异步更新投影到 Redis，供重启后查询
+  - 最终一致性：投影与聚合之间允许短暂延迟（毫秒级）
+- **故障降级**：
+  - Redis 不可用时自动降级为 InMemory 投影存储（重启后状态丢失）
+  - AutoConfiguration 条件装配，自动选择可用实现
+- **设计理念**：
+  - 查询 API 仅用于重启后状态恢复（兜底使用），不建议常规调用
+  - 避免演变为查询平台，保持最小化设计（3 个核心查询方法）
+
+> 详见：[persistence.md](./design/persistence.md) §3.4 投影存储、[task-016-final-implementation-report.md](./temp/task-016-final-implementation-report.md)
 
 ---
 
-## 10. 非功能特性概览
+## 10. 自动装配与配置（AutoConfiguration）
+
+### 10.1 核心 AutoConfiguration
+
+**ExecutorPersistenceAutoConfiguration**（T-016）：
+- 自动装配持久化相关组件（Checkpoint、投影存储、租户锁）
+- 条件装配：根据配置自动选择 Redis / InMemory 实现
+- 故障降级：Redis 不可用时自动回退到内存实现
+
+**装配组件**：
+```
+@ConditionalOnProperty("executor.persistence.redis.enabled=true")
+├── RedisClient
+├── RedisCheckpointRepository
+├── RedisTaskStateProjectionStore
+├── RedisPlanStateProjectionStore
+├── RedisTenantTaskIndexStore
+└── RedisTenantLockManager
+
+@ConditionalOnMissingBean (Fallback)
+├── InMemoryCheckpointRepository
+├── InMemoryTaskStateProjectionStore
+├── InMemoryPlanStateProjectionStore
+├── InMemoryTenantTaskIndexStore
+└── InMemoryTenantLockManager
+```
+
+### 10.2 配置示例
+
+#### 开发环境（内存模式）
+
+```yaml
+executor:
+  persistence:
+    redis:
+      enabled: false          # 禁用 Redis
+  max-concurrency: 10
+  health-check:
+    interval-seconds: 3
+    max-attempts: 10
+```
+
+**效果**：
+- 所有组件使用内存实现
+- 重启后状态丢失
+- 适合本地开发和单元测试
+
+#### 生产环境（Redis 模式）
+
+```yaml
+spring:
+  data:
+    redis:
+      host: redis.prod.example.com
+      port: 6379
+      password: ${REDIS_PASSWORD}
+      timeout: 2000ms
+      lettuce:
+        pool:
+          max-active: 20
+          max-idle: 10
+
+executor:
+  persistence:
+    redis:
+      enabled: true           # 启用 Redis
+      namespace: prod-executor
+      ttl:
+        checkpoint: 604800    # 7 天
+        projection: 2592000   # 30 天
+        lock: 9000            # 2.5 小时
+  max-concurrency: 50
+  health-check:
+    interval-seconds: 5
+    max-attempts: 20
+```
+
+**效果**：
+- 所有组件使用 Redis 实现
+- 支持多实例部署（分布式锁）
+- 重启后状态可恢复
+
+#### 测试环境（TestContainers）
+
+```java
+@SpringBootTest
+@Testcontainers
+class IntegrationTest {
+    @Container
+    static GenericContainer<?> redis = new GenericContainer<>("redis:7-alpine")
+        .withExposedPorts(6379);
+    
+    @DynamicPropertySource
+    static void registerRedisProperties(DynamicPropertyRegistry registry) {
+        registry.add("spring.data.redis.host", redis::getHost);
+        registry.add("spring.data.redis.port", redis::getFirstMappedPort);
+        registry.add("executor.persistence.redis.enabled", () -> "true");
+    }
+}
+```
+
+### 10.3 配置属性完整列表
+
+**ExecutorPersistenceProperties**：
+```yaml
+executor:
+  persistence:
+    redis:
+      enabled: true                    # 是否启用 Redis（默认 false）
+      namespace: executor              # Key 前缀（默认 "executor"）
+      ttl:
+        checkpoint: 604800             # Checkpoint TTL（秒，默认 7 天）
+        projection: 2592000            # 投影 TTL（秒，默认 30 天）
+        lock: 9000                     # 租户锁 TTL（秒，默认 2.5 小时）
+```
+
+**ExecutorProperties**：
+```yaml
+executor:
+  max-concurrency: 10                  # Plan 级最大并发数（默认 10）
+  health-check:
+    path: /health                      # 健康检查路径（默认 /health）
+    version-key: version               # 版本字段名（默认 version）
+    interval-seconds: 3                # 轮询间隔秒（默认 3）
+    max-attempts: 10                   # 最大尝试次数（默认 10）
+  heartbeat:
+    interval-seconds: 10               # 心跳间隔秒（默认 10）
+```
+
+### 10.4 条件装配详解
+
+**装配逻辑**：
+```java
+@Configuration
+@EnableConfigurationProperties({
+    ExecutorPersistenceProperties.class,
+    ExecutorProperties.class
+})
+public class ExecutorPersistenceAutoConfiguration {
+    
+    // Redis 客户端（条件：配置启用）
+    @Bean
+    @ConditionalOnProperty(
+        name = "executor.persistence.redis.enabled", 
+        havingValue = "true"
+    )
+    public RedisClient redisClient(...) { ... }
+    
+    // Redis 实现（条件：Redis 客户端存在）
+    @Bean
+    @ConditionalOnBean(RedisClient.class)
+    public RedisCheckpointRepository redisCheckpointRepository(...) { ... }
+    
+    // InMemory 实现（条件：Redis 实现不存在）
+    @Bean
+    @ConditionalOnMissingBean(CheckpointRepository.class)
+    public InMemoryCheckpointRepository inMemoryCheckpointRepository() { ... }
+}
+```
+
+**装配优先级**：
+1. Redis 实现（如果配置启用且连接成功）
+2. InMemory 实现（如果 Redis 不可用）
+
+### 10.5 故障降级
+
+**Redis 连接失败**：
+```
+[WARN] RedisClient connection failed, falling back to InMemory implementation
+```
+
+**自动降级流程**：
+1. Spring 尝试创建 RedisClient Bean
+2. 连接失败（超时 / 认证失败 / 网络不可达）
+3. `@ConditionalOnBean(RedisClient.class)` 条件不满足
+4. 触发 `@ConditionalOnMissingBean` 装配 InMemory 实现
+5. 应用正常启动，使用内存模式
+
+**影响**：
+- ✅ 应用可正常启动和运行
+- ⚠️ 重启后状态丢失
+- ⚠️ 多实例部署可能冲突（租户锁失效）
+
+**监控建议**：
+```java
+@Component
+public class PersistenceHealthIndicator implements HealthIndicator {
+    private final CheckpointRepository repository;
+    
+    @Override
+    public Health health() {
+        if (repository instanceof RedisCheckpointRepository) {
+            return Health.up().withDetail("mode", "Redis").build();
+        } else {
+            return Health.status("WARNING")
+                .withDetail("mode", "InMemory")
+                .withDetail("warning", "State will be lost on restart")
+                .build();
+        }
+    }
+}
+```
+
+### 10.6 自定义配置
+
+**覆盖默认实现**：
+```java
+@Configuration
+public class CustomPersistenceConfig {
+    
+    // 覆盖默认 Checkpoint Repository
+    @Bean
+    @Primary
+    public CheckpointRepository customCheckpointRepository() {
+        return new MyCustomCheckpointRepository();
+    }
+    
+    // 添加自定义投影存储
+    @Bean
+    public CustomProjectionStore customProjectionStore() {
+        return new CustomProjectionStore();
+    }
+}
+```
+
+**扩展配置属性**：
+```java
+@ConfigurationProperties("executor.custom")
+public class CustomExecutorProperties {
+    private String customProperty;
+    // getters/setters
+}
+```
+
+> 详见：[task-016-final-implementation-report.md](./temp/task-016-final-implementation-report.md) §3 AutoConfiguration 设计
+
+---
+
+## 11. 非功能特性概览
 | 维度 | 当前策略 |
 |------|----------|
 | 可扩展性 | 新增 StageStep 实现 + 配置驱动 StageFactory 组合 |
@@ -140,7 +455,7 @@
 
 ---
 
-## 11. 技术栈（修正）
+## 12. 技术栈（修正）
 | 类别 | 使用 | 说明 |
 |------|------|------|
 | 语言 / 运行时 | Java 17 | 主开发语言 |
