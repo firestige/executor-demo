@@ -38,4 +38,9 @@
 - Scenarios 视图专注“产品/业务用例与需求导入”，不承载技术桥接细节；因此桥接视图不会加入 `scenarios`，而保留在技术文档与视图中（如 `plan-to-execution-bridge.puml`）。
 
 ---
+## 7. 链接索引
+- 桥接视图：[`views/plan-to-execution-bridge.puml`](../views/plan-to-execution-bridge.puml)
+- 架构总纲事件消费章节：[`architecture-overview.md`](../architecture-overview.md)（见 9.1 事件监听与消费（Plan））
+
+---
 > 参见：`xyz.firestige.deploy.facade.*`，`xyz.firestige.deploy.application.facade.*`。
