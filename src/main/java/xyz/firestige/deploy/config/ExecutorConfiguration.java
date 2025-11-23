@@ -1,5 +1,6 @@
 package xyz.firestige.deploy.config;
 
+import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -7,19 +8,15 @@ import org.springframework.context.annotation.Configuration;
 import jakarta.validation.Validation;
 import jakarta.validation.Validator;
 import jakarta.validation.ValidatorFactory;
-import org.springframework.data.redis.connection.RedisConnectionFactory;
-import org.springframework.data.redis.core.RedisTemplate;
-import org.springframework.data.redis.serializer.GenericJackson2JsonRedisSerializer;
-import org.springframework.data.redis.serializer.StringRedisSerializer;
 import xyz.firestige.deploy.application.conflict.TenantConflictCoordinator;
 import xyz.firestige.deploy.application.facade.PlanExecutionFacade;
 import xyz.firestige.deploy.application.lifecycle.PlanLifecycleService;
 import xyz.firestige.deploy.application.orchestration.TaskExecutionOrchestrator;
+import xyz.firestige.deploy.application.plan.DeploymentPlanCreator;
 import xyz.firestige.deploy.application.task.TaskOperationService;
 import xyz.firestige.deploy.application.checkpoint.CheckpointService;
-import xyz.firestige.deploy.application.plan.DeploymentPlanCreator;
-import xyz.firestige.deploy.application.validation.BusinessValidator;
 import xyz.firestige.deploy.application.validation.ConflictValidator;
+import xyz.firestige.deploy.application.validation.BusinessValidator;
 import xyz.firestige.deploy.domain.plan.PlanDomainService;
 import xyz.firestige.deploy.domain.plan.PlanRepository;
 import xyz.firestige.deploy.domain.shared.event.DomainEventPublisher;
@@ -30,9 +27,9 @@ import xyz.firestige.deploy.domain.task.TaskRuntimeRepository;
 import xyz.firestige.deploy.facade.DeploymentTaskFacade;
 import xyz.firestige.deploy.facade.converter.TenantConfigConverter;
 import xyz.firestige.deploy.infrastructure.execution.DefaultTaskWorkerFactory;
-import xyz.firestige.deploy.infrastructure.execution.DefaultTaskWorkerFactory;
 import xyz.firestige.deploy.infrastructure.execution.TaskWorkerFactory;
 import xyz.firestige.deploy.infrastructure.execution.stage.StageFactory;
+import xyz.firestige.deploy.infrastructure.execution.stage.SimpleStageFactory;
 import xyz.firestige.deploy.infrastructure.external.health.HealthCheckClient;
 import xyz.firestige.deploy.infrastructure.external.health.MockHealthCheckClient;
 import xyz.firestige.deploy.infrastructure.persistence.checkpoint.InMemoryCheckpointRepository;
@@ -45,6 +42,11 @@ import xyz.firestige.deploy.infrastructure.validation.ValidationChain;
 import xyz.firestige.deploy.infrastructure.validation.validator.BusinessRuleValidator;
 import xyz.firestige.deploy.infrastructure.validation.validator.NetworkEndpointValidator;
 import xyz.firestige.deploy.infrastructure.validation.validator.TenantIdValidator;
+import xyz.firestige.deploy.application.query.TaskQueryService;
+import xyz.firestige.deploy.infrastructure.persistence.projection.TaskStateProjectionStore;
+import xyz.firestige.deploy.infrastructure.persistence.projection.PlanStateProjectionStore;
+import xyz.firestige.deploy.infrastructure.persistence.projection.TenantTaskIndexStore;
+import xyz.firestige.deploy.infrastructure.event.SpringDomainEventPublisher;
 
 /**
  * 执行器配置类（DDD 重构版）
@@ -184,6 +186,17 @@ public class ExecutorConfiguration {
     // ========== Application Service Bean (DDD 重构新增) ==========
 
     @Bean
+    public BusinessValidator businessValidator() { return new BusinessValidator(); }
+
+    @Bean
+    public StageFactory stageFactory() { return new SimpleStageFactory(); }
+
+    @Bean
+    public xyz.firestige.deploy.infrastructure.config.DeploymentConfigLoader deploymentConfigLoader() {
+        return new xyz.firestige.deploy.infrastructure.config.DeploymentConfigLoader();
+    }
+
+    @Bean
     public DeploymentPlanCreator deploymentPlanCreator(
             PlanDomainService planDomainService,
             TaskDomainService taskDomainService,
@@ -199,6 +212,12 @@ public class ExecutorConfiguration {
                 executorProperties,
                 taskRuntimeRepository
         );
+    }
+
+    @Bean
+    public TenantConfigConverter tenantConfigConverter(
+            xyz.firestige.deploy.infrastructure.config.DeploymentConfigLoader configLoader) {
+        return new TenantConfigConverter(configLoader);
     }
 
     /**
@@ -268,12 +287,31 @@ public class ExecutorConfiguration {
             PlanLifecycleService planLifecycleService,
             TaskOperationService taskOperationService,
             TenantConfigConverter tenantConfigConverter,
-            Validator validator) {  // Jakarta Validator
+            Validator validator,
+            TaskQueryService taskQueryService) {  // 注入 TaskQueryService
         return new DeploymentTaskFacade(
                 planLifecycleService,
                 taskOperationService,
                 tenantConfigConverter,
-                validator);
+                validator,
+                taskQueryService);
+    }
+
+
+    @Bean
+    public TaskQueryService taskQueryService(
+            TaskStateProjectionStore taskProjectionStore,
+            PlanStateProjectionStore planProjectionStore,
+            TenantTaskIndexStore tenantTaskIndexStore) {
+        return new TaskQueryService(
+                taskProjectionStore,
+                planProjectionStore,
+                tenantTaskIndexStore
+        );
+    }
+
+    @Bean
+    public DomainEventPublisher domainEventPublisher(ApplicationEventPublisher publisher) {
+        return new SpringDomainEventPublisher(publisher);
     }
 }
-

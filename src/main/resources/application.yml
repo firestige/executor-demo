@@ -1,10 +1,28 @@
 
+
 spring:
   data:
     redis:
       port: 6379
       host: localhost
+
+# Executor 配置
+executor:
+  # Checkpoint 持久化配置
+  checkpoint:
+    store-type: redis  # redis 或 memory
+    namespace: executor
+    ttl: 7d
+
+  # 投影持久化配置 (T-016)
+  persistence:
+    store-type: redis  # redis 或 memory，默认 memory
+    namespace: executor
+    projection-ttl: 7d  # 投影数据 TTL
+    lock-ttl: 2h30m  # 租户锁 TTL (2.5小时)
+
 debug: true
 logging:
   level:
     xyz.firestige.deploy: DEBUG
+

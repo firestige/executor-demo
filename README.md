@@ -1,6 +1,24 @@
 # Executor Demo — Plan/Task/Stage 设计与使用
 
-## 🎉 最新更新 (2025-11-19)
+## 🎉 最新更新
+
+### 2025-11-23: T-016 持久化方案完成
+
+**✅ 状态持久化 + 查询API 已完成！**
+
+- 🔐 Redis 分布式租户锁（支持多实例部署）
+- 💾 Plan/Task 状态自动持久化（基于事件驱动）
+- 🔍 最小兜底查询 API（重启后状态恢复）
+- ⚡ AutoConfiguration 自动装配（开箱即用）
+- 🛡️ 故障降级（Redis → InMemory）
+
+**📖 详细文档**:
+- [T-016 最终实施报告](./docs/temp/task-016-final-implementation-report.md)
+- [Phase 2 实施报告](./docs/temp/task-016-phase2-implementation-report.md)
+- [Phase 3 查询API](./docs/temp/task-016-phase3-completion-report.md)
+- [Phase 4 测试报告](./docs/temp/task-016-phase4-completion-report.md)
+
+### 2025-11-19: Stage Factory 动态编排框架
 
 **✅ Stage Factory 动态编排框架已完成！**
 
@@ -100,7 +118,162 @@ DeploymentTaskFacade facade = new DeploymentTaskFacadeImpl(chain, stateManager, 
 - status：TaskStatus（RUNNING/PAUSED/CANCELLED/ROLLED_BACK/...）。
 - completedStages/totalStages：用于进度计算（事件中也有明细）。
 
-测试策略（不侵入生产）
+## 查询 API（仅兜底使用）
+
+> ⚠️ **重要**：查询 API 仅用于系统重启后的手动状态确认，不建议常规调用。
+
+### 使用场景
+
+**典型场景**：
+1. 系统意外重启后，SRE 手动查询任务状态
+2. 决定是否需要 fromCheckpoint 重试
+3. 外部监控系统确认任务执行进度
+
+### API 列表
+
+#### 1. 查询任务状态（通过租户ID）
+
+```java
+TenantId tenantId = TenantId.of("tenant-001");
+TaskStatusInfo status = facade.queryTaskStatusByTenant(tenantId);
+
+System.out.println("状态: " + status.getStatus());
+System.out.println("进度: " + status.getCurrentStage() + "/" + status.getTotalStages());
+```
+
+**返回字段**：
+- `taskId`: 任务ID
+- `status`: 任务状态（RUNNING/PAUSED/FAILED/COMPLETED等）
+- `currentStage`: 当前执行到第几阶段
+- `totalStages`: 总阶段数
+- `message`: 附加信息
+
+#### 2. 查询计划状态
+
+```java
+PlanId planId = PlanId.of("plan-123");
+PlanStatusInfo plan = facade.queryPlanStatus(planId);
+
+System.out.println("计划状态: " + plan.getStatus());
+System.out.println("任务数: " + plan.getTaskCount());
+System.out.println("并发度: " + plan.getMaxConcurrency());
+```
+
+**返回字段**：
+- `planId`: 计划ID
+- `status`: 计划状态
+- `taskCount`: 任务数量
+- `taskIds`: 任务ID列表
+- `maxConcurrency`: 最大并发度
+
+#### 3. 检查是否有Checkpoint
+
+```java
+TenantId tenantId = TenantId.of("tenant-001");
+boolean hasCheckpoint = facade.hasCheckpoint(tenantId);
+
+if (hasCheckpoint) {
+    // 从checkpoint重试（跳过已完成的阶段）
+    facade.retryTaskByTenant(tenantId, true);
+} else {
+    // 从头重试
+    facade.retryTaskByTenant(tenantId, false);
+}
+```
+
+### 完整示例：重启后恢复流程
+
+```java
+// 1. 外部系统检测到服务重启
+// 2. 查询失败租户列表（从外部数据库）
+List<String> failedTenants = externalSystem.getFailedTenants();
+
+// 3. 逐一查询状态并决定重试策略
+for (String tenantId : failedTenants) {
+    TenantId tid = TenantId.of(tenantId);
+    TaskStatusInfo status = facade.queryTaskStatusByTenant(tid);
+    
+    // 4. 判断是否可重试
+    if (status.getStatus() == TaskStatus.FAILED) {
+        boolean hasCheckpoint = facade.hasCheckpoint(tid);
+        
+        // 5. SRE 确认后重试
+        if (hasCheckpoint) {
+            logger.info("租户 {} 从 Checkpoint 重试 (阶段 {}/{})", 
+                tenantId, status.getCurrentStage(), status.getTotalStages());
+            facade.retryTaskByTenant(tid, true);
+        } else {
+            logger.info("租户 {} 从头重试", tenantId);
+            facade.retryTaskByTenant(tid, false);
+        }
+    }
+}
+```
+
+### 注意事项
+
+- ❌ **不要高频轮询**：查询API设计用于低频手动查询（SRE介入场景）
+- ❌ **不要用于监控**：监控指标应通过事件推送到独立监控系统
+- ❌ **不要用于业务逻辑**：正常业务流程应依赖事件通知机制
+- ✅ **仅兜底使用**：系统重启后状态恢复的保险绳
+
+### 配置说明
+
+#### 开发环境（内存存储）
+
+```yaml
+executor:
+  persistence:
+    store-type: memory  # 使用内存，重启后丢失
+  checkpoint:
+    store-type: memory
+```
+
+#### 生产环境（Redis存储）
+
+```yaml
+spring:
+  data:
+    redis:
+      host: redis.prod.example.com
+      port: 6379
+      password: ${REDIS_PASSWORD}
+
+executor:
+  persistence:
+    store-type: redis   # 使用Redis持久化
+    namespace: prod-executor
+    projection-ttl: 7d  # 投影数据保留7天
+    lock-ttl: 2h30m     # 租户锁TTL
+  checkpoint:
+    store-type: redis
+    namespace: prod-executor
+    ttl: 7d
+```
+
+### 架构说明
+
+查询 API 基于 **CQRS + Event Sourcing** 架构：
+
+```
+领域聚合 (TaskAggregate/PlanAggregate)
+    ↓ 发布领域事件
+事件监听器 (TaskStateProjectionUpdater)
+    ↓ 自动更新投影
+投影存储 (Redis/InMemory)
+    ↓ 查询
+查询服务 (TaskQueryService)
+    ↓ 封装
+Facade API (queryTaskStatusByTenant)
+```
+
+**优势**：
+- ✅ 无代码侵入（DomainService 无需修改）
+- ✅ 自动同步（事件驱动）
+- ✅ 最终一致（可接受短暂不一致）
+- ✅ 易扩展（添加新监听器即可）
+
+---
 - 通过构造器注入 ExecutorProperties（压低间隔/次数）与 HealthCheckClient stub 实现快速验证。
 - 失败路径单测用 stub 返回错误来模拟，无需真实等待 10×3s。
 

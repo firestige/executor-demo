@@ -48,6 +48,7 @@
 | RF-18 | 状态转换优化 | 前置内存校验 + 后置聚合行为 + 事件驱动 |
 | RF-19 | Checkpoint / Stage 事件增强 | 精细化 StageStarted/Completed/Failed；恢复补偿进度 |
 | RF-20 | 编排层拆分 | 引入 TaskExecutionOrchestrator 分离执行调度与业务逻辑 |
+| **T-016** | **投影持久化与查询API** | CQRS + Event Sourcing；分布式锁；最小兜底查询 |
 
 ---
 
@@ -99,6 +100,9 @@
 | 保存时机 | Stage 成功、失败、暂停、异常中断 |
 | 恢复策略 | 从 (lastCompletedStageIndex + 1) 开始执行；补偿一次进度事件 |
 | 回滚交互 | 回滚不依赖 Checkpoint（按已完成列表逆序）|
+| **投影持久化（T-016）** | **事件驱动更新 Task/Plan 状态投影到 Redis，支持重启后查询** |
+| **租户锁（T-016）** | **Redis SET NX 分布式锁，TTL 2.5小时，防止多实例冲突** |
+| **查询API（T-016）** | **最小兜底查询：queryTaskStatusByTenant、queryPlanStatus、hasCheckpoint** |
 
 ---
 
@@ -184,7 +188,7 @@
 |----------|------|------|
 | [design/execution-engine.md](./design/execution-engine.md) | 执行机核心结构与扩展点 | ✅ 已完成 (T-003) |
 | [design/domain-model.md](./design/domain-model.md) | 聚合内部结构与不变式 | ✅ 已完成 (T-004) |
-| [design/persistence.md](./design/persistence.md) | InMemory 与 Redis 仓储策略 | ✅ 已完成 (T-005) |
+| [design/persistence.md](./design/persistence.md) | InMemory 与 Redis 仓储策略；T-016 投影持久化与查询API | ✅ 已完成 (T-005 + T-016) |
 | [design/checkpoint-mechanism.md](./design/checkpoint-mechanism.md) | Checkpoint 序列化与 TTL 策略 | ✅ 已完成 (T-005 派生) |
 | [design/state-management.md](./design/state-management.md) | 状态机转换矩阵 + 失败路径 | ✅ 已完成 (T-007) |
 | [design/anti-corruption-layer.md](./design/anti-corruption-layer.md) | 防腐层工厂设计 | ✅ 已完成 (T-010) |
@@ -202,7 +206,8 @@
 | 事件发布耦合 | 事件发布集中在应用服务，缺少异步落地保障 | 引入事件总线适配层，实现重试/缓冲 |
 | Checkpoint 竞争 | 并发保存存在覆盖风险 | 引入版本号或乐观锁（未来）|
 | 心跳调度资源占用 | 大量并发任务时调度器线程增加 | 合并心跳调度器，批量上报 |
-| 多实例租户锁 | TenantConflictManager 为本地内存 | 引入分布式锁（Redis / Redisson）|
+| ~~多实例租户锁~~ | ~~TenantConflictManager 为本地内存~~ | ~~引入分布式锁（Redis / Redisson）~~ ✅ **已完成（T-016）** |
+| 投影延迟 | 事件异步更新投影，可能短暂不一致 | 可接受（CQRS 最终一致性）|
 
 ---
 

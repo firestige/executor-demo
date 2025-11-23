@@ -5,6 +5,54 @@
 
 ---
 
+## 2025-11-24
+### [T-016]
+- **任务完成**：崩溃恢复能力增强 - 状态持久化设计与实施（4个Phase全部完成）
+- **Phase 1**：租户锁迁移到 Redis 分布式锁（RedisTenantLockManager）
+  - 实现 Redis SET NX 原子操作，TTL 2.5小时
+  - 支持 tryAcquire / release / renew / exists
+  - InMemory fallback 用于测试和单实例场景
+- **Phase 2**：状态投影持久化（CQRS + Event Sourcing）
+  - 实现 RedisTaskStateProjectionStore / RedisPlanStateProjectionStore
+  - 实现 RedisTenantTaskIndexStore（TenantId → TaskId 索引）
+  - 事件监听器：TaskStateProjectionUpdater / PlanStateProjectionUpdater
+  - AutoConfiguration：ExecutorPersistenceAutoConfiguration（条件装配，故障降级）
+  - Redis Key 设计：executor:task:{id}, executor:plan:{id}, executor:index:tenant:{id}, executor:lock:tenant:{id}
+- **Phase 3**：查询 API（最小兜底）
+  - 新增 TaskQueryService：queryByTenantId / queryPlanStatus / hasCheckpoint
+  - 新增 PlanStatusInfo DTO 封装 Plan 投影
+  - DeploymentTaskFacade 暴露查询方法
+  - 明确"仅兜底使用"原则，不建议常规调用
+  - 移除冗余批量查询方法，保持最小化设计
+- **Phase 4**：测试验证
+  - 单元测试：TaskQueryServiceTest（10个用例）
+  - DTO测试：PlanStatusInfoTest（4个用例���
+  - 集成测试：Phase4QueryApiIntegrationTest（7个用例）
+  - 总计 21个测试用例，覆盖所有核心场景
+- **文档更新**：
+  - 更新 persistence.md：添加投影存储、租户锁、查询API章节
+  - 更新 architecture-overview.md：标记 T-016 完成，更新 Checkpoint 机制、风险表
+  - 更新 README.md：新增"查询API（仅兜底使用）"完整章节
+  - 创建完整报告：task-016-final-implementation-report.md（含架构说明、使用指南、测试覆盖）
+  - 创建阶段报告：phase2/phase3/phase4-completion-report.md
+  - 创建快速总结：task-016-completion-summary.md
+- **影响模块**：
+  - Infrastructure：persistence（projection stores、lock manager、redis client）
+  - Application：query（TaskQueryService）、projection（updaters）
+  - AutoConfiguration：ExecutorPersistenceAutoConfiguration、ExecutorPersistenceProperties
+  - Facade：DeploymentTaskFacade（新增查询方法）
+  - Config：ExecutorConfiguration（移除硬编码 Bean）
+  - Resources：application.yml（新增 executor.persistence 配置段）
+- **关键决策**：
+  - 采用 CQRS + Event Sourcing 架构，而非 Repository 双写（更低侵入性，更好扩展性）
+  - 查询API保持最小化，避免演变为查询平台（3个核心方法）
+  - 事件驱动投影更新，最终一致性（可接受毫秒级延迟）
+  - Redis 不可用时自动降级为 InMemory（重启后状态丢失）
+- 从 TODO 移除 T-016（已完成）
+- 归档临时设计文档（保留在 docs/temp/ 供参考）
+
+---
+
 ## 2025-11-23
 ### [文档复核]
 - 完成文档与代码一致性复核：从 README 出发检查所有可达文档

@@ -19,6 +19,7 @@ import xyz.firestige.deploy.domain.task.TaskRuntimeRepository;
 import xyz.firestige.deploy.domain.shared.validation.ValidationSummary;
 
 import java.util.List;
+import org.springframework.stereotype.Component;
 
 /**
  * 部署计划创建器（RF-10 重构：提取职责）
@@ -36,6 +37,7 @@ import java.util.List;
  *
  * @since DDD 重构 Phase 18 - RF-10
  */
+@Component
 public class DeploymentPlanCreator {
 
     private static final Logger logger = LoggerFactory.getLogger(DeploymentPlanCreator.class);
@@ -165,4 +167,3 @@ public class DeploymentPlanCreator {
                 .orElseThrow(() -> new IllegalArgumentException("配置列表为空或缺少 Plan ID"));
     }
 }
-

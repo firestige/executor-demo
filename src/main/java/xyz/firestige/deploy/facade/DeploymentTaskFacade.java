@@ -22,6 +22,8 @@ import xyz.firestige.deploy.facade.exception.PlanNotFoundException;
 import xyz.firestige.deploy.facade.exception.TaskCreationException;
 import xyz.firestige.deploy.facade.exception.TaskNotFoundException;
 import xyz.firestige.deploy.facade.exception.TaskOperationException;
+import xyz.firestige.deploy.application.query.TaskQueryService;
+import xyz.firestige.deploy.infrastructure.persistence.projection.PlanStateProjection;
 
 import java.util.List;
 import java.util.Set;
@@ -53,16 +55,19 @@ public class DeploymentTaskFacade {
     private final TaskOperationService taskOperationService;
     private final TenantConfigConverter tenantConfigConverter;
     private final Validator validator;  // Jakarta Validator
+    private final TaskQueryService taskQueryService; // T-016 投影查询服务
 
     public DeploymentTaskFacade(
             PlanLifecycleService planLifecycleService,
             TaskOperationService taskOperationService,
             TenantConfigConverter tenantConfigConverter,
-            Validator validator) {
+            Validator validator,
+            TaskQueryService taskQueryService) { // 新增注入
         this.planLifecycleService = planLifecycleService;
         this.taskOperationService = taskOperationService;
         this.tenantConfigConverter = tenantConfigConverter;
         this.validator = validator;
+        this.taskQueryService = taskQueryService;
     }
 
     /**
@@ -205,6 +210,25 @@ public class DeploymentTaskFacade {
         TaskOperationResult result = taskOperationService.cancelTaskByTenant(tenantId);
         handleTaskOperationResult(result, "取消任务");
         logger.info("[Facade] 租户任务取消成功: {}", tenantId);
+    }
+
+    /**
+     * 查询计划状态（最小兜底 API）
+     */
+    public PlanStatusInfo queryPlanStatus(PlanId planId) {
+        logger.debug("[Facade] 查询计划状态: {}", planId);
+        var projection = taskQueryService.queryPlanStatus(planId);
+        if (projection == null) {
+            throw new PlanNotFoundException("计划不存在: " + planId);
+        }
+        return PlanStatusInfo.fromProjection(projection);
+    }
+
+    /**
+     * 检查租户是否存在 Checkpoint（最小兜底 API）
+     */
+    public boolean hasCheckpoint(TenantId tenantId) {
+        return taskQueryService.hasCheckpoint(tenantId);
     }
 
     // ========== 私有辅助方法 ==========
