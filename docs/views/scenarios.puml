@@ -1,0 +1,576 @@
+@startuml 场景视图-用例图
+
+title 场景视图 - 核心用例图
+
+left to right direction
+
+actor "运维人员" as Operator
+actor "系统管理员" as Admin
+
+rectangle "Executor-Demo 系统" {
+  usecase "创建部署计划" as UC1
+  usecase "启动部署" as UC2
+  usecase "监控部署进度" as UC3
+  usecase "暂停部署" as UC4
+  usecase "恢复部署" as UC5
+  usecase "重试失败任务" as UC6
+  usecase "回滚任务" as UC7
+  usecase "取消任务" as UC8
+  usecase "查看任务状态" as UC9
+  usecase "查看计划进度" as UC10
+}
+
+Operator --> UC1
+Operator --> UC2
+Operator --> UC3
+Operator --> UC4
+Operator --> UC5
+Operator --> UC6
+Operator --> UC7
+Operator --> UC8
+Operator --> UC9
+Operator --> UC10
+
+Admin --> UC3
+Admin --> UC9
+Admin --> UC10
+
+UC2 ..> UC1 : <<include>>
+UC5 ..> UC4 : <<include>>
+UC6 ..> UC3 : <<extend>>
+UC7 ..> UC3 : <<extend>>
+
+note right of UC1
+  输入: TenantDeployConfig[]
+  输出: TaskCreationResult
+  前置: 租户配置有效
+  后置: Plan 和 Task 已创建
+end note
+
+note right of UC2
+  输入: planId
+  输出: PlanOperationResult
+  前置: Plan 状态为 READY
+  后置: Plan 状态为 RUNNING
+end note
+
+note right of UC6
+  输入: planId, fromCheckpoint
+  输出: PlanOperationResult
+  前置: Task 状态为 FAILED
+  后置: Task 重新执行
+  支持从 Checkpoint 恢复
+end note
+
+note right of UC7
+  输入: tenantId
+  输出: TaskOperationResult
+  前置: Task 状态为 FAILED
+  后置: Task 状态为 ROLLED_BACK
+  逆序执行 Stage 回滚
+end note
+
+@enduml
+
+' ============================================
+' 子视图 1: 用例关系图
+' ============================================
+@startuml 场景视图-用例关系
+
+title 场景视图 - 用例关系与流程
+
+left to right direction
+
+package "部署管理" {
+  usecase "创建部署计划" as Create
+  usecase "启动部署" as Start
+  usecase "监控进度" as Monitor
+}
+
+package "异常处理" {
+  usecase "暂停部署" as Pause
+  usecase "恢复部署" as Resume
+  usecase "重试失败任务" as Retry
+  usecase "回滚任务" as Rollback
+  usecase "取消任务" as Cancel
+}
+
+package "查询服务" {
+  usecase "查看任务状态" as QueryTask
+  usecase "查看计划进度" as QueryPlan
+}
+
+Create -right-> Start : 完成后可启动
+Start -right-> Monitor : 启动后可监控
+Monitor -down-> Pause : 发现问题可暂停
+Pause -down-> Resume : 问题解决可恢复
+Monitor -down-> Retry : 失败后可重试
+Monitor -down-> Rollback : 严重错误可回滚
+Monitor -down-> Cancel : 可取消
+
+Start ..> QueryPlan : 持续查询
+Monitor ..> QueryTask : 持续查询
+
+note bottom of "部署管理"
+  正常流程：
+  创建 → 启动 → 监控 → 完成
+end note
+
+note bottom of "异常处理"
+  异常流程：
+  监控 → 暂停/重试/回滚/取消
+  暂停 → 恢复 → 继续监控
+  失败 → 重试 → 继续监控
+end note
+
+@enduml
+
+' ============================================
+' 子视图 2: 完整部署流程（成功路径）
+' ============================================
+@startuml 场景视图-完整部署流程
+
+title 场景视图 - 完整部署流程（Happy Path）
+
+actor "运维人员" as Ops
+participant "DeploymentTaskFacade" as Facade
+participant "PlanLifecycleAppService" as PlanApp
+participant "TaskExecutionOrchestrator" as Orchestrator
+participant "PlanDomainService" as PlanDomain
+participant "TaskDomainService" as TaskDomain
+participant "TaskExecutor" as Executor
+participant "TaskStage" as Stage
+database "Redis" as Redis
+database "InMemory" as Memory
+
+== 1. 创建部署计划 ==
+Ops -> Facade : createSwitchTask([\n  {tenantId:"t1", version:100},\n  {tenantId:"t2", version:100}\n])
+activate Facade
+
+Facade -> PlanApp : createPlanWithTasks(configs)
+activate PlanApp
+
+PlanApp -> PlanDomain : createPlan(planId, tenantCount, maxConcurrency)
+activate PlanDomain
+PlanDomain -> Memory : save(plan)
+PlanDomain --> PlanApp : PlanAggregate
+deactivate PlanDomain
+
+loop for each config
+    PlanApp -> TaskDomain : createTask(taskId, planId, tenantId)
+    activate TaskDomain
+    TaskDomain -> Memory : save(task)
+    TaskDomain --> PlanApp : TaskAggregate
+    deactivate TaskDomain
+
+    PlanApp -> PlanDomain : addTaskToPlan(planId, taskId)
+    PlanDomain -> Memory : save(plan)
+end
+
+PlanApp -> PlanDomain : markPlanAsReady(planId)
+PlanDomain -> Memory : save(plan)
+
+PlanApp --> Facade : PlanCreationResult
+deactivate PlanApp
+
+Facade --> Ops : TaskCreationResult{\n  planId: "plan-123",\n  taskIds: ["task-1", "task-2"],\n  totalTasks: 2\n}
+deactivate Facade
+
+== 2. 启动部署 ==
+Ops -> Facade : startPlanById("plan-123")
+activate Facade
+
+Facade -> PlanApp : startPlan("plan-123")
+activate PlanApp
+
+PlanApp -> PlanDomain : startPlan(planId)
+activate PlanDomain
+PlanDomain -> Memory : plan.start()
+PlanDomain -> Memory : publishEvent(PlanStartedEvent)
+PlanDomain --> PlanApp : PlanOperationResult
+deactivate PlanDomain
+
+PlanApp -> Orchestrator : orchestrate(planId, tasks, ExecuteStrategy)
+activate Orchestrator
+
+loop for each task [异步并发]
+    Orchestrator -> Executor ** : new TaskExecutor(task, stages, ...)
+    Orchestrator -> Executor : execute() [异步]
+    activate Executor
+
+    == 3. Task 执行 ==
+    Executor -> TaskDomain : startTask(task)
+    TaskDomain -> Memory : task.start()
+    TaskDomain -> Memory : publishEvent(TaskStartedEvent)
+
+    loop for each Stage
+        Executor -> TaskDomain : startStage(task, stageName)
+        TaskDomain -> Memory : publishEvent(TaskStageStartedEvent)
+
+        Executor -> Stage : execute(context)
+        activate Stage
+
+        alt Stage 成功
+            Stage --> Executor : StageResult(SUCCESS)
+            deactivate Stage
+
+            Executor -> TaskDomain : completeStage(task, stageName)
+            TaskDomain -> Memory : publishEvent(TaskStageCompletedEvent)
+
+            Executor -> Redis : saveCheckpoint(task, completedStages)
+        else Stage 失败
+            Stage --> Executor : StageResult(FAILED)
+            Executor -> TaskDomain : failStage(task, stageName)
+            Executor -> TaskDomain : failTask(task, failureInfo)
+            TaskDomain -> Memory : task.fail()
+            TaskDomain -> Memory : publishEvent(TaskFailedEvent)
+            Executor -> Redis : saveCheckpoint(task)
+            Executor --> Orchestrator : TaskResult(FAILED)
+            deactivate Executor
+        end
+    end
+
+    Executor -> TaskDomain : completeTask(task)
+    TaskDomain -> Memory : task.complete()
+    TaskDomain -> Memory : publishEvent(TaskCompletedEvent)
+
+    Executor -> Redis : clearCheckpoint(task)
+    Executor --> Orchestrator : TaskResult(COMPLETED)
+    deactivate Executor
+end
+
+Orchestrator --> PlanApp : void
+deactivate Orchestrator
+
+== 4. 检查 Plan 完成 ==
+PlanApp -> PlanDomain : checkAndCompletePlan(planId)
+activate PlanDomain
+PlanDomain -> Memory : plan.complete()
+PlanDomain -> Memory : publishEvent(PlanCompletedEvent)
+PlanDomain --> PlanApp : PlanOperationResult
+deactivate PlanDomain
+
+PlanApp --> Facade : PlanOperationResult(success)
+deactivate PlanApp
+
+Facade --> Ops : PlanOperationResult{\n  success: true,\n  planId: "plan-123",\n  message: "部署完成"\n}
+deactivate Facade
+
+note right of Ops
+  部署成功！
+  - 2 个 Task 全部完成
+  - 租户已切换到新版本
+  - Checkpoint 已清除
+end note
+
+@enduml
+
+' ============================================
+' 子视图 2: 失败重试流程
+' ============================================
+@startuml 场景视图-失败重试流程
+
+title 场景视图 - 失败重试流程（Error Recovery）
+
+actor "运维人员" as Ops
+participant "DeploymentTaskFacade" as Facade
+participant "TaskExecutionOrchestrator" as Orchestrator
+participant "TaskExecutor" as Executor
+participant "CheckpointService" as CkptSvc
+participant "TaskStage" as Stage
+database "Redis" as Redis
+
+== 初始状态：Task 执行失败 ==
+note over Executor
+  Task 状态: FAILED
+  失败位置: Stage-3
+  Checkpoint: [Stage-0, 1, 2 已完成]
+end note
+
+== 1. 查看失败详情 ==
+Ops -> Facade : getTaskStatus(tenantId)
+Facade --> Ops : TaskStatusDTO{\n  status: "FAILED",\n  currentStage: "Stage-3",\n  failureInfo: "Gateway timeout"\n}
+
+== 2. 决策重试 ==
+note over Ops
+  排查问题：
+  - Gateway 已恢复
+  - 决定从 Checkpoint 重试
+end note
+
+== 3. 执行重试 ==
+Ops -> Facade : retryTaskByPlan(planId, fromCheckpoint=true)
+activate Facade
+
+Facade -> Orchestrator : orchestrate(planId, [failedTask], RetryStrategy)
+activate Orchestrator
+
+Orchestrator -> Executor ** : new TaskExecutor(task, ...)
+Orchestrator -> Executor : execute()
+activate Executor
+
+== 4. 从 Checkpoint 恢复 ==
+Executor -> CkptSvc : loadCheckpoint(task)
+activate CkptSvc
+CkptSvc -> Redis : get("executor:ckpt:task-xxx")
+CkptSvc --> Executor : TaskCheckpoint{\n  lastCompletedStageIndex: 2,\n  completedStages: [0,1,2]\n}
+deactivate CkptSvc
+
+note over Executor
+  恢复执行：
+  - startIndex = 2 + 1 = 3
+  - 跳过 Stage-0, 1, 2
+  - 从 Stage-3 重新开始
+end note
+
+Executor -> Executor : startIndex = 3
+
+== 5. 重新执行失败的 Stage ==
+Executor -> Stage : execute(context) [Stage-3]
+activate Stage
+
+alt 重试成功
+    Stage --> Executor : StageResult(SUCCESS)
+    deactivate Stage
+
+    Executor -> Redis : saveCheckpoint(task, [0,1,2,3], 3)
+
+    note over Executor : 继续执行 Stage-4, 5, ...
+
+    loop remaining stages
+        Executor -> Stage : execute(context)
+        Stage --> Executor : StageResult(SUCCESS)
+        Executor -> Redis : updateCheckpoint()
+    end
+
+    Executor -> Executor : completeTask()
+    Executor -> Redis : clearCheckpoint(task)
+
+    Executor --> Orchestrator : TaskResult(COMPLETED)
+else 重试仍失败
+    Stage --> Executor : StageResult(FAILED)
+    deactivate Stage
+
+    Executor -> Executor : failTask()
+    Executor -> Redis : saveCheckpoint(task, [0,1,2], 2)
+
+    Executor --> Orchestrator : TaskResult(FAILED)
+
+    note over Ops
+      重试失败：
+      - 需要人工介入
+      - 或尝试回滚
+    end note
+end
+
+deactivate Executor
+Orchestrator --> Facade : void
+deactivate Orchestrator
+
+Facade --> Ops : PlanOperationResult{\n  success: true/false\n}
+deactivate Facade
+
+@enduml
+
+' ============================================
+' 子视图 3: 暂停恢复流程
+' ============================================
+@startuml 场景视图-暂停恢复流程
+
+title 场景视图 - 暂停恢复流程（Pause & Resume）
+
+actor "运维人员" as Ops
+participant "TaskRuntimeContext" as Context
+participant "TaskExecutor" as Executor
+participant "TaskStage" as Stage
+participant "CheckpointService" as CkptSvc
+database "Redis" as Redis
+
+== 运行中：Stage 正在执行 ==
+note over Executor : Task 正在执行 Stage-2
+
+Executor -> Stage : execute(context)
+activate Stage
+Stage -> Stage : 执行 Step-1, Step-2, Step-3...
+note right : Stage 内部不可中断
+
+== 1. 运维发起暂停请求 ==
+Ops -> Context : requestPause()
+Context -> Context : pauseRequested = true
+
+note over Context
+  暂停标志已设置
+  但不会立即暂停
+end note
+
+== 2. Stage 继续执行直到完成 ==
+Stage -> Stage : 完成所有 Step
+Stage --> Executor : StageResult(SUCCESS)
+deactivate Stage
+
+Executor -> Executor : stageCompleted()
+
+== 3. 检查暂停标志（Stage 边界）==
+Executor -> Context : isPauseRequested()
+Context --> Executor : true
+
+note over Executor
+  协作式暂停：
+  - 在 Stage 边界检测到标志
+  - 保存当前进度
+  - 安全暂停
+end note
+
+== 4. 保存 Checkpoint 并暂停 ==
+Executor -> CkptSvc : saveCheckpoint(task, completedStages=[0,1,2], currentIndex=2)
+activate CkptSvc
+CkptSvc -> Redis : set("executor:ckpt:task-xxx", checkpoint)
+CkptSvc --> Executor : void
+deactivate CkptSvc
+
+Executor -> Executor : pauseTask()
+Executor -> Executor : stopHeartbeat()
+
+note over Executor : Task 状态: PAUSED
+
+... 暂停期间（可能几分钟或几小时）...
+
+== 5. 运维发起恢复请求 ==
+Ops -> Executor : resume()
+
+note over Ops
+  恢复原因：
+  - 临时问题已解决
+  - 维护窗口结束
+  - 继续部署
+end note
+
+== 6. 从 Checkpoint 恢复执行 ==
+Executor -> CkptSvc : loadCheckpoint(task)
+activate CkptSvc
+CkptSvc -> Redis : get("executor:ckpt:task-xxx")
+CkptSvc --> Executor : TaskCheckpoint{\n  lastCompletedStageIndex: 2,\n  completedStages: [0,1,2]\n}
+deactivate CkptSvc
+
+Executor -> Executor : startIndex = 2 + 1 = 3
+Executor -> Executor : resumeTask()
+Executor -> Executor : startHeartbeat()
+
+note over Executor : Task 状态: RUNNING
+
+== 7. 继续执行剩余 Stage ==
+loop from Stage-3 to end
+    Executor -> Stage : execute(context)
+    activate Stage
+    Stage --> Executor : StageResult
+    deactivate Stage
+end
+
+Executor -> Executor : completeTask()
+Executor -> CkptSvc : clearCheckpoint(task)
+CkptSvc -> Redis : delete("executor:ckpt:task-xxx")
+
+note over Executor : Task 状态: COMPLETED
+
+@enduml
+
+' ============================================
+' 子视图 4: 回滚流程
+' ============================================
+@startuml 场景视图-回滚流程
+
+title 场景视图 - 回滚流程（Rollback）
+
+actor "运维人员" as Ops
+participant "DeploymentTaskFacade" as Facade
+participant "TaskExecutor" as Executor
+participant "TaskStage" as Stage
+database "External Services" as External
+
+== 初始状态：部署失败需要回滚 ==
+note over Executor
+  Task 状态: FAILED
+  已完成: Stage-0, 1, 2
+  失败: Stage-3
+  需要回滚到原始状态
+end note
+
+== 1. 发起回滚 ==
+Ops -> Facade : rollbackTaskByTenant(tenantId)
+activate Facade
+
+Facade -> Executor : rollback()
+activate Executor
+
+Executor -> Executor : startRollback()
+note over Executor : Task 状态: ROLLING_BACK
+
+== 2. 逆序回滚已完成的 Stage ==
+note over Executor
+  回滚顺序（逆序）：
+  Stage-2 → Stage-1 → Stage-0
+end note
+
+Executor -> Stage : rollback(context) [Stage-2]
+activate Stage
+
+alt Stage-2 回滚操作
+    Stage -> External : 恢复 Gateway 配置到原值
+    Stage -> External : 发送回滚通知
+    Stage --> Executor : void
+    deactivate Stage
+end
+
+Executor -> Stage : rollback(context) [Stage-1]
+activate Stage
+alt Stage-1 回滚操作
+    Stage -> External : 删除 Redis 中的新配置
+    Stage --> Executor : void
+    deactivate Stage
+end
+
+Executor -> Stage : rollback(context) [Stage-0]
+activate Stage
+alt Stage-0 回滚操作
+    Stage -> External : 恢复租户状态
+    Stage --> Executor : void
+    deactivate Stage
+end
+
+== 3. 回滚完成 ==
+Executor -> Executor : completeRollback()
+note over Executor : Task 状态: ROLLED_BACK
+
+Executor --> Facade : TaskOperationResult(rolledback)
+deactivate Executor
+
+Facade --> Ops : TaskOperationResult{\n  success: true,\n  status: "ROLLED_BACK",\n  message: "回滚完成"\n}
+deactivate Facade
+
+note over Ops
+  回滚成功：
+  - 租户恢复到旧版本
+  - Gateway 路由恢复
+  - Redis 配置清理
+  - 系统状态一致
+end note
+
+== 异常情况：回滚失败 ==
+alt 回滚过程中失败
+    Executor -> Executor : failRollback(failureInfo)
+    note over Executor : Task 状态: ROLLBACK_FAILED
+
+    Executor --> Facade : TaskOperationResult(rollback_failed)
+    Facade --> Ops : 回滚失败，需人工介入
+
+    note over Ops
+      回滚失败处理：
+      - 记录失败详情
+      - 人工检查系统状态
+      - 手动恢复
+      - 数据一致性检查
+    end note
+end
+
+@enduml
+

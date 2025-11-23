@@ -1,0 +1,729 @@
+@startuml 逻辑视图-概览
+
+title 逻辑视图 - 聚合关系概览
+
+' ============================================
+' 高层视图：聚合根及其关系
+' ============================================
+
+package "Plan Aggregate" <<Rectangle>> {
+  class PlanAggregate <<Aggregate Root>> {
+    - planId: PlanId
+    - status: PlanStatus
+    - taskIds: List<TaskId>
+    - domainEvents: List<PlanStatusEvent>
+    --
+    核心方法：
+    + start(), pause(), resume()
+    + complete(), markAsFailed()
+    + addTask(taskId)
+  }
+}
+
+package "Task Aggregate" <<Rectangle>> {
+  class TaskAggregate <<Aggregate Root>> {
+    - taskId: TaskId
+    - planId: PlanId
+    - tenantId: TenantId
+    - status: TaskStatus
+    - checkpoint: TaskCheckpoint
+    - domainEvents: List<TaskStatusEvent>
+    --
+    核心方法：
+    + start(), pause(), resume()
+    + complete(), fail()
+    + startRollback(), completeRollback()
+  }
+}
+
+PlanAggregate "1" --> "*" TaskId : references
+TaskAggregate --> PlanId : references
+
+note right of PlanAggregate
+  Plan 是聚合根
+  - 通过 TaskId 列表引用 Task
+  - 不直接持有 Task 对象
+  - DDD 聚合间通过 ID 引用
+end note
+
+note right of TaskAggregate
+  Task 是独立聚合根
+  - 通过 PlanId 反向引用
+  - 独立生命周期管理
+  - 支持 Checkpoint 断点续传
+end note
+
+@enduml
+
+' ============================================
+' 子视图 1: Plan 聚合详细设计
+' ============================================
+@startuml 逻辑视图-Plan聚合
+
+title 逻辑视图 - Plan 聚合详细设计
+
+class PlanAggregate <<Aggregate Root>> {
+  - planId: PlanId
+  - version: String
+  - status: PlanStatus
+  - maxConcurrency: Integer
+  - taskIds: List<TaskId>
+  - createdAt: LocalDateTime
+  - startedAt: LocalDateTime
+  - endedAt: LocalDateTime
+  - failureSummary: String
+  - progress: double
+  - domainEvents: List<PlanStatusEvent>
+  --
+  + PlanAggregate(planId)
+  + addTask(taskId): void
+  + markAsReady(): void
+  + start(): void
+  + pause(): void
+  + resume(): void
+  + complete(): void
+  + markAsFailed(failureSummary): void
+  + getTaskCount(): int
+  + canStart(): boolean
+  + isRunning(): boolean
+  + isPaused(): boolean
+  + isCompleted(): boolean
+  + getDomainEvents(): List<PlanStatusEvent>
+  + clearDomainEvents(): void
+}
+
+enum PlanStatus {
+  CREATED
+  VALIDATING
+  READY
+  RUNNING
+  PAUSED
+  PARTIAL_FAILED
+  COMPLETED
+  ROLLING_BACK
+  ROLLED_BACK
+  FAILED
+  CANCELLED
+}
+
+class PlanId <<Value Object>> {
+  - value: String
+  --
+  + {static} of(value): PlanId
+  + {static} generate(): PlanId
+  + getValue(): String
+}
+
+class TaskId <<Value Object>> {
+  - value: String
+  --
+  + {static} of(value): TaskId
+  + {static} fromPlanId(planId): TaskId
+  + getValue(): String
+}
+
+class PlanProgress <<Value Object>> {
+  - value: double
+  --
+  + {static} initial(): PlanProgress
+  + {static} completed(): PlanProgress
+  + {static} of(value): PlanProgress
+  + getValue(): double
+  + isCompleted(): boolean
+}
+
+class PlanContext <<Value Object>> {
+  - planId: String
+  - runningTaskIds: Set<String>
+  - waitingTaskIds: Queue<String>
+  - pauseRequested: boolean
+  - cancelRequested: boolean
+  - startedAt: LocalDateTime
+  - endedAt: LocalDateTime
+  --
+  + requestPause(): void
+  + clearPause(): void
+  + requestCancel(): void
+  + clearCancel(): void
+}
+
+class PlanInfo <<Value Object>> {
+  - planId: PlanId
+  - version: String
+  - status: PlanStatus
+  --
+  + {static} from(plan): PlanInfo
+}
+
+abstract class PlanStatusEvent <<Event>> {
+  - planInfo: PlanInfo
+  - occurredAt: LocalDateTime
+}
+
+class PlanReadyEvent extends PlanStatusEvent
+class PlanStartedEvent extends PlanStatusEvent
+class PlanPausedEvent extends PlanStatusEvent
+class PlanResumedEvent extends PlanStatusEvent
+class PlanCompletedEvent extends PlanStatusEvent
+class PlanFailedEvent extends PlanStatusEvent
+
+interface PlanRepository <<Repository>> {
+  + save(plan): void
+  + remove(planId): void
+  + findById(planId): Optional<PlanAggregate>
+  + findAll(): List<PlanAggregate>
+}
+
+class PlanDomainService <<Domain Service>> {
+  - planRepository: PlanRepository
+  - domainEventPublisher: DomainEventPublisher
+  --
+  + createPlan(planId, tenantCount, maxConcurrency): PlanAggregate
+  + addTaskToPlan(planId, taskId): void
+  + markPlanAsReady(planId): PlanOperationResult
+  + startPlan(planId): PlanOperationResult
+  + pausePlan(planId): PlanOperationResult
+  + resumePlan(planId): PlanOperationResult
+  + completePlan(planId): PlanOperationResult
+  + failPlan(planId, reason): PlanOperationResult
+}
+
+PlanAggregate --> PlanStatus
+PlanAggregate --> PlanId
+PlanAggregate "1" --> "*" TaskId : references
+PlanAggregate --> PlanProgress
+PlanAggregate --> PlanContext
+PlanAggregate ..> PlanStatusEvent : produces
+PlanAggregate ..> PlanInfo : uses
+
+PlanDomainService ..> PlanRepository
+PlanDomainService ..> PlanAggregate
+PlanRepository ..> PlanAggregate
+
+@enduml
+
+' ============================================
+' 子视图 2: Task 聚合详细设计
+' ============================================
+@startuml 逻辑视图-Task聚合
+
+title 逻辑视图 - Task 聚合详细设计
+
+class TaskAggregate <<Aggregate Root>> {
+  - taskId: TaskId
+  - planId: PlanId
+  - tenantId: TenantId
+  - deployVersion: DeployVersion
+  - deployUnitName: String
+  - status: TaskStatus
+  - stageProgress: StageProgress
+  - retryPolicy: RetryPolicy
+  - checkpoint: TaskCheckpoint
+  - stageResults: List<StageResult>
+  - timeRange: TimeRange
+  - prevConfigSnapshot: TenantDeployConfigSnapshot
+  - lastKnownGoodVersion: Long
+  - duration: TaskDuration
+  - pauseRequested: boolean
+  - cancelledBy: String
+  - domainEvents: List<TaskStatusEvent>
+  --
+  + TaskAggregate(taskId, planId, tenantId)
+  + markAsPending(): void
+  + start(): void
+  + requestPause(): void
+  + confirmPause(): void
+  + resume(): void
+  + complete(): void
+  + fail(failureInfo): void
+  + cancel(cancelledBy): void
+  + startRollback(): void
+  + completeRollback(): void
+  + failRollback(failureInfo): void
+  + markStageStarted(stageIndex): void
+  + markStageCompleted(stageResult): void
+  + markStageFailed(stageIndex, failureInfo): void
+  + getDomainEvents(): List<TaskStatusEvent>
+  + clearDomainEvents(): void
+}
+
+enum TaskStatus {
+  CREATED
+  VALIDATING
+  VALIDATION_FAILED
+  PENDING
+  RUNNING
+  PAUSED
+  RESUMING
+  COMPLETED
+  FAILED
+  ROLLING_BACK
+  ROLLBACK_FAILED
+  ROLLED_BACK
+  CANCELLED
+  --
+  + isTerminal(): boolean
+  + isFailure(): boolean
+}
+
+class TenantId <<Value Object>> {
+  - value: String
+  --
+  + {static} of(value): TenantId
+  + getValue(): String
+}
+
+class DeployVersion <<Value Object>> {
+  - value: Long
+  --
+  + {static} of(value): DeployVersion
+  + getValue(): Long
+}
+
+class TaskCheckpoint <<Value Object>> {
+  - currentStageIndex: int
+  - completedStages: List<Integer>
+  - contextData: Map<String, Object>
+  - savedAt: LocalDateTime
+  --
+  + {static} create(stageIndex): TaskCheckpoint
+  + getCurrentStageIndex(): int
+  + getCompletedStages(): List<Integer>
+}
+
+class StageProgress <<Value Object>> {
+  - currentStageIndex: int
+  - totalStages: int
+  --
+  + {static} create(totalStages): StageProgress
+  + advance(): StageProgress
+  + getProgressPercent(): double
+  + getCurrentStageIndex(): int
+  + getTotalStages(): int
+}
+
+class TimeRange <<Value Object>> {
+  - startedAt: LocalDateTime
+  - endedAt: LocalDateTime
+  --
+  + {static} notStarted(): TimeRange
+  + start(): TimeRange
+  + end(): TimeRange
+  + getDuration(): Duration
+}
+
+class TaskDuration <<Value Object>> {
+  - startedAt: LocalDateTime
+  - endedAt: LocalDateTime
+  --
+  + {static} notStarted(): TaskDuration
+  + start(): TaskDuration
+  + end(): TaskDuration
+  + getDuration(): Duration
+}
+
+class RetryPolicy <<Value Object>> {
+  - maxRetries: int
+  - currentRetries: int
+  - retryIntervalSeconds: int
+  --
+  + {static} create(maxRetries): RetryPolicy
+  + canRetry(): boolean
+  + incrementRetry(): RetryPolicy
+}
+
+class TenantDeployConfigSnapshot <<Value Object>> {
+  - tenantId: TenantId
+  - version: DeployVersion
+  - configData: Map<String, Object>
+  - snapshotAt: LocalDateTime
+  --
+  + {static} from(config): TenantDeployConfigSnapshot
+}
+
+class StageResult <<Value Object>> {
+  - stageIndex: int
+  - stageName: String
+  - status: StageStatus
+  - startedAt: LocalDateTime
+  - endedAt: LocalDateTime
+  - failureInfo: FailureInfo
+  --
+  + isSuccess(): boolean
+  + isFailed(): boolean
+}
+
+enum StageStatus {
+  PENDING
+  RUNNING
+  COMPLETED
+  FAILED
+  SKIPPED
+}
+
+class FailureInfo <<Value Object>> {
+  - errorType: ErrorType
+  - message: String
+  - details: String
+  - occurredAt: LocalDateTime
+  --
+  + {static} of(type, message): FailureInfo
+}
+
+enum ErrorType {
+  VALIDATION_ERROR
+  EXECUTION_ERROR
+  TIMEOUT_ERROR
+  ROLLBACK_ERROR
+  INFRASTRUCTURE_ERROR
+}
+
+class TaskInfo <<Value Object>> {
+  - taskId: TaskId
+  - planId: PlanId
+  - tenantId: TenantId
+  - status: TaskStatus
+  --
+  + {static} from(task): TaskInfo
+}
+
+interface TaskRepository <<Repository>> {
+  + save(task): void
+  + remove(taskId): void
+  + findById(taskId): Optional<TaskAggregate>
+  + findByTenantId(tenantId): Optional<TaskAggregate>
+  + findByPlanId(planId): List<TaskAggregate>
+}
+
+interface CheckpointRepository <<Repository>> {
+  + put(taskId, checkpoint): void
+  + get(taskId): TaskCheckpoint
+  + remove(taskId): void
+}
+
+interface TaskRuntimeRepository <<Repository>> {
+  + save(runtime): void
+  + findById(taskId): Optional<TaskRuntimeContext>
+}
+
+class TaskDomainService <<Domain Service>> {
+  - taskRepository: TaskRepository
+  - domainEventPublisher: DomainEventPublisher
+  --
+  + createTask(taskId, planId, tenantId): TaskAggregate
+  + startTask(taskId): TaskOperationResult
+  + pauseTask(taskId): TaskOperationResult
+  + resumeTask(taskId): TaskOperationResult
+  + completeTask(taskId): TaskOperationResult
+  + failTask(taskId, failureInfo): TaskOperationResult
+  + cancelTask(taskId, cancelledBy): TaskOperationResult
+}
+
+TaskAggregate --> TaskStatus
+TaskAggregate --> TaskId
+TaskAggregate --> PlanId
+TaskAggregate --> TenantId
+TaskAggregate --> DeployVersion
+TaskAggregate --> TaskCheckpoint
+TaskAggregate --> StageProgress
+TaskAggregate --> TimeRange
+TaskAggregate --> TaskDuration
+TaskAggregate --> TenantDeployConfigSnapshot
+TaskAggregate --> RetryPolicy
+TaskAggregate "1" --> "*" StageResult : contains
+
+StageResult --> StageStatus
+StageResult --> FailureInfo
+FailureInfo --> ErrorType
+
+TaskDomainService ..> TaskRepository
+TaskDomainService ..> TaskAggregate
+TaskRepository ..> TaskAggregate
+CheckpointRepository ..> TaskCheckpoint
+
+@enduml
+
+' ============================================
+' 子视图 3: 领域事件层次结构
+' ============================================
+@startuml 逻辑视图-领���事件
+
+title 逻辑视图 - 领域事件层次结构
+
+abstract class DomainEvent <<Event>> {
+  - occurredAt: LocalDateTime
+  --
+  + getOccurredAt(): LocalDateTime
+}
+
+abstract class PlanStatusEvent extends DomainEvent {
+  - planInfo: PlanInfo
+  --
+  + getPlanInfo(): PlanInfo
+}
+
+class PlanReadyEvent extends PlanStatusEvent {
+  - taskCount: int
+}
+
+class PlanStartedEvent extends PlanStatusEvent {
+  - taskCount: int
+}
+
+class PlanPausedEvent extends PlanStatusEvent
+
+class PlanResumedEvent extends PlanStatusEvent
+
+class PlanCompletedEvent extends PlanStatusEvent {
+  - taskCount: int
+  - duration: Duration
+}
+
+class PlanFailedEvent extends PlanStatusEvent {
+  - failureSummary: String
+}
+
+abstract class TaskStatusEvent extends DomainEvent {
+  - taskInfo: TaskInfo
+  --
+  + getTaskInfo(): TaskInfo
+}
+
+class TaskCreatedEvent extends TaskStatusEvent
+
+class TaskValidatedEvent extends TaskStatusEvent {
+  - validationResult: ValidationResult
+}
+
+class TaskValidationFailedEvent extends TaskStatusEvent {
+  - validationResult: ValidationResult
+}
+
+class TaskStartedEvent extends TaskStatusEvent {
+  - totalStages: int
+}
+
+class TaskPausedEvent extends TaskStatusEvent {
+  - checkpoint: TaskCheckpoint
+}
+
+class TaskResumedEvent extends TaskStatusEvent {
+  - fromCheckpoint: boolean
+}
+
+class TaskCompletedEvent extends TaskStatusEvent {
+  - duration: Duration
+  - stageCount: int
+}
+
+class TaskFailedEvent extends TaskStatusEvent {
+  - failureInfo: FailureInfo
+  - checkpoint: TaskCheckpoint
+}
+
+class TaskCancelledEvent extends TaskStatusEvent {
+  - cancelledBy: String
+  - reason: String
+}
+
+class TaskRollingBackEvent extends TaskStatusEvent
+
+class TaskRolledBackEvent extends TaskStatusEvent {
+  - duration: Duration
+}
+
+class TaskRollbackFailedEvent extends TaskStatusEvent {
+  - failureInfo: FailureInfo
+}
+
+class TaskRetryStartedEvent extends TaskStatusEvent {
+  - retryCount: int
+  - fromCheckpoint: boolean
+}
+
+class TaskRetryCompletedEvent extends TaskStatusEvent {
+  - retryCount: int
+}
+
+class TaskProgressEvent extends TaskStatusEvent {
+  - completedStages: int
+  - totalStages: int
+  - progressPercent: double
+}
+
+abstract class TaskStageStatusEvent extends TaskStatusEvent {
+  - stageName: String
+  - stageStatus: StageStatus
+  - stageIndex: int
+  --
+  + getStageName(): String
+  + getStageStatus(): StageStatus
+}
+
+class TaskStageStartedEvent extends TaskStageStatusEvent
+
+class TaskStageCompletedEvent extends TaskStageStatusEvent {
+  - duration: Duration
+}
+
+class TaskStageFailedEvent extends TaskStageStatusEvent {
+  - failureInfo: FailureInfo
+}
+
+note right of DomainEvent
+  所有领域事件的根类
+  - 包含事件发生时间
+  - 不可变对象
+end note
+
+note right of TaskStageStatusEvent
+  Stage 级别的事件
+  - 用于细粒度进度跟踪
+  - 包含 Stage 索引和状态
+end note
+
+@enduml
+
+' ============================================
+' 子视图 4: 校验值对象
+' ============================================
+@startuml 逻辑视图-校验值对象
+
+title 逻辑视图 - 校验相关值对象
+
+class ValidationResult <<Value Object>> {
+  - isValid: boolean
+  - errors: List<ValidationError>
+  - warnings: List<ValidationWarning>
+  --
+  + {static} success(): ValidationResult
+  + {static} failure(errors): ValidationResult
+  + {static} withWarnings(warnings): ValidationResult
+  + hasErrors(): boolean
+  + hasWarnings(): boolean
+  + getErrors(): List<ValidationError>
+  + getWarnings(): List<ValidationWarning>
+}
+
+class ValidationError <<Value Object>> {
+  - code: String
+  - message: String
+  - fieldPath: String
+  - severity: ErrorSeverity
+  --
+  + {static} of(code, message, field): ValidationError
+  + getCode(): String
+  + getMessage(): String
+  + getFieldPath(): String
+}
+
+class ValidationWarning <<Value Object>> {
+  - code: String
+  - message: String
+  - recommendation: String
+  --
+  + {static} of(code, message): ValidationWarning
+  + getCode(): String
+  + getMessage(): String
+}
+
+enum ErrorSeverity {
+  CRITICAL
+  HIGH
+  MEDIUM
+  LOW
+}
+
+class ValidationSummary <<Value Object>> {
+  - totalChecks: int
+  - passedChecks: int
+  - failedChecks: int
+  - warnings: int
+  --
+  + {static} from(result): ValidationSummary
+  + getSuccessRate(): double
+}
+
+ValidationResult "1" --> "*" ValidationError : contains
+ValidationResult "1" --> "*" ValidationWarning : contains
+ValidationError --> ErrorSeverity
+ValidationSummary --> ValidationResult
+
+note right of ValidationResult
+  校验结果值对象
+  - 用于 Task VALIDATING 阶段
+  - 收集所有校验错误和警告
+  - 支持部分失败（仅警告）
+end note
+
+@enduml
+
+' ============================================
+' 子视图 5: 共享值对象（ID类）
+' ============================================
+@startuml 逻辑视图-共享值对象
+
+title 逻辑视图 - 共享值对象（ID 和通用类型）
+
+class PlanId <<Value Object>> {
+  - value: String
+  --
+  + {static} of(value): PlanId
+  + {static} generate(): PlanId
+  + getValue(): String
+  + equals(other): boolean
+  + hashCode(): int
+}
+
+class TaskId <<Value Object>> {
+  - value: String
+  --
+  + {static} of(value): TaskId
+  + {static} fromPlanId(planId): TaskId
+  + getValue(): String
+  + equals(other): boolean
+  + hashCode(): int
+}
+
+class TenantId <<Value Object>> {
+  - value: String
+  --
+  + {static} of(value): TenantId
+  + getValue(): String
+  + equals(other): boolean
+  + hashCode(): int
+}
+
+class PlanInfo <<Value Object>> {
+  - planId: PlanId
+  - version: String
+  - status: PlanStatus
+  --
+  + {static} from(plan): PlanInfo
+}
+
+class TaskInfo <<Value Object>> {
+  - taskId: TaskId
+  - planId: PlanId
+  - tenantId: TenantId
+  - status: TaskStatus
+  --
+  + {static} from(task): TaskInfo
+}
+
+note right of PlanId
+  Plan 标识值对象
+  - 格式: plan-{timestamp}-{random}
+  - 不可变、线程安全
+  - 支持生成和解析
+end note
+
+note right of TaskId
+  Task 标识值对象
+  - 格式: task-{planId}-{timestamp}-{random}
+  - 可从 PlanId 生成
+  - 携带 Plan 关联信息
+end note
+
+@enduml
+

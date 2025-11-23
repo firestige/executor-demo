@@ -1,0 +1,183 @@
+@startuml 状态管理-总览
+
+title 状态管理总览（Plan / Task 状态机对比）
+
+package "Plan 状态机" {
+  [CREATED] --> [VALIDATING]
+  [VALIDATING] --> [READY]
+  [READY] --> [RUNNING]
+  [RUNNING] --> [PAUSED]
+  [PAUSED] --> [RUNNING]
+  [RUNNING] --> [PARTIAL_FAILED]
+  [RUNNING] --> [COMPLETED]
+  [RUNNING] --> [FAILED]
+  [RUNNING] --> [CANCELLED]
+  [PARTIAL_FAILED] --> [FAILED]
+  [RUNNING] --> [ROLLING_BACK]
+  [ROLLING_BACK] --> [ROLLED_BACK]
+  [ROLLING_BACK] --> [FAILED]
+}
+
+note right of [VALIDATING]
+  仅在创建后进入校验阶段（可选）
+  校验失败直接 FAILED（未列出分支图）
+end note
+
+note right of [PARTIAL_FAILED]
+  表示部分 Task 失败
+  可继续运行或进入 FAILED
+end note
+
+package "Task 状态机" {
+  [CREATED] --> [VALIDATING]
+  [VALIDATING] --> [VALIDATION_FAILED]
+  [VALIDATING] --> [PENDING]
+  [PENDING] --> [RUNNING]
+  [RUNNING] --> [PAUSED]
+  [PAUSED] --> [RUNNING]
+  [RUNNING] --> [FAILED]
+  [RUNNING] --> [COMPLETED]
+  [RUNNING] --> [CANCELLED]
+  [FAILED] --> [ROLLING_BACK]
+  [ROLLING_BACK] --> [ROLLED_BACK]
+  [ROLLING_BACK] --> [ROLLBACK_FAILED]
+  [FAILED] --> [RUNNING] : 重试
+  [ROLLED_BACK] --> [RUNNING] : 重试
+}
+
+note right of [ROLLING_BACK]
+  回滚期间仅允许完成或失败
+end note
+
+@enduml
+
+' ============================================
+' 子图 1: Plan 状态转换细节
+' ============================================
+@startuml Plan状态转换细节
+
+skinparam defaultTextAlignment left
+
+title Plan 状态转换细节
+
+state CREATED
+state VALIDATING
+state READY
+state RUNNING
+state PAUSED
+state PARTIAL_FAILED
+state COMPLETED
+state FAILED
+state ROLLING_BACK
+state ROLLED_BACK
+state CANCELLED
+
+CREATED --> VALIDATING : validate()
+VALIDATING --> READY : validationPassed()
+VALIDATING --> FAILED : validationFailed()
+READY --> RUNNING : start()
+RUNNING --> PAUSED : pause()
+PAUSED --> RUNNING : resume()
+RUNNING --> PARTIAL_FAILED : taskFailed(partial=true)
+PARTIAL_FAILED --> RUNNING : recoverPartial()
+PARTIAL_FAILED --> FAILED : escalate()
+RUNNING --> COMPLETED : allTasksCompleted()
+RUNNING --> FAILED : taskFailed(partial=false)
+RUNNING --> ROLLING_BACK : rollbackStart()
+ROLLING_BACK --> ROLLED_BACK : rollbackComplete()
+ROLLING_BACK --> FAILED : rollbackFailed()
+RUNNING --> CANCELLED : cancel()
+
+@enduml
+
+' ============================================
+' 子图 2: Task 状态转换细节
+' ============================================
+@startuml Task状态转换细节
+
+skinparam defaultTextAlignment left
+
+title Task 状态转换细节
+
+state CREATED
+state VALIDATING
+state VALIDATION_FAILED
+state PENDING
+state RUNNING
+state PAUSED
+state COMPLETED
+state FAILED
+state ROLLING_BACK
+state ROLLED_BACK
+state ROLLBACK_FAILED
+state CANCELLED
+
+CREATED --> VALIDATING : validate()
+VALIDATING --> VALIDATION_FAILED : validationFailed()
+VALIDATING --> PENDING : validationPassed()
+PENDING --> RUNNING : start()
+RUNNING --> PAUSED : requestPause()/applyPauseBoundary()
+PAUSED --> RUNNING : resume()
+RUNNING --> COMPLETED : allStagesDone()
+RUNNING --> FAILED : fatalError()
+RUNNING --> CANCELLED : cancel()
+FAILED --> ROLLING_BACK : startRollback()
+ROLLING_BACK --> ROLLED_BACK : rollbackComplete()
+ROLLING_BACK --> ROLLBACK_FAILED : rollbackFailed()
+FAILED --> RUNNING : retry(fromCheckpoint?)
+ROLLED_BACK --> RUNNING : retry(fromCheckpoint?)
+
+@enduml
+
+' ============================================
+' 子图 3: 失败与恢复路径（Task）
+' ============================================
+@startuml Task失败与恢复
+
+title Task 失败与恢复路径
+
+state VALIDATION_FAILED
+state FAILED
+state ROLLBACK_FAILED
+state ROLLED_BACK
+state RUNNING
+
+VALIDATION_FAILED --> RUNNING : manualFix + retryValidation
+FAILED --> RUNNING : retry(fromCheckpoint?)
+ROLLBACK_FAILED --> ROLLING_BACK : retryRollback() / manualFix
+ROLLED_BACK --> RUNNING : retry()
+
+@enduml
+
+' ============================================
+' 子图 4: 协作式暂停与重试/回滚交互
+' ============================================
+@startuml 暂停重试回滚交互
+
+title 协作式暂停 / 重试 / 回滚交互边界
+
+actor Operator
+participant Executor as "TaskExecutor"
+participant Task as "TaskAggregate"
+participant StateSvc as "StateTransitionService"
+
+Operator -> Executor : requestPause(taskId)
+Executor -> Task : requestPause()
+... 继续当前Stage执行 ...
+Executor -> Task : applyPauseAtStageBoundary()
+Task --> Executor : status=PAUSED
+
+== 重试 ==
+Operator -> Executor : retry(taskId, fromCheckpoint=true)
+Executor -> StateSvc : canTransition(FAILED/ROLLED_BACK->RUNNING)
+Executor -> Task : retry(fromCheckpoint)
+Task --> Executor : status=RUNNING
+
+== 回滚 ==
+Operator -> Executor : rollback(taskId)
+Executor -> Task : startRollback()
+Task --> Executor : status=ROLLING_BACK
+Executor -> Task : completeRollback()/failRollback()
+Task --> Executor : status=ROLLED_BACK | ROLLBACK_FAILED
+
+@enduml

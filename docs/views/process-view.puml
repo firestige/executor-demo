@@ -1,0 +1,754 @@
+@startuml 进程视图-概览
+
+title 进程视图 - 任务执行流程概览
+
+actor "外部调用者" as Client
+participant "TaskExecutionOrchestrator" as Orchestrator
+participant "TaskWorkerFactory" as Factory
+participant "TaskExecutor" as Executor
+participant "TaskDomainService" as DomainService
+participant "TaskAggregate" as Task
+participant "TaskStage" as Stage
+participant "StageStep" as Step
+
+Client -> Orchestrator : orchestrate(planId, tasks)
+activate Orchestrator
+
+loop for each Task
+    Orchestrator -> Factory : createTaskExecutor(task)
+    activate Factory
+    Factory -> Executor ** : new TaskExecutor(...)
+    Factory --> Orchestrator : executor
+    deactivate Factory
+
+    Orchestrator -> Executor : execute() [异步]
+    activate Executor
+
+    Executor -> DomainService : startTask(task)
+    activate DomainService
+    DomainService -> Task : start()
+    activate Task
+    Task -> Task : changeState(RUNNING)
+    Task -> Task : addDomainEvent(TaskStartedEvent)
+    Task --> DomainService : void
+    deactivate Task
+    DomainService --> Executor : TaskOperationResult
+    deactivate DomainService
+
+    loop for each Stage
+        Executor -> DomainService : startStage(task, stageName)
+        activate DomainService
+        DomainService -> Task : markStageStarted(stageIndex)
+        Task -> Task : addDomainEvent(TaskStageStartedEvent)
+        DomainService --> Executor : void
+        deactivate DomainService
+
+        Executor -> Stage : execute(context)
+        activate Stage
+
+        loop for each Step
+            Stage -> Step : execute(context)
+            activate Step
+            Step -> Step : 执行具体操作\n(Redis写入/HTTP请求等)
+            Step --> Stage : void
+            deactivate Step
+        end
+
+        Stage --> Executor : StageResult
+        deactivate Stage
+
+        alt Stage 成功
+            Executor -> DomainService : completeStage(task, stageName)
+            DomainService -> Task : markStageCompleted(result)
+            Task -> Task : addDomainEvent(TaskStageCompletedEvent)
+        else Stage 失败
+            Executor -> DomainService : failStage(task, stageName, failureInfo)
+            DomainService -> Task : markStageFailed(stageIndex, failureInfo)
+            Task -> Task : addDomainEvent(TaskStageFailedEvent)
+
+            Executor -> DomainService : failTask(task, failureInfo)
+            DomainService -> Task : fail(failureInfo)
+            Task -> Task : changeState(FAILED)
+            Task -> Task : addDomainEvent(TaskFailedEvent)
+            Executor --> Orchestrator : TaskResult(FAILED)
+            deactivate Executor
+        end
+    end
+
+    Executor -> DomainService : completeTask(task)
+    activate DomainService
+    DomainService -> Task : complete()
+    activate Task
+    Task -> Task : changeState(COMPLETED)
+    Task -> Task : addDomainEvent(TaskCompletedEvent)
+    Task --> DomainService : void
+    deactivate Task
+    DomainService --> Executor : TaskOperationResult
+    deactivate DomainService
+
+    Executor --> Orchestrator : TaskResult(COMPLETED)
+    deactivate Executor
+end
+
+Orchestrator --> Client : void
+deactivate Orchestrator
+
+note right of Executor
+  核心执行引擎
+  - 编排 Stage 执行
+  - 管理 Checkpoint
+  - 心跳上报
+  - 状态转换前置检查
+end note
+
+note right of Stage
+  原子执行单元
+  - 内部不可暂停
+  - 由多个 Step 组成
+  - 执行成功或失败
+end note
+
+@enduml
+
+' ============================================
+' 子视图 1: Plan 状态机
+' ============================================
+@startuml 进程视图-Plan状态机
+
+title 进程视图 - Plan 状态机
+
+[*] --> CREATED : new PlanAggregate()
+
+CREATED --> VALIDATING : 开始校验
+VALIDATING --> READY : 校验通过\nmarkAsReady()
+VALIDATING --> FAILED : 校验失败
+
+READY --> RUNNING : start()
+
+RUNNING --> PAUSED : pause()
+PAUSED --> RUNNING : resume()
+
+RUNNING --> PARTIAL_FAILED : 部分Task失败\n但Plan继续
+PARTIAL_FAILED --> RUNNING : 失败Task重试成功
+
+RUNNING --> COMPLETED : 所有Task完成\ncomplete()
+RUNNING --> FAILED : 致命错误\nmarkAsFailed()
+PARTIAL_FAILED --> FAILED : 无法恢复
+
+RUNNING --> ROLLING_BACK : 开始回滚
+PARTIAL_FAILED --> ROLLING_BACK : 开始回滚
+ROLLING_BACK --> ROLLED_BACK : 回滚完成
+ROLLING_BACK --> FAILED : 回滚失败
+
+RUNNING --> CANCELLED : 用户取消
+PAUSED --> CANCELLED : 用户取消
+
+COMPLETED --> [*]
+FAILED --> [*]
+ROLLED_BACK --> [*]
+CANCELLED --> [*]
+
+note right of CREATED
+  初始状态
+  - 仅创建Plan对象
+  - taskIds 为空列表
+end note
+
+note right of VALIDATING
+  校验阶段
+  - 校验所有Task配置
+  - 校验资源可用性
+  - 不阻塞Plan创建
+end note
+
+note right of READY
+  准备就绪
+  - 至少包含1个Task
+  - 所有Task配置有效
+  - 可以启动
+end note
+
+note right of RUNNING
+  运行中
+  - Task可能正在执行
+  - Task可能已完成
+  - Task可能失败
+  - 支持暂停/取消
+end note
+
+note right of PARTIAL_FAILED
+  部分失败
+  - 部分Task失败
+  - 其他Task继续执行
+  - 可尝试重试失败Task
+end note
+
+@enduml
+
+' ============================================
+' 子视图 2: Task 状态机
+' ============================================
+@startuml 进程视图-Task状态机
+
+title 进程视图 - Task 状态机
+
+[*] --> CREATED : new TaskAggregate()
+
+CREATED --> VALIDATING : 开始校验
+VALIDATING --> VALIDATION_FAILED : 校验失败
+VALIDATING --> PENDING : 校验通过\nmarkAsPending()
+
+VALIDATION_FAILED --> [*]
+
+PENDING --> RUNNING : start()
+
+RUNNING --> PAUSED : requestPause()\nconfirmPause()
+PAUSED --> RUNNING : resume()
+PAUSED --> RESUMING : 恢复中
+RESUMING --> RUNNING : 恢复完成
+
+RUNNING --> COMPLETED : 所有Stage完成\ncomplete()
+RUNNING --> FAILED : Stage失败\nfail(failureInfo)
+
+FAILED --> RUNNING : retry()\n[fromCheckpoint]
+PAUSED --> RUNNING : retry()\n[fromCheckpoint]
+
+FAILED --> ROLLING_BACK : startRollback()
+ROLLING_BACK --> ROLLED_BACK : completeRollback()
+ROLLING_BACK --> ROLLBACK_FAILED : failRollback()
+
+RUNNING --> CANCELLED : cancel()\n[用户取消]
+PAUSED --> CANCELLED : cancel()
+
+COMPLETED --> [*]
+ROLLED_BACK --> [*]
+ROLLBACK_FAILED --> [*]
+CANCELLED --> [*]
+
+note right of CREATED
+  初始状态
+  - Task已创建
+  - 未校验
+end note
+
+note right of VALIDATING
+  校验中
+  - 校验租户配置
+  - 校验服务端点
+  - 校验部署版本
+end note
+
+note right of PENDING
+  待执行
+  - 校验通过
+  - 等待调度
+end note
+
+note right of RUNNING
+  执行中
+  - Stage逐个执行
+  - 心跳上报进度
+  - 保存Checkpoint
+  - 可协作式暂停
+end note
+
+note right of PAUSED
+  已暂停
+  - 在Stage边界暂停
+  - 保存了Checkpoint
+  - 可恢复或重试
+end note
+
+note right of FAILED
+  执行失败
+  - 记录FailureInfo
+  - 保存了Checkpoint
+  - 可重试或回滚
+end note
+
+note right of ROLLING_BACK
+  回滚中
+  - 逆序执行Stage回滚
+  - 恢复租户状态
+end note
+
+@enduml
+
+' ============================================
+' 子视图 3: Task 执行详细时序图
+' ============================================
+@startuml 进程视图-Task执行时序
+
+title 进程视图 - Task 执行详细时序图
+
+participant "TaskExecutor" as Executor
+participant "StateTransitionService" as StateCheck
+participant "TaskDomainService" as DomainService
+participant "TaskAggregate" as Task
+participant "CheckpointService" as Checkpoint
+participant "HeartbeatScheduler" as Heartbeat
+participant "TaskStage" as Stage
+participant "StageStep" as Step
+database "Redis/InMemory" as Storage
+
+-> Executor : execute()
+activate Executor
+
+Executor -> StateCheck : canTransition(task, RUNNING)
+activate StateCheck
+StateCheck -> Task : getStatus()
+StateCheck -> StateCheck : 验证状态转换规则
+StateCheck --> Executor : true
+deactivate StateCheck
+
+Executor -> DomainService : startTask(task, context)
+activate DomainService
+DomainService -> Task : start()
+activate Task
+Task -> Task : status = RUNNING
+Task -> Task : timeRange.start()
+Task -> Task : addDomainEvent(TaskStartedEvent)
+Task --> DomainService : void
+deactivate Task
+
+DomainService -> Storage : save(task)
+DomainService -> Storage : publishEvents(TaskStartedEvent)
+DomainService --> Executor : TaskOperationResult
+deactivate DomainService
+
+Executor -> Checkpoint : loadCheckpoint(task)
+activate Checkpoint
+Checkpoint -> Storage : get(taskId)
+Checkpoint --> Executor : TaskCheckpoint(startIndex=2)
+deactivate Checkpoint
+
+Executor -> Heartbeat : start()
+activate Heartbeat
+Heartbeat -> Heartbeat : scheduleAtFixedRate(10s)
+note right : 每10秒发送进度事件
+deactivate Heartbeat
+
+loop for each Stage (from startIndex)
+    Executor -> DomainService : startStage(task, stageName, totalSteps)
+    activate DomainService
+    DomainService -> Task : markStageStarted(stageIndex)
+    Task -> Task : stageProgress.advance()
+    Task -> Task : addDomainEvent(TaskStageStartedEvent)
+    DomainService -> Storage : publishEvents(TaskStageStartedEvent)
+    DomainService --> Executor : void
+    deactivate DomainService
+
+    Executor -> Stage : execute(context)
+    activate Stage
+
+    loop for each Step
+        Stage -> Step : execute(context)
+        activate Step
+
+        alt Step Type: Redis写入
+            Step -> Storage : set(key, value)
+        else Step Type: HTTP请求
+            Step -> Step : httpClient.post(url, body)
+        else Step Type: Pub/Sub广播
+            Step -> Storage : publish(channel, message)
+        end
+
+        Step --> Stage : void
+        deactivate Step
+    end
+
+    Stage --> Executor : StageResult(SUCCESS)
+    deactivate Stage
+
+    Executor -> DomainService : completeStage(task, stageName, duration)
+    activate DomainService
+    DomainService -> Task : markStageCompleted(stageResult)
+    Task -> Task : stageResults.add(result)
+    Task -> Task : addDomainEvent(TaskStageCompletedEvent)
+    DomainService -> Storage : publishEvents(TaskStageCompletedEvent)
+    DomainService --> Executor : void
+    deactivate DomainService
+
+    Executor -> Checkpoint : saveCheckpoint(task, completedStages, currentIndex)
+    activate Checkpoint
+    Checkpoint -> Storage : set(taskId, checkpoint)
+    Checkpoint --> Executor : void
+    deactivate Checkpoint
+
+    alt 检查暂停请求
+        Executor -> Executor : context.isPauseRequested()
+
+        alt 暂停请求存在
+            Executor -> StateCheck : canTransition(task, PAUSED)
+            StateCheck --> Executor : true
+
+            Executor -> DomainService : pauseTask(task)
+            DomainService -> Task : confirmPause()
+            Task -> Task : status = PAUSED
+            Task -> Task : addDomainEvent(TaskPausedEvent)
+            DomainService -> Storage : save(task)
+            DomainService -> Storage : publishEvents(TaskPausedEvent)
+
+            Executor -> Heartbeat : stop()
+            Executor --> : TaskResult(PAUSED)
+            deactivate Executor
+        end
+    end
+end
+
+Executor -> StateCheck : canTransition(task, COMPLETED)
+StateCheck --> Executor : true
+
+Executor -> DomainService : completeTask(task, context)
+activate DomainService
+DomainService -> Task : complete()
+activate Task
+Task -> Task : status = COMPLETED
+Task -> Task : timeRange.end()
+Task -> Task : addDomainEvent(TaskCompletedEvent)
+Task --> DomainService : void
+deactivate Task
+
+DomainService -> Storage : save(task)
+DomainService -> Storage : publishEvents(TaskCompletedEvent)
+DomainService --> Executor : TaskOperationResult
+deactivate DomainService
+
+Executor -> Heartbeat : stop()
+Executor -> Checkpoint : clearCheckpoint(task)
+Checkpoint -> Storage : delete(taskId)
+
+Executor --> : TaskResult(COMPLETED)
+deactivate Executor
+
+note right of StateCheck
+  状态转换前置检查
+  - 低成本内存操作
+  - 避免无效的DB写入
+  - 验证状态机规则
+end note
+
+note right of Checkpoint
+  断点续传机制
+  - 保存已完成的Stage索引
+  - 存储在Redis
+  - 失败后可从断点恢复
+end note
+
+note right of Heartbeat
+  心跳机制
+  - 每10秒上报进度
+  - 发送TaskProgressEvent
+  - 包含completedStages/totalStages
+end note
+
+@enduml
+
+' ============================================
+' 子视图 4: Task 重试流程（支持 Checkpoint）
+' ============================================
+@startuml 进程视图-Task重试流程
+
+title 进程视图 - Task 重试流程（支持 Checkpoint）
+
+participant "Client" as Client
+participant "TaskExecutor" as Executor
+participant "StateTransitionService" as StateCheck
+participant "TaskDomainService" as DomainService
+participant "TaskAggregate" as Task
+participant "CheckpointService" as Checkpoint
+participant "TaskStage" as Stage
+database "Redis/InMemory" as Storage
+
+Client -> Executor : execute() [重试]
+activate Executor
+
+note right of Executor
+  Task 当前状态: FAILED
+  上次失败在 Stage-3
+  Checkpoint保存了Stage-0,1,2
+end note
+
+Executor -> StateCheck : canTransition(task, RUNNING)
+activate StateCheck
+StateCheck -> Task : getStatus() // FAILED
+StateCheck -> StateCheck : 验证 FAILED -> RUNNING 允许
+StateCheck --> Executor : true
+deactivate StateCheck
+
+Executor -> DomainService : resumeTask(task, context)
+activate DomainService
+note right : 对于FAILED状态，\nresumeTask()等同于重试
+DomainService -> Task : resume()
+activate Task
+Task -> Task : status = RUNNING
+Task -> Task : addDomainEvent(TaskResumedEvent{fromCheckpoint=true})
+Task --> DomainService : void
+deactivate Task
+
+DomainService -> Storage : save(task)
+DomainService -> Storage : publishEvents(TaskResumedEvent)
+DomainService --> Executor : TaskOperationResult
+deactivate DomainService
+
+Executor -> Checkpoint : loadCheckpoint(task)
+activate Checkpoint
+Checkpoint -> Storage : get(taskId)
+Checkpoint --> Executor : TaskCheckpoint{\n  lastCompletedStageIndex: 2,\n  completedStages: [0,1,2],\n  contextData: {...}\n}
+deactivate Checkpoint
+
+note right of Executor
+  从 Checkpoint 恢复：
+  - startIndex = 2 + 1 = 3
+  - 跳过 Stage-0,1,2
+  - 从 Stage-3 开始执行
+end note
+
+Executor -> Executor : startIndex = checkpoint.lastCompletedStageIndex + 1
+
+loop for i = startIndex to stages.size()
+    note right of Executor : 跳过了 Stage-0, 1, 2
+
+    alt i == 3 (失败的Stage)
+        Executor -> Stage : execute(context) [Stage-3]
+        activate Stage
+
+        Stage -> Stage : 重新执行所有Step
+
+        alt 这次成功
+            Stage --> Executor : StageResult(SUCCESS)
+            deactivate Stage
+
+            Executor -> DomainService : completeStage(task, "Stage-3", duration)
+            DomainService -> Task : markStageCompleted(result)
+            Task -> Task : addDomainEvent(TaskStageCompletedEvent)
+
+            Executor -> Checkpoint : saveCheckpoint(task, [0,1,2,3], 3)
+            Checkpoint -> Storage : set(taskId, checkpoint)
+        else 仍然失败
+            Stage --> Executor : StageResult(FAILED)
+            deactivate Stage
+
+            Executor -> DomainService : failStage(task, "Stage-3", failureInfo)
+            DomainService -> Task : markStageFailed(3, failureInfo)
+
+            Executor -> DomainService : failTask(task, failureInfo)
+            DomainService -> Task : fail(failureInfo)
+            Task -> Task : status = FAILED
+            Task -> Task : addDomainEvent(TaskFailedEvent)
+
+            Executor --> Client : TaskResult(FAILED)
+            deactivate Executor
+        end
+    end
+
+    note right : 继续执行 Stage-4, 5, ...
+end
+
+Executor -> DomainService : completeTask(task, context)
+DomainService -> Task : complete()
+Task -> Task : status = COMPLETED
+
+Executor -> Checkpoint : clearCheckpoint(task)
+Checkpoint -> Storage : delete(taskId)
+
+Executor --> Client : TaskResult(COMPLETED)
+deactivate Executor
+
+note right of Checkpoint
+  Checkpoint 设计：
+  - 保存最后完成的Stage索引
+  - 保存上下文数据
+  - 失败后从下一个Stage继续
+  - 避免重复执行已完成的Stage
+end note
+
+@enduml
+
+' ============================================
+' 子视图 5: 协作式暂停机制
+' ============================================
+@startuml 进程视图-协作式暂停
+
+title 进程视图 - 协作式暂停机制
+
+participant "Client" as Client
+participant "TaskRuntimeContext" as Context
+participant "TaskExecutor" as Executor
+participant "TaskStage" as Stage
+participant "TaskAggregate" as Task
+database "Checkpoint" as CP
+
+note over Client, CP
+  协作式暂停原则：
+  - Stage是原子单元，执行中不可暂停
+  - 只在Stage边界检查暂停标志
+  - 暂停时保存Checkpoint
+end note
+
+Client -> Context : requestPause()
+activate Context
+Context -> Context : pauseRequested = true
+Context --> Client : void
+deactivate Context
+
+note right of Context : 仅设置标志，不立即暂停
+
+... Task继续执行当前Stage ...
+
+Executor -> Stage : execute(context)
+activate Stage
+Stage -> Stage : 执行所有Step\n(不可中断)
+Stage --> Executor : StageResult(SUCCESS)
+deactivate Stage
+
+note right of Executor : Stage完成后才检查暂停标志
+
+Executor -> Context : isPauseRequested()
+activate Context
+Context --> Executor : true
+deactivate Context
+
+Executor -> Executor : canTransition(task, PAUSED)?
+
+alt 允许暂停
+    Executor -> Task : confirmPause()
+    activate Task
+    Task -> Task : status = PAUSED
+    Task -> Task : addDomainEvent(TaskPausedEvent)
+    Task --> Executor : void
+    deactivate Task
+
+    Executor -> CP : saveCheckpoint(task, completedStages, currentIndex)
+    activate CP
+    CP --> Executor : void
+    deactivate CP
+
+    note right of CP
+      Checkpoint保存：
+      - 当前完成的Stage列表
+      - 下次从下一个Stage开始
+    end note
+
+    Executor --> Client : TaskResult(status=PAUSED)
+else 不允许暂停（状态不符）
+    note right of Executor
+      场景：Task已经COMPLETED
+      忽略暂停请求，返回COMPLETED
+    end note
+
+    Executor --> Client : TaskResult(status=COMPLETED)
+end
+
+note over Client, CP
+  暂停时机说明：
+  1. Stage-0 执行中 → 不能暂停
+  2. Stage-0 完成，检查标志 → 可以暂停
+  3. 暂停后，Stage-1 未执行
+  4. 恢复时从 Stage-1 开始
+end note
+
+@enduml
+
+' ============================================
+' 子视图 6: Stage 内部执行流程
+' ============================================
+@startuml 进程视图-Stage执行流程
+
+title 进程视图 - Stage 内部执行流程
+
+participant "TaskExecutor" as Executor
+participant "TaskStage" as Stage
+participant "StageStep" as Step
+participant "TaskRuntimeContext" as Context
+database "External\nService" as External
+
+Executor -> Stage : execute(context)
+activate Stage
+
+Stage -> Stage : startTime = now()
+Stage -> Context : injectMDC(stageName)
+
+loop for each Step in steps
+    Stage -> Step : getStepName()
+    Step --> Stage : "RedisWrite" / "HttpRequest" / "HealthCheck"
+
+    Stage -> Stage : log.info("执行Step: {}", stepName)
+
+    Stage -> Step : execute(context)
+    activate Step
+
+    alt Step Type: RedisKeyValueWriteStep
+        Step -> Context : getRedisClient()
+        Step -> External : redis.set(key, value)
+        External --> Step : OK
+    else Step Type: HttpRequestStep
+        Step -> Context : getHttpClient()
+        Step -> External : httpClient.post(url, body)
+        External --> Step : Response(200)
+    else Step Type: HealthCheckStep
+        Step -> Context : getHealthCheckClient()
+
+        loop 最多10次，每3秒
+            Step -> External : GET /health
+            External --> Step : {"version": "1.0.0"}
+
+            alt 版本匹配
+                Step -> Step : break
+            else 版本不匹配
+                Step -> Step : sleep(3s)
+            end
+        end
+
+        alt 超过最大次数
+            Step -> Step : throw HealthCheckTimeoutException
+        end
+    else Step Type: PubSubBroadcastStep
+        Step -> Context : getRedisClient()
+        Step -> External : redis.publish(channel, message)
+        External --> Step : subscribers count
+    end
+
+    alt Step执行成功
+        Step --> Stage : void
+        deactivate Step
+    else Step执行失败
+        Step --> Stage : throw Exception
+        deactivate Step
+
+        Stage -> Stage : log.error("Step失败: {}", stepName)
+        Stage -> Stage : failureInfo = FailureInfo.of(...)
+        Stage -> Stage : endTime = now()
+        Stage --> Executor : StageResult(FAILED, failureInfo)
+        deactivate Stage
+    end
+end
+
+Stage -> Stage : endTime = now()
+Stage -> Stage : duration = endTime - startTime
+Stage -> Context : clearMDC()
+Stage --> Executor : StageResult(SUCCESS, duration)
+deactivate Stage
+
+note right of Stage
+  Stage 特性：
+  - 原子执行单元
+  - 所有Step必须全部成功
+  - 任意Step失败 → Stage失败
+  - 不支持部分成功
+end note
+
+note right of Step
+  Step 类型（当前支持）：
+  1. RedisKeyValueWriteStep - 写Redis
+  2. HttpRequestStep - HTTP调用
+  3. HealthCheckStep - 健康检查（轮询）
+  4. PubSubBroadcastStep - 发布消息
+
+  扩展方式：
+  - 实现 StageStep 接口
+  - 添加到 StageFactory
+end note
+
+@enduml
+

@@ -1,0 +1,41 @@
+@startuml Plan事件到执行桥接
+
+title Plan 事件 → 应用层桥接 → 编排/执行（解耦示意）
+
+actor Operator
+participant PlanAgg as "PlanAggregate"
+participant PlanDS as "PlanDomainService"
+participant Pub as "DomainEventPublisher\n(Spring)"
+participant StartedL as "PlanStartedListener"
+participant Facade as "PlanExecutionFacade"
+participant Orch as "TaskExecutionOrchestrator"
+participant Exec as "TaskExecutor"
+participant TaskDS as "TaskDomainService"
+
+== 创建与启动 ==
+Operator -> PlanAgg : start()
+PlanAgg -> PlanAgg : 状态 READY -> RUNNING
+PlanAgg -> PlanDS : addDomainEvent(PlanStartedEvent)
+PlanDS -> Pub : publish(PlanStartedEvent)
+
+note right of Pub
+  事件发布到 Spring 本地事件总线
+  进程内 @EventListener 自监听
+  无跨聚合直接调用
+end note
+
+Pub -> StartedL : PlanStartedEvent
+StartedL -> Facade : executePlan(planId)
+Facade -> Orch : orchestrate(planId)
+Orch -> Exec ** : new TaskExecutor(...)
+Orch -> Exec : execute() [async]
+Exec -> TaskDS : startTask(task, ctx)
+TaskDS --> Exec : TaskStartedEvent
+... 执行 Stage 循环（参考 execution-engine-internal） ...
+
+note over PlanAgg, Exec
+  解耦：Plan 不直接依赖 Task/Executor
+  通过事件 + 应用层监听器桥接
+end note
+
+@enduml

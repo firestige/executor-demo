@@ -147,7 +147,7 @@ public class TaskOperationService {
     public TaskOperationResult retryTaskByTenant(
             TenantId tenantId,
             boolean fromCheckpoint,
-            java.util.function.Function<TaskWorkerCreationContext, TaskExecutor> executorCreator) {
+            Function<TaskWorkerCreationContext, TaskExecutor> executorCreator) {
         logger.info("[TaskOperationService] 重试租户任务: {}, fromCheckpoint: {}",
                     tenantId, fromCheckpoint);
 

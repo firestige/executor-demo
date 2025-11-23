@@ -1,0 +1,354 @@
+@startuml 执行机内部-类图
+
+title 执行机内部结构类图（Execution Engine Internal Class Diagram）
+
+package "Execution Core" {
+  class TaskExecutor {
+    - planId: PlanId
+    - task: TaskAggregate
+    - stages: List<TaskStage>
+    - context: TaskRuntimeContext
+    - taskDomainService: TaskDomainService
+    - stateTransitionService: StateTransitionService
+    - checkpointService: CheckpointService
+    - conflictManager: TenantConflictManager
+    - heartbeatScheduler: HeartbeatScheduler
+    - metrics: MetricsRegistry
+    - progressIntervalSeconds: int
+    --
+    + execute(): TaskResult
+    + startHeartbeat(): void
+    + stopHeartbeat(): void
+  }
+
+  class HeartbeatScheduler {
+    - task: TaskAggregate
+    - publisher: ApplicationEventPublisher
+    - intervalSeconds: int
+    - metrics: MetricsRegistry
+    - running: boolean
+    --
+    + start(): void
+    + stop(): void
+    + isRunning(): boolean
+  }
+
+  interface TaskStage {
+    + getName(): String
+    + getSteps(): List<StageStep>
+    + canSkip(ctx: TaskRuntimeContext): boolean
+    + execute(ctx: TaskRuntimeContext): StageResult
+    + rollback(ctx: TaskRuntimeContext): void
+  }
+
+  interface StageStep {
+    + getStepName(): String
+    + execute(ctx: TaskRuntimeContext): void
+  }
+
+  class StageResult {
+    - stageName: String
+    - status: StageStatus
+    - duration: Duration
+    - failureInfo: FailureInfo
+    --
+    + isSuccess(): boolean
+    + isFailed(): boolean
+  }
+
+  enum StageStatus {
+    PENDING
+    RUNNING
+    COMPLETED
+    FAILED
+    SKIPPED
+  }
+}
+
+package "Domain Services" {
+  class TaskDomainService {
+    + startTask(task, ctx): TaskOperationResult
+    + pauseTask(task, ctx): TaskOperationResult
+    + resumeTask(task, ctx): TaskOperationResult
+    + completeTask(task, ctx): TaskOperationResult
+    + failTask(task, failureInfo, ctx): TaskOperationResult
+    + startStage(task, stageName, totalSteps): void
+    + completeStage(task, stageName, duration, ctx): void
+    + failStage(task, stageName, failureInfo): void
+    + startRollback(task): void
+    + completeRollback(task): void
+    + failRollback(task, failureInfo): void
+    + publishCollectedEvents(): void
+  }
+
+  class StateTransitionService {
+    + canTransition(task, targetStatus, ctx): boolean
+    + validateTransition(current, target): void
+  }
+
+  interface DomainEventPublisher {
+    + publishEvents(events): void
+    + publish(event): void
+  }
+}
+
+package "Application Services" {
+  class CheckpointService {
+    + saveCheckpoint(task, completedStages, lastIndex): void
+    + loadCheckpoint(task): TaskCheckpoint
+    + clearCheckpoint(task): void
+  }
+}
+
+package "Runtime Context" {
+  class TaskRuntimeContext {
+    - taskId: TaskId
+    - planId: PlanId
+    - pauseRequested: boolean
+    - cancelRequested: boolean
+    - rollbackRequested: boolean
+    - mdcInjected: boolean
+    --
+    + requestPause(): void
+    + requestCancel(): void
+    + requestRollback(): void
+    + isPauseRequested(): boolean
+    + isCancelRequested(): boolean
+    + isRollbackRequested(): boolean
+    + injectMdc(stageName): void
+    + clearMdc(): void
+  }
+}
+
+package "Conflict & Metrics" {
+  class TenantConflictManager {
+    + tryAcquire(tenantId, taskId): boolean
+    + release(tenantId): void
+    + isConflict(tenantId): boolean
+  }
+
+  interface MetricsRegistry {
+    + incrementCounter(name): void
+    + recordTime(name, duration): void
+  }
+}
+
+TaskExecutor --> TaskDomainService
+TaskExecutor --> StateTransitionService
+TaskExecutor --> CheckpointService
+TaskExecutor --> HeartbeatScheduler
+TaskExecutor --> TaskRuntimeContext
+TaskExecutor --> TenantConflictManager
+TaskExecutor --> MetricsRegistry
+TaskExecutor --> TaskStage
+TaskStage --> StageStep
+StageResult --> FailureInfo
+StageResult --> StageStatus
+HeartbeatScheduler --> TaskAggregate
+
+@enduml
+
+@startuml 执行机内部-正常执行时序
+
+title 正常执行路径（PENDING -> RUNNING -> COMPLETED）
+actor Caller
+participant Orchestrator as "TaskExecutionOrchestrator"
+participant Executor as "TaskExecutor"
+participant StateCheck as "StateTransitionService"
+participant DomainSvc as "TaskDomainService"
+participant Ckpt as "CheckpointService"
+participant HB as "HeartbeatScheduler"
+participant Stage as "TaskStage"
+
+Caller -> Orchestrator : orchestrate(planId, tasks, ExecuteStrategy)
+loop each task
+  Orchestrator -> Executor ** : new TaskExecutor(...)
+  Orchestrator -> Executor : execute() [async]
+  Executor -> StateCheck : canTransition(task, RUNNING)
+  StateCheck --> Executor : true
+  Executor -> DomainSvc : startTask(task, ctx)
+  DomainSvc --> Executor : ok
+  Executor -> HB : start()
+  Executor -> Ckpt : loadCheckpoint(task)
+  Ckpt --> Executor : (null or TaskCheckpoint)
+  loop stages
+    Executor -> DomainSvc : startStage(task, name, steps)
+    DomainSvc --> Executor : void
+    Executor -> Stage : execute(ctx)
+    Stage --> Executor : StageResult
+    alt success
+      Executor -> DomainSvc : completeStage(task, name, duration, ctx)
+      DomainSvc --> Executor : void
+      Executor -> Ckpt : saveCheckpoint(task,...)
+    else failed
+      Executor -> DomainSvc : failStage(task, name, failureInfo)
+      Executor -> DomainSvc : failTask(task, failureInfo, ctx)
+      Executor -> HB : stop()
+      Executor -> Ckpt : saveCheckpoint(task,...)
+      Executor --> Orchestrator : TaskResult(FAILED)
+      break
+    end
+    alt pauseRequested
+      Executor -> DomainSvc : pauseTask(task, ctx)
+      Executor -> HB : stop()
+      Executor -> Ckpt : saveCheckpoint(task,...)
+      Executor --> Orchestrator : TaskResult(PAUSED)
+      break
+    else cancelRequested
+      Executor -> DomainSvc : failTask(task, FailureInfo(CANCELLED), ctx)
+      Executor -> HB : stop()
+      Executor -> Ckpt : saveCheckpoint(task,...)
+      Executor --> Orchestrator : TaskResult(CANCELLED)
+      break
+    end
+  end
+  alt reached end without failure/pause
+    Executor -> StateCheck : canTransition(task, COMPLETED)
+    StateCheck --> Executor : true
+    Executor -> DomainSvc : completeTask(task, ctx)
+    DomainSvc --> Executor : ok
+    Executor -> HB : stop()
+    Executor -> Ckpt : clearCheckpoint(task)
+    Executor --> Orchestrator : TaskResult(COMPLETED)
+  end
+end
+@enduml
+
+@startuml 执行机内部-重试执行时序
+
+title 重试执行路径（FAILED -> RUNNING from checkpoint）
+participant Executor
+participant StateCheck
+participant DomainSvc
+participant Ckpt
+participant Stage
+
+Executor -> StateCheck : canTransition(task, RUNNING)
+StateCheck --> Executor : true
+Executor -> DomainSvc : resumeTask(task, ctx)
+DomainSvc --> Executor : ok (TaskResumedEvent)
+Executor -> Ckt : loadCheckpoint(task)
+Ckt --> Executor : TaskCheckpoint(lastCompleted=2)
+Executor -> Executor : startIndex = lastCompleted + 1
+loop remaining stages (i >= startIndex)
+  Executor -> DomainSvc : startStage(task, name, steps)
+  DomainSvc --> Executor : void
+  Executor -> Stage : execute(ctx)
+  Stage --> Executor : StageResult
+  alt success
+    Executor -> DomainSvc : completeStage(...)
+    Executor -> Ckt : saveCheckpoint(...)
+  else failed
+    Executor -> DomainSvc : failStage(...)
+    Executor -> DomainSvc : failTask(...)
+    Executor -> Ckt : saveCheckpoint(...)
+    Executor --> : TaskResult(FAILED)
+    break
+  end
+end
+alt all remaining succeeded
+  Executor -> DomainSvc : completeTask(task, ctx)
+  Executor -> Ckt : clearCheckpoint(task)
+  Executor --> : TaskResult(COMPLETED)
+end
+@enduml
+
+@startuml 执行机内部-暂停与恢复时序
+
+title 暂停与恢复（RUNNING -> PAUSED -> RUNNING）
+participant Executor
+participant DomainSvc
+participant Ckpt
+participant Stage
+
+== 执行阶段中 ==
+Executor -> Stage : execute(ctx)
+Stage --> Executor : StageResult(SUCCESS)
+Executor -> Executor : check pauseRequested == true
+alt pauseRequested
+  Executor -> DomainSvc : pauseTask(task, ctx)
+  DomainSvc --> Executor : ok (TaskPausedEvent)
+  Executor -> Ckt : saveCheckpoint(task,...)
+  Executor --> : TaskResult(PAUSED)
+end
+
+== 恢复 ==
+Executor -> DomainSvc : resumeTask(task, ctx)
+DomainSvc --> Executor : ok (TaskResumedEvent)
+Executor -> Ckt : loadCheckpoint(task)
+Ckt --> Executor : TaskCheckpoint(lastCompletedIndex)
+Executor -> Executor : startIndex = lastCompletedIndex + 1
+Executor -> Stage : execute(ctx) [continue]
+@enduml
+
+@startuml 执行机内部-回滚时序
+
+title 回滚流程（FAILED -> ROLLING_BACK -> ROLLED_BACK）
+participant Executor
+participant StateCheck
+participant DomainSvc
+participant Stage
+
+Executor -> StateCheck : canTransition(task, ROLLING_BACK)
+StateCheck --> Executor : true
+Executor -> DomainSvc : startRollback(task)
+DomainSvc --> Executor : ok (TaskRollingBackEvent)
+Executor -> Executor : for completedStages in reverse order
+loop reverse completed stages
+  Executor -> Stage : rollback(ctx)
+  alt rollback success
+    Executor -> Executor : record stage rollback success
+  else rollback failed
+    Executor -> DomainSvc : failRollback(task, failureInfo)
+    Executor --> : TaskResult(ROLLBACK_FAILED)
+    break
+  end
+end
+alt all rolled back
+  Executor -> DomainSvc : completeRollback(task)
+  DomainSvc --> Executor : ok (TaskRolledBackEvent)
+  Executor --> : TaskResult(ROLLED_BACK)
+end
+@enduml
+
+@startuml 执行机内部-错误分支总览
+
+title 错误与控制分支总览（Stage 完成后统一决策）
+participant Executor
+participant DomainSvc
+participant Ckpt
+participant HB
+
+Executor -> Executor : StageResult(result)
+alt result.isFailed()
+  Executor -> DomainSvc : failStage(...)
+  Executor -> DomainSvc : failTask(...)
+  Executor -> HB : stop()
+  Executor -> Ckt : saveCheckpoint(...)
+  note right of Executor
+    输出: TaskResult(FAILED)
+    事件: TaskStageFailedEvent + TaskFailedEvent
+  end note
+else pauseRequested
+  Executor -> DomainSvc : pauseTask(...)
+  Executor -> HB : stop()
+  Executor -> Ckt : saveCheckpoint(...)
+  note right
+    输出: TaskResult(PAUSED)
+    事件: TaskPausedEvent
+  end note
+else cancelRequested
+  Executor -> DomainSvc : failTask(... FailureInfo(CANCELLED) ...)
+  Executor -> HB : stop()
+  Executor -> Ckt : saveCheckpoint(...)
+  note right
+    输出: TaskResult(CANCELLED)
+    事件: TaskFailedEvent (类型 CANCELLED)
+  end note
+else continue
+  note right
+    输出: 继续下一个 Stage
+    事件: TaskStageCompletedEvent
+  end note
+end
+@enduml

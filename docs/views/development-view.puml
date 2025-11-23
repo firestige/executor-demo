@@ -1,0 +1,758 @@
+@startuml 开发视图-概览
+
+title 开发视图 - DDD 分层架构概览
+
+package "xyz.firestige.deploy" {
+
+  package "facade" <<Rectangle>> #LightBlue {
+  }
+
+  package "application" <<Rectangle>> #LightGreen {
+  }
+
+  package "domain" <<Rectangle>> #LightYellow {
+  }
+
+  package "infrastructure" <<Rectangle>> #LightGray {
+  }
+
+  package "config" <<Rectangle>> #LightCyan {
+  }
+
+  package "autoconfigure" <<Rectangle>> #LightCyan {
+  }
+}
+
+note right of facade
+  防腐层
+  - DTO 转换
+  - 参数校验
+  - 异常转换
+end note
+
+note right of application
+  应用服务层
+  - 用例编排
+  - 事务边界
+  - 跨聚合协调
+end note
+
+note right of domain
+  领域层
+  - 业务规则
+  - 领域逻辑
+  - 聚合根
+  - 领域服务
+end note
+
+note right of infrastructure
+  基础设施层
+  - 持久化实现
+  - 执行引擎
+  - 外部集成
+end note
+
+note right of config
+  配置层
+  - Spring配置
+  - 属性配置
+end note
+
+note right of autoconfigure
+  自动配置
+  - Spring Boot
+  自动装配
+end note
+
+facade -down-> application : 依赖
+application -down-> domain : 依赖
+infrastructure -up-> domain : 依赖倒置
+config -down-> infrastructure : 配置
+config -down-> application : 配置
+autoconfigure -down-> config : 使用
+
+note right of domain
+  核心原则：
+  - 不依赖外层
+  - 定义接口
+  - 纯领域逻辑
+end note
+
+note right of infrastructure
+  实现原则：
+  - 实现 Domain 接口
+  - 不被 Domain 依赖
+  - 包含执行引擎
+end note
+
+@enduml
+
+' ============================================
+' 子视图 1: Facade 层详细设计
+' ============================================
+@startuml 开发视图-Facade层
+
+title 开发视图 - Facade 层（防腐层）
+
+package "xyz.firestige.deploy.facade" {
+
+  class DeploymentTaskFacade {
+    - planLifecycleAppService: PlanLifecycleApplicationService
+    - taskOperationAppService: TaskOperationApplicationService
+    - validationChain: ValidationChain
+    --
+    + createSwitchTask(configs): TaskCreationResult
+    + startPlanById(planId): PlanOperationResult
+    + pausePlanById(planId): PlanOperationResult
+    + resumePlanById(planId): PlanOperationResult
+    + retryTaskByPlan(planId, fromCheckpoint): PlanOperationResult
+    + pauseTaskByTenant(tenantId): TaskOperationResult
+    + resumeTaskByTenant(tenantId): TaskOperationResult
+    + cancelTaskByTenant(tenantId, reason): TaskOperationResult
+    + rollbackTaskByTenant(tenantId): TaskOperationResult
+    + getPlanProgress(planId): PlanProgressDTO
+    + getTaskStatus(tenantId): TaskStatusDTO
+  }
+
+  package "dto" {
+    class TaskCreationResult {
+      - planId: String
+      - taskIds: List<String>
+      - totalTasks: int
+    }
+
+    class PlanOperationResult {
+      - success: boolean
+      - planId: String
+      - message: String
+    }
+
+    class TaskOperationResult {
+      - success: boolean
+      - taskId: String
+      - status: String
+      - message: String
+    }
+
+    class PlanProgressDTO {
+      - planId: String
+      - status: String
+      - progress: double
+      - completedTasks: int
+      - totalTasks: int
+    }
+
+    class TaskStatusDTO {
+      - taskId: String
+      - tenantId: String
+      - status: String
+      - currentStage: String
+      - progress: double
+    }
+
+    class TenantDeployConfig {
+      - tenantId: String
+      - targetVersion: Long
+      - deployUnit: String
+      - serviceConfigs: List<ServiceConfig>
+    }
+  }
+}
+
+DeploymentTaskFacade ..> TaskCreationResult : creates
+DeploymentTaskFacade ..> PlanOperationResult : returns
+DeploymentTaskFacade ..> TaskOperationResult : returns
+DeploymentTaskFacade ..> PlanProgressDTO : returns
+DeploymentTaskFacade ..> TaskStatusDTO : returns
+DeploymentTaskFacade ..> TenantDeployConfig : receives
+
+note right of DeploymentTaskFacade
+  Facade 职责：
+  - 统一对外 API
+  - DTO 与领域对象转换
+  - 参数校验
+  - 异常捕获和转换
+  - 不包含业务逻辑
+end note
+
+@enduml
+
+' ============================================
+' 子视图 2: Application 层详细设计
+' ============================================
+@startuml 开发视图-Application层
+
+title 开发视图 - Application 层（应用服务层）
+
+package "xyz.firestige.deploy.application" {
+
+  package "lifecycle" {
+    class PlanLifecycleApplicationService {
+      - planDomainService: PlanDomainService
+      - taskDomainService: TaskDomainService
+      - validationService: ValidationService
+      - planRepository: PlanRepository
+      - taskRepository: TaskRepository
+      --
+      + createPlanWithTasks(configs): PlanCreationResult
+      + startPlan(planId): PlanOperationResult
+      + pausePlan(planId): PlanOperationResult
+      + resumePlan(planId): PlanOperationResult
+    }
+
+    class TaskOperationApplicationService {
+      - taskDomainService: TaskDomainService
+      - taskRepository: TaskRepository
+      - conflictManager: TenantConflictManager
+      --
+      + pauseTask(taskId): TaskOperationResult
+      + resumeTask(taskId): TaskOperationResult
+      + cancelTask(taskId, reason): TaskOperationResult
+      + rollbackTask(taskId): TaskOperationResult
+    }
+  }
+
+  package "orchestration" {
+    class TaskExecutionOrchestrator {
+      - taskWorkerFactory: TaskWorkerFactory
+      - taskRuntimeRepository: TaskRuntimeRepository
+      - executorService: ExecutorService
+      - concurrencyLimit: Semaphore
+      - maxConcurrency: int
+      --
+      + orchestrate(planId, tasks, action, actionName): void
+      + executeAsync(task): Future<TaskResult>
+    }
+
+    interface ExecutionStrategy {
+      + execute(executor, task): void
+    }
+
+    class ExecuteStrategy implements ExecutionStrategy
+    class ResumeStrategy implements ExecutionStrategy
+    class RetryStrategy implements ExecutionStrategy
+    class RollbackStrategy implements ExecutionStrategy
+  }
+
+  package "validation" {
+    class ValidationService {
+      - validationChain: ValidationChain
+      --
+      + validateTenantConfig(config): ValidationResult
+      + validatePlan(plan): ValidationResult
+    }
+
+    interface ValidationChain {
+      + validate(config): ValidationResult
+    }
+  }
+
+  package "checkpoint" {
+    class CheckpointService {
+      - checkpointRepository: CheckpointRepository
+      --
+      + saveCheckpoint(task, stages, index): void
+      + loadCheckpoint(task): TaskCheckpoint
+      + clearCheckpoint(task): void
+    }
+  }
+
+  package "conflict" {
+    class TenantConflictManager {
+      - runningTenants: ConcurrentMap<TenantId, TaskId>
+      --
+      + tryAcquire(tenantId, taskId): boolean
+      + release(tenantId): void
+      + isConflict(tenantId): boolean
+    }
+  }
+}
+
+PlanLifecycleApplicationService --> TaskExecutionOrchestrator : uses
+TaskOperationApplicationService --> TaskExecutionOrchestrator : uses
+TaskExecutionOrchestrator --> ExecutionStrategy : uses
+PlanLifecycleApplicationService --> ValidationService : uses
+TaskExecutionOrchestrator --> CheckpointService : uses
+TaskExecutionOrchestrator --> TenantConflictManager : uses
+
+note right of PlanLifecycleApplicationService
+  Plan 生命周期管理：
+  - 创建 Plan 和 Tasks
+  - 启动/暂停/恢复 Plan
+  - 协调领域服务
+  - 定义事务边界
+end note
+
+note right of TaskExecutionOrchestrator
+  任务编排器：
+  - 管理线程池
+  - 并发控制（Semaphore）
+  - 异步执行 Task
+  - 策略模式
+end note
+
+@enduml
+
+' ============================================
+' 子视图 3: Domain 层详细设计
+' ============================================
+@startuml 开发视图-Domain层
+
+title 开发视图 - Domain 层（领域层）
+
+package "xyz.firestige.deploy.domain" {
+
+  package "plan" {
+    class PlanAggregate <<Aggregate Root>>
+    enum PlanStatus
+    class PlanDomainService <<Domain Service>>
+    interface PlanRepository <<Repository>>
+
+    package "event" {
+      abstract class PlanStatusEvent
+      class PlanStartedEvent
+      class PlanCompletedEvent
+    }
+  }
+
+  package "task" {
+    class TaskAggregate <<Aggregate Root>>
+    enum TaskStatus
+    class TaskDomainService <<Domain Service>>
+    interface TaskRepository <<Repository>>
+    interface CheckpointRepository <<Repository>>
+    interface TaskRuntimeRepository <<Repository>>
+    class StateTransitionService <<Domain Service>>
+    class TaskRuntimeContext <<Value Object>>
+    class TaskCheckpoint <<Value Object>>
+    class StageProgress <<Value Object>>
+
+    package "event" {
+      abstract class TaskStatusEvent
+      abstract class TaskStageStatusEvent
+      class TaskStartedEvent
+      class TaskStageStartedEvent
+      class TaskCompletedEvent
+    }
+  }
+
+  package "stage" {
+    package "config" {
+      interface ServiceConfig
+      class BlueGreenGatewayConfig
+      class PortalConfig
+      class ASBCGatewayConfig
+    }
+
+    package "factory" {
+      interface ServiceConfigFactory
+      class BlueGreenGatewayConfigFactory
+      class PortalConfigFactory
+      class ServiceConfigFactoryComposite
+    }
+
+    package "model" {
+      class BlueGreenGatewayRedisValue
+      class RouteInfo
+      class ObConfig
+    }
+  }
+
+  package "shared" {
+    package "vo" {
+      class PlanId <<Value Object>>
+      class TaskId <<Value Object>>
+      class TenantId <<Value Object>>
+      class DeployVersion <<Value Object>>
+      class TimeRange <<Value Object>>
+    }
+
+    package "exception" {
+      class FailureInfo <<Value Object>>
+      enum ErrorType
+    }
+
+    package "event" {
+      abstract class DomainEvent
+      interface DomainEventPublisher
+    }
+
+    package "validation" {
+      class ValidationResult <<Value Object>>
+      class ValidationError <<Value Object>>
+    }
+  }
+}
+
+PlanAggregate --> PlanStatus
+PlanAggregate ..> PlanStatusEvent : produces
+PlanDomainService --> PlanRepository
+PlanDomainService --> PlanAggregate
+
+TaskAggregate --> TaskStatus
+TaskAggregate ..> TaskStatusEvent : produces
+TaskDomainService --> TaskRepository
+TaskDomainService --> TaskAggregate
+StateTransitionService --> TaskStatus
+
+ServiceConfigFactory ..> ServiceConfig : creates
+ServiceConfigFactoryComposite --> ServiceConfigFactory : composite
+
+note right of "plan"
+  Plan 聚合包：
+  - 聚合根
+  - 领域服务
+  - 仓储接口
+  - 领域事件
+end note
+
+note right of "task"
+  Task 聚合包：
+  - 聚合根
+  - 领域服务
+  - 仓储接口
+  - 领域事件
+  - 运行时上下文
+end note
+
+note right of "stage"
+  Stage 配置包：
+  - 服务配置接口
+  - 配置工厂
+  - 配置模型
+end note
+
+note right of "shared"
+  共享包：
+  - 值对象
+  - 异常定义
+  - 事件基类
+  - 校验结果
+end note
+
+@enduml
+
+' ============================================
+' 子视图 4: Infrastructure 层详细设计
+' ============================================
+@startuml 开发视图-Infrastructure层
+
+title 开发视图 - Infrastructure 层（基础设施层）
+
+package "xyz.firestige.deploy.infrastructure" {
+
+  package "execution" {
+    class TaskExecutor {
+      - planId: PlanId
+      - task: TaskAggregate
+      - stages: List<TaskStage>
+      - context: TaskRuntimeContext
+      - taskDomainService: TaskDomainService
+      - stateTransitionService: StateTransitionService
+      - checkpointService: CheckpointService
+      - heartbeatScheduler: HeartbeatScheduler
+      --
+      + execute(): TaskResult
+      + startHeartbeat(): void
+      + stopHeartbeat(): void
+    }
+
+    class HeartbeatScheduler {
+      - task: TaskAggregate
+      - eventPublisher: ApplicationEventPublisher
+      - intervalSeconds: int
+      - scheduledFuture: ScheduledFuture
+      --
+      + start(): void
+      + stop(): void
+      + isRunning(): boolean
+    }
+
+    interface TaskWorkerFactory {
+      + createTaskExecutor(context): TaskExecutor
+    }
+
+    class DefaultTaskWorkerFactory implements TaskWorkerFactory
+
+    class TaskResult {
+      - planId: PlanId
+      - taskId: TaskId
+      - status: TaskStatus
+      - duration: Duration
+      - completedStages: List<StageResult>
+    }
+
+    class StageResult {
+      - stageName: String
+      - status: StageStatus
+      - duration: Duration
+      - failureInfo: FailureInfo
+    }
+
+    enum StageStatus {
+      PENDING
+      RUNNING
+      COMPLETED
+      FAILED
+      SKIPPED
+    }
+
+    package "stage" {
+      interface TaskStage {
+        + getName(): String
+        + execute(context): StageResult
+        + rollback(context): void
+        + getSteps(): List<StageStep>
+      }
+
+      interface StageStep {
+        + getStepName(): String
+        + execute(context): void
+      }
+
+      class CompositeServiceStage implements TaskStage
+      class ConfigurableServiceStage implements TaskStage
+
+      class StageFactory {
+        + createStages(config): List<TaskStage>
+      }
+
+      package "steps" {
+        class RedisKeyValueWriteStep implements StageStep
+        class HttpRequestStep implements StageStep
+        class HealthCheckStep implements StageStep
+        class PubSubBroadcastStep implements StageStep
+      }
+    }
+  }
+
+  package "persistence" {
+    package "plan" {
+      class InMemoryPlanRepository implements PlanRepository
+    }
+
+    package "task" {
+      class InMemoryTaskRepository implements TaskRepository
+      class InMemoryTaskRuntimeRepository implements TaskRuntimeRepository
+    }
+
+    package "checkpoint" {
+      class RedisCheckpointRepository implements CheckpointRepository
+      class InMemoryCheckpointRepository implements CheckpointRepository
+    }
+  }
+
+  package "redis" {
+    class RedisClient {
+      - redisTemplate: RedisTemplate
+      --
+      + set(key, value, ttl): void
+      + get(key): byte[]
+      + delete(key): void
+      + publish(channel, message): void
+    }
+  }
+
+  package "scheduling" {
+    class TenantConflictManager {
+      - runningTenants: ConcurrentHashMap
+      --
+      + tryAcquire(tenantId, taskId): boolean
+      + release(tenantId): void
+    }
+  }
+
+  package "metrics" {
+    interface MetricsRegistry {
+      + incrementCounter(name): void
+      + recordTime(name, duration): void
+    }
+
+    class NoopMetricsRegistry implements MetricsRegistry
+  }
+
+  package "event" {
+    class DomainEventPublisherImpl implements DomainEventPublisher {
+      - eventPublisher: ApplicationEventPublisher
+      --
+      + publishEvent(event): void
+      + publishEvents(events): void
+    }
+  }
+}
+
+TaskExecutor --> TaskStage : uses
+TaskExecutor --> TaskWorkerFactory : created by
+TaskExecutor --> HeartbeatScheduler : manages
+TaskStage --> StageStep : contains
+
+InMemoryPlanRepository ..> PlanAggregate : persists
+InMemoryTaskRepository ..> TaskAggregate : persists
+RedisCheckpointRepository ..> TaskCheckpoint : persists
+RedisCheckpointRepository --> RedisClient : uses
+
+note right of "execution"
+  执行引擎包：
+  - TaskExecutor（核心）
+  - TaskStage/StageStep
+  - HeartbeatScheduler
+  - 工厂模式
+end note
+
+note right of "persistence"
+  持久化包：
+  - InMemory 仓储
+  - Redis 仓储
+  - 实现 Domain 接口
+end note
+
+note right of TaskExecutor
+  核心执行引擎：
+  - 编排 Stage 执行
+  - 状态转换检查
+  - Checkpoint 管理
+  - 心跳调度
+  - 最重要的业务逻辑！
+end note
+
+@enduml
+
+' ============================================
+' 子视图 5: 依赖关系图
+' ============================================
+@startuml 开发视图-依赖关系
+
+title 开发视图 - 模块依赖关系
+
+package "facade" <<Rectangle>> #LightBlue
+package "application" <<Rectangle>> #LightGreen
+package "domain" <<Rectangle>> #LightYellow
+package "infrastructure" <<Rectangle>> #LightGray
+package "config" <<Rectangle>> #LightCyan
+
+facade -down-> application : 依赖
+application -down-> domain : 依赖
+infrastructure -up-> domain : 依赖倒置\n(实现接口)
+config -down-> application : 装配
+config -down-> infrastructure : 装配
+config -down-> domain : 装配
+
+note right of domain
+  依赖规则：
+  - Domain 不依赖任何外层
+  - Domain 定义 Repository 接口
+  - Domain 定义 DomainEventPublisher 接口
+  - Infrastructure 实现这些接口
+end note
+
+note right of infrastructure
+  依赖倒置：
+  - 实现 PlanRepository
+  - 实现 TaskRepository
+  - 实现 CheckpointRepository
+  - 实现 DomainEventPublisher
+  - 不被 Domain 直接依赖
+end note
+
+note right of application
+  协调层：
+  - 调用 Domain Service
+  - 调用 Repository
+  - 调用 Infrastructure（TaskExecutor）
+  - 定义事务边界
+end note
+
+@enduml
+
+' ============================================
+' 子视图 6: 包结构树状图
+' ============================================
+@startuml 开发视图-包结构树
+
+title 开发视图 - 完整包结构树
+
+@startsalt
+{
+  {T
+    + xyz.firestige.deploy
+    ++ facade
+    +++ DeploymentTaskFacade
+    +++ dto
+    ++++ TaskCreationResult
+    ++++ PlanOperationResult
+    ++++ TenantDeployConfig
+    ++ application
+    +++ lifecycle
+    ++++ PlanLifecycleApplicationService
+    ++++ TaskOperationApplicationService
+    +++ orchestration
+    ++++ TaskExecutionOrchestrator
+    ++++ ExecutionStrategy
+    +++ validation
+    ++++ ValidationService
+    +++ checkpoint
+    ++++ CheckpointService
+    +++ conflict
+    ++++ TenantConflictManager
+    ++ domain
+    +++ plan
+    ++++ PlanAggregate
+    ++++ PlanStatus
+    ++++ PlanDomainService
+    ++++ PlanRepository
+    ++++ event (PlanStatusEvent...)
+    +++ task
+    ++++ TaskAggregate
+    ++++ TaskStatus
+    ++++ TaskDomainService
+    ++++ TaskRepository
+    ++++ StateTransitionService
+    ++++ event (TaskStatusEvent...)
+    +++ stage
+    ++++ config (ServiceConfig...)
+    ++++ factory (ServiceConfigFactory...)
+    ++++ model (BlueGreenGatewayRedisValue...)
+    +++ shared
+    ++++ vo (PlanId, TaskId, TenantId...)
+    ++++ exception (FailureInfo, ErrorType)
+    ++++ event (DomainEvent, DomainEventPublisher)
+    ++++ validation (ValidationResult...)
+    ++ infrastructure
+    +++ execution
+    ++++ TaskExecutor ⭐ CORE
+    ++++ HeartbeatScheduler
+    ++++ TaskWorkerFactory
+    ++++ stage (TaskStage, StageStep...)
+    +++ persistence
+    ++++ plan (InMemoryPlanRepository)
+    ++++ task (InMemoryTaskRepository)
+    ++++ checkpoint (RedisCheckpointRepository)
+    +++ redis
+    ++++ RedisClient
+    +++ scheduling
+    ++++ TenantConflictManager
+    +++ metrics
+    ++++ MetricsRegistry
+    +++ event
+    ++++ DomainEventPublisherImpl
+    ++ config
+    +++ ExecutorProperties
+    +++ ExecutorConfiguration
+    ++ autoconfigure
+    +++ ExecutorAutoConfiguration
+  }
+}
+@endsalt
+
+note right
+  关键说明：
+  - ⭐ TaskExecutor 是核心执行引擎
+  - facade 层对外暴露 API
+  - application 层编排和协调
+  - domain 层定义业务规则和接口
+  - infrastructure 层实现接口和执行逻辑
+  - config 层负责 Spring 装配
+end note
+
+@enduml
+
