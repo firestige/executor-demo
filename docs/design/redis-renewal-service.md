@@ -500,7 +500,7 @@ public class RedisRenewalAutoConfiguration {
 - [Netty HashedWheelTimer](https://netty.io/4.1/api/io/netty/util/HashedWheelTimer.html)
 - [Spring Data Redis](https://docs.spring.io/spring-data/redis/docs/current/reference/html/)
 - [Redis EXPIRE 命令](https://redis.io/commands/expire/)
-- [时间轮算法](https://blog.csdn.net/mindfloating/article/details/8033340)
+- [Hashed and Hierarchical Timing Wheels (论文)](http://www.cs.columbia.edu/~nahum/w6998/papers/ton97-timing-wheels.pdf)
 
 ### 11.2 相关设计
 
