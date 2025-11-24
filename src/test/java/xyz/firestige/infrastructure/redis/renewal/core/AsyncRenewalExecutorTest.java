@@ -10,6 +10,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -39,7 +40,7 @@ class AsyncRenewalExecutorTest {
     }
 
     @Test
-    void submit_success() throws ExecutionException, InterruptedException {
+    void submit_success() throws ExecutionException, InterruptedException, TimeoutException {
         InMemoryRedisClient client = new InMemoryRedisClient(List.of("k1","k2","k3"));
         executor = new AsyncRenewalExecutor(client, 2, 10);
         CompletableFuture<RenewalResult> f = executor.submit("t1", List.of("k1","k2"), 300);

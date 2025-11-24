@@ -20,6 +20,7 @@ public class RenewalContext {
     private final Instant startTime;
     private final AtomicLong renewalCount;
     private volatile Instant lastRenewalTime;
+    private volatile Duration lastCalculatedTtl;
     private final AtomicLong totalSuccessCount;
     private final AtomicLong totalFailureCount;
     private final Map<String, Object> attributes;
@@ -74,6 +75,20 @@ public class RenewalContext {
      */
     public void setLastRenewalTime(Instant lastRenewalTime) {
         this.lastRenewalTime = lastRenewalTime;
+    }
+
+    /**
+     * 获取上次计算的 TTL
+     */
+    public Duration getLastCalculatedTtl() {
+        return lastCalculatedTtl;
+    }
+
+    /**
+     * 设置上次计算的 TTL
+     */
+    public void setLastCalculatedTtl(Duration ttl) {
+        this.lastCalculatedTtl = ttl;
     }
 
     /**

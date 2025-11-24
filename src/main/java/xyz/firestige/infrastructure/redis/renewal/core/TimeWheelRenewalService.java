@@ -70,6 +70,10 @@ public class TimeWheelRenewalService implements KeyRenewalService {
         Collection<String> keys = task.getKeySelector().selectKeys(ctx);
         Duration ttl = task.getTtlStrategy().calculateTtl(ctx);
         long ttlSeconds = Math.max(ttl.getSeconds(), 1);
+
+        // 记录 TTL 供自适应策略使用
+        ctx.setLastCalculatedTtl(ttl);
+
         executor.submit(wrapper.id(), keys, ttlSeconds)
                 .whenComplete((result, error) -> {
                     // 更新上下文
@@ -144,3 +148,4 @@ public class TimeWheelRenewalService implements KeyRenewalService {
         log.info("TimeWheelRenewalService 已关闭");
     }
 }
+

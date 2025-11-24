@@ -5,14 +5,36 @@ import xyz.firestige.infrastructure.redis.renewal.api.RenewalIntervalStrategy;
 
 import java.time.Duration;
 
+/**
+ * 自适应间隔策略
+ * <p>根据上次计算的 TTL 动态调整续期间隔
+ */
 public class AdaptiveIntervalStrategy implements RenewalIntervalStrategy {
     private final double ratio;
-    public AdaptiveIntervalStrategy(double ratio) { this.ratio = ratio; }
-    @Override public Duration calculateInterval(RenewalContext context) {
-        // 简化：使用固定基准 10s * ratio；后续可在上下文记录上次 TTL
-        long baseMs = 10_000L;
-        return Duration.ofMillis((long)(baseMs * ratio));
+    private final Duration fallback;
+
+    public AdaptiveIntervalStrategy(double ratio) {
+        this(ratio, Duration.ofSeconds(10));
     }
-    @Override public String getName() { return "AdaptiveInterval"; }
+
+    public AdaptiveIntervalStrategy(double ratio, Duration fallback) {
+        this.ratio = ratio;
+        this.fallback = fallback;
+    }
+
+    @Override
+    public Duration calculateInterval(RenewalContext context) {
+        Duration lastTtl = context.getLastCalculatedTtl();
+        if (lastTtl == null) {
+            return fallback;
+        }
+        long intervalMs = (long)(lastTtl.toMillis() * ratio);
+        return Duration.ofMillis(Math.max(intervalMs, 10));
+    }
+
+    @Override
+    public String getName() {
+        return "AdaptiveInterval";
+    }
 }
 
