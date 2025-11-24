@@ -16,6 +16,7 @@ import xyz.firestige.deploy.infrastructure.execution.stage.steps.ConfigWriteStep
 import xyz.firestige.deploy.infrastructure.execution.stage.steps.PollingStep;
 import xyz.firestige.deploy.infrastructure.execution.stage.validator.ResultValidator;
 import xyz.firestige.deploy.infrastructure.execution.stage.validator.ValidationResult;
+import xyz.firestige.deploy.domain.stage.model.ObConfig;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -120,12 +121,11 @@ public class ObServiceStageAssembler implements StageAssembler {
             String key = redisKeyPrefix + config.getTenantId().getValue();
             String field = "ob-campaign";
 
-            xyz.firestige.deploy.domain.stage.model.ObConfig obConfig =
-                new xyz.firestige.deploy.domain.stage.model.ObConfig(
-                    config.getTenantId().getValue(),
-                    extractSourceUnit(config),
-                    extractTargetUnit(config)
-                );
+            ObConfig obConfig = new ObConfig(
+                config.getTenantId().getValue(),
+                extractSourceUnit(config),
+                extractTargetUnit(config)
+            );
 
             String value;
             try {
