@@ -49,6 +49,7 @@
 | RF-19 | Checkpoint / Stage 事件增强 | 精细化 StageStarted/Completed/Failed；恢复补偿进度 |
 | RF-20 | 编排层拆分 | 引入 TaskExecutionOrchestrator 分离执行调度与业务逻辑 |
 | **T-016** | **投影持久化与查询API** | CQRS + Event Sourcing；分布式锁；最小兜底查询 |
+| **T-017** | **配置管理体系** | 完全解耦的配置加载；自动发现；零修改扩展；详见 [配置管理设计](design/configuration-management.md) |
 
 ---
 

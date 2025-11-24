@@ -10,7 +10,6 @@
 ## 待办 (Backlog)
 | ID | 任务 | 负责人 | 优先级 | 备注 |
 |----|------|--------|--------|------|
-| T-017 | 配置文件合并：deploy-stages.yml → application.yml | - | P1 | 将 deploy-stages.yml 合入 Spring 标准配置，统一加载逻辑 |
 | T-018 | Redis 续期服务（通用模块） | - | P1 | 可复用的 Key 续期服务，支持定时续期、条件续期、规则匹配 |
 | T-019 | Redis ACK 服务（通用模块） | - | P1 | 跟踪 Redis 写入 + 服务端点验证，基于 metadata 和 value_extract 函数检查一致性 |
 
