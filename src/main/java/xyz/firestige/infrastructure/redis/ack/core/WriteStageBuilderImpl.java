@@ -34,6 +34,7 @@ public class WriteStageBuilderImpl implements WriteStageBuilder {
     private Object value;
     private Duration ttl;
     private RedisOperation operation;
+    private Double zsetScore; // 仅当 ZADD 时使用
 
     // Footprint 配置
     private FootprintExtractor footprintExtractor;
@@ -134,5 +135,6 @@ public class WriteStageBuilderImpl implements WriteStageBuilder {
     RedisTemplate<String, String> getRedisTemplate() { return redisTemplate; }
     RestTemplate getRestTemplate() { return restTemplate; }
     ObjectMapper getObjectMapper() { return objectMapper; }
+    public void zsetScore(double score) { this.zsetScore = score; }
+    Double getZsetScore() { return zsetScore; }
 }
-

@@ -35,12 +35,17 @@ public class AckTask {
     private final RetryStrategy retryStrategy;
     private final Duration timeout;
 
+    private final Double zsetScore; // ZADD 分数
+    private final org.springframework.data.redis.core.RedisTemplate<String,String> redisTemplate; // 直接使用以便扩展操作
+
     public AckTask(String taskId,
                    String key, String field, Object value, Duration ttl, RedisOperation operation,
                    FootprintExtractor footprintExtractor,
                    String topic, Function<Object, String> messageBuilder,
                    AckEndpoint endpoint, Function<String, String> responseExtractor,
-                   RetryStrategy retryStrategy, Duration timeout) {
+                   RetryStrategy retryStrategy, Duration timeout,
+                   Double zsetScore,
+                   org.springframework.data.redis.core.RedisTemplate<String,String> redisTemplate) {
         this.taskId = taskId;
         this.key = key;
         this.field = field;
@@ -54,6 +59,8 @@ public class AckTask {
         this.responseExtractor = responseExtractor;
         this.retryStrategy = retryStrategy;
         this.timeout = timeout;
+        this.zsetScore = zsetScore;
+        this.redisTemplate = redisTemplate;
     }
 
     // Getters
@@ -71,5 +78,6 @@ public class AckTask {
     public Function<String, String> getResponseExtractor() { return responseExtractor; }
     public RetryStrategy getRetryStrategy() { return retryStrategy; }
     public Duration getTimeout() { return timeout; }
+    Double getZsetScore() { return zsetScore; }
+    org.springframework.data.redis.core.RedisTemplate<String,String> getRedisTemplate() { return redisTemplate; }
 }
-

@@ -90,5 +90,38 @@ public interface WriteStageBuilder {
      * @return Pub/Sub 阶段构建器
      */
     PubSubStageBuilder andPublish();
-}
 
+    /**
+     * 使用 LPUSH 操作将 value 作为列表元素推入（左侧）
+     */
+    default WriteStageBuilder listPush(String listKey, Object element) {
+        key(listKey);
+        value(element);
+        operation(RedisOperation.LPUSH);
+        return this;
+    }
+
+    /**
+     * 使用 SADD 操作将 value 作为集合成员添加
+     */
+    default WriteStageBuilder setAdd(String setKey, Object member) {
+        key(setKey);
+        value(member);
+        operation(RedisOperation.SADD);
+        return this;
+    }
+
+    /**
+     * 使用 ZADD 操作添加排序集合成员，需要指定分数
+     */
+    default WriteStageBuilder zsetAdd(String zsetKey, double score, Object member) {
+        key(zsetKey);
+        value(member);
+        operation(RedisOperation.ZADD);
+        // 由实现类记录 score
+        if (this instanceof xyz.firestige.infrastructure.redis.ack.core.WriteStageBuilderImpl impl) {
+            impl.zsetScore(score);
+        }
+        return this;
+    }
+}

@@ -44,9 +44,20 @@ public class PubSubStageBuilderImpl implements PubSubStageBuilder {
     @Override
     public PubSubStageBuilder messageTemplate(String template) {
         this.messageBuilder = value -> {
-            // 简单的模板替换实现
-            // TODO: Phase 3 可以增强为支持复杂占位符
-            return template;
+            String result = template;
+
+            // 支持 {fieldName} 占位符替换
+            if (value instanceof java.util.Map) {
+                java.util.Map<?, ?> map = (java.util.Map<?, ?>) value;
+                for (java.util.Map.Entry<?, ?> entry : map.entrySet()) {
+                    String placeholder = "{" + entry.getKey() + "}";
+                    if (result.contains(placeholder)) {
+                        result = result.replace(placeholder, String.valueOf(entry.getValue()));
+                    }
+                }
+            }
+
+            return result;
         };
         return this;
     }

@@ -103,6 +103,19 @@ public class AckExecutor {
             } else if (operation == RedisOperation.SET) {
                 redisTemplate.opsForValue().set(task.getKey(), valueStr);
                 log.debug("[ACK] SET {} {}", task.getKey(), valueStr.substring(0, Math.min(50, valueStr.length())));
+            } else if (operation == RedisOperation.LPUSH) {
+                task.getRedisTemplate().opsForList().leftPush(task.getKey(), valueStr);
+                log.debug("[ACK] LPUSH {} {}", task.getKey(), valueStr.substring(0, Math.min(50, valueStr.length())));
+            } else if (operation == RedisOperation.SADD) {
+                task.getRedisTemplate().opsForSet().add(task.getKey(), valueStr);
+                log.debug("[ACK] SADD {} {}", task.getKey(), valueStr.substring(0, Math.min(50, valueStr.length())));
+            } else if (operation == RedisOperation.ZADD) {
+                Double score = task.getZsetScore();
+                if (score == null) {
+                    throw new AckExecutionException("ZADD requires score");
+                }
+                task.getRedisTemplate().opsForZSet().add(task.getKey(), valueStr, score);
+                log.debug("[ACK] ZADD {} {} score={}", task.getKey(), valueStr.substring(0, Math.min(50, valueStr.length())), score);
             } else {
                 throw new UnsupportedOperationException("Operation not yet supported: " + operation);
             }
@@ -208,4 +221,3 @@ public class AckExecutor {
         }
     }
 }
-

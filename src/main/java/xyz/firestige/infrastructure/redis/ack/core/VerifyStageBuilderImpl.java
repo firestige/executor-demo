@@ -5,6 +5,7 @@ import xyz.firestige.infrastructure.redis.ack.endpoint.HttpGetEndpoint;
 import xyz.firestige.infrastructure.redis.ack.endpoint.HttpPostEndpoint;
 import xyz.firestige.infrastructure.redis.ack.extractor.FunctionFootprintExtractor;
 import xyz.firestige.infrastructure.redis.ack.extractor.JsonFieldExtractor;
+import xyz.firestige.infrastructure.redis.ack.extractor.RegexFootprintExtractor;
 import xyz.firestige.infrastructure.redis.ack.retry.FixedDelayRetryStrategy;
 
 import java.time.Duration;
@@ -68,8 +69,8 @@ public class VerifyStageBuilderImpl implements VerifyStageBuilder {
 
     @Override
     public VerifyStageBuilder extractRegex(String pattern) {
-        // TODO: Phase 3 实现 RegexExtractor
-        throw new UnsupportedOperationException("Regex extraction not yet implemented");
+        this.responseExtractor = response -> new RegexFootprintExtractor(pattern).extract(response);
+        return this;
     }
 
     @Override
@@ -92,8 +93,10 @@ public class VerifyStageBuilderImpl implements VerifyStageBuilder {
 
     @Override
     public VerifyStageBuilder retryExponential(int maxAttempts, Duration initialDelay, double multiplier) {
-        // TODO: Phase 3 实现 ExponentialBackoffRetryStrategy
-        throw new UnsupportedOperationException("Exponential backoff not yet implemented");
+        this.retryStrategy = new xyz.firestige.infrastructure.redis.ack.retry.ExponentialBackoffRetryStrategy(
+            maxAttempts, initialDelay, multiplier, Duration.ofSeconds(30)
+        );
+        return this;
     }
 
     @Override
@@ -156,8 +159,9 @@ public class VerifyStageBuilderImpl implements VerifyStageBuilder {
             endpoint,
             responseExtractor,
             retryStrategy,
-            timeout
+            timeout,
+            writeStage.getZsetScore(),
+            writeStage.getRedisTemplate()
         );
     }
 }
-
