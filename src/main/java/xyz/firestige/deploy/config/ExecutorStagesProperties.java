@@ -19,25 +19,55 @@ import java.util.stream.Collectors;
  * prefix: executor.stages
  */
 @ConfigurationProperties(prefix = "executor.stages")
-public class ExecutorStagesProperties implements InitializingBean {
+public class ExecutorStagesProperties implements InitializingBean, org.springframework.context.EnvironmentAware {
     private static final Logger log = LoggerFactory.getLogger(ExecutorStagesProperties.class);
 
     private final Map<String, StageConfigurable> stages = new LinkedHashMap<>();
 
     @NestedConfigurationProperty
-    private BlueGreenGatewayStageConfig blueGreenGateway;
+    private BlueGreenGatewayStageConfig blueGreenGateway = BlueGreenGatewayStageConfig.defaultConfig();
     @NestedConfigurationProperty
-    private PortalStageConfig portal;
+    private PortalStageConfig portal = PortalStageConfig.defaultConfig();
     @NestedConfigurationProperty
-    private ASBCGatewayStageConfig asbcGateway;
+    private ASBCGatewayStageConfig asbcGateway = ASBCGatewayStageConfig.defaultConfig();
+
+    private org.springframework.core.env.Environment environment;
+
+    @Override
+    public void setEnvironment(org.springframework.core.env.Environment environment) {
+        this.environment = environment;
+    }
 
     @Override
     public void afterPropertiesSet() {
         log.info("[ExecutorStagesProperties] 初始化阶段配置开始");
+        applyExplicitEnabledOverrides();
         registerStageConfigurations();
         validateAllConfigurations();
         log.info("[ExecutorStagesProperties] 初始化完成: 总阶段 {} 已启用 {}", stages.size(),
                 stages.values().stream().filter(StageConfigurable::isEnabled).count());
+    }
+
+    private void applyExplicitEnabledOverrides(){
+        if(environment != null){
+            overrideEnabled(environment, "blue-green-gateway", blueGreenGateway);
+            overrideEnabled(environment, "portal", portal);
+            overrideEnabled(environment, "asbc-gateway", asbcGateway);
+        }
+    }
+    private void overrideEnabled(org.springframework.core.env.Environment env, String name, StageConfigurable cfg){
+        String key = "executor.stages."+name+".enabled";
+        String v = env.getProperty(key);
+        if(v != null){
+            boolean b = Boolean.parseBoolean(v);
+            try {
+                java.lang.reflect.Method m = cfg.getClass().getMethod("setEnabled", Boolean.class);
+                m.invoke(cfg, b);
+                log.debug("Override enabled '{}': {}", name, b);
+            } catch (Exception e){
+                log.warn("无法覆盖 enabled 属性 {}: {}", name, e.getMessage());
+            }
+        }
     }
 
     private void registerStageConfigurations() {
@@ -49,6 +79,7 @@ public class ExecutorStagesProperties implements InitializingBean {
                 field.setAccessible(true);
                 Object value = field.get(this);
                 if (!StageConfigurable.class.isAssignableFrom(field.getType())) continue;
+                // Do not replace existing instance (binder may have populated)
                 if (value == null) {
                     value = createDefaultConfig(field.getType());
                     field.set(this, value);
@@ -140,4 +171,3 @@ public class ExecutorStagesProperties implements InitializingBean {
     public ASBCGatewayStageConfig getAsbcGateway() { return asbcGateway; }
     public void setAsbcGateway(ASBCGatewayStageConfig asbcGateway) { this.asbcGateway = asbcGateway; }
 }
-
