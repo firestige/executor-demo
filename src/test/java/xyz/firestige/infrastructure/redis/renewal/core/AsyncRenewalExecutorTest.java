@@ -7,6 +7,7 @@ import xyz.firestige.infrastructure.redis.renewal.api.RenewalResult;
 
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 
@@ -84,4 +85,3 @@ class AsyncRenewalExecutorTest {
         assertEquals(5, executor.getCompletedTasks());
     }
 }
-
