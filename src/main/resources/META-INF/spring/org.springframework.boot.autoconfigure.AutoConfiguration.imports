@@ -1,4 +1,4 @@
 xyz.firestige.deploy.autoconfigure.ExecutorCheckpointAutoConfiguration
 xyz.firestige.deploy.autoconfigure.ExecutorPersistenceAutoConfiguration
 xyz.firestige.deploy.autoconfigure.DomainEventPublisherAutoConfiguration
-
+xyz.firestige.deploy.autoconfigure.ExecutorStagesAutoConfiguration
