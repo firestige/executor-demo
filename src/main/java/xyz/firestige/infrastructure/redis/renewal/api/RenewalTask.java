@@ -1,6 +1,7 @@
 package xyz.firestige.infrastructure.redis.renewal.api;
 
 import java.time.Duration;
+import java.time.Instant;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Objects;
@@ -47,6 +48,59 @@ public class RenewalTask {
 
     public static Builder builder() {
         return new Builder();
+    }
+
+    /**
+     * 创建固定间隔续期任务（模板方法）
+     *
+     * @param keys 要续期的 Key 列表
+     * @param ttl TTL 时长
+     * @param interval 续期间隔
+     * @return 续期任务
+     */
+    public static RenewalTask fixedRenewal(Collection<String> keys, Duration ttl, Duration interval) {
+        return builder()
+            .keys(keys)
+            .ttlStrategy(new xyz.firestige.infrastructure.redis.renewal.strategy.FixedTtlStrategy(ttl))
+            .intervalStrategy(new xyz.firestige.infrastructure.redis.renewal.interval.FixedIntervalStrategy(interval))
+            .stopCondition(new xyz.firestige.infrastructure.redis.renewal.condition.NeverStopCondition())
+            .build();
+    }
+
+    /**
+     * 创建续期至指定时间的任务（模板方法）
+     *
+     * @param keys 要续期的 Key 列表
+     * @param baseTtl 基础 TTL
+     * @param endTime 结束时间
+     * @return 续期任务
+     */
+    public static RenewalTask untilTime(Collection<String> keys, Duration baseTtl, Instant endTime) {
+        return builder()
+            .keys(keys)
+            .ttlStrategy(new xyz.firestige.infrastructure.redis.renewal.strategy.UntilTimeStrategy(endTime, baseTtl))
+            .intervalStrategy(new xyz.firestige.infrastructure.redis.renewal.interval.AdaptiveIntervalStrategy(0.5))
+            .stopCondition(new xyz.firestige.infrastructure.redis.renewal.condition.TimeBasedStopCondition(endTime))
+            .build();
+    }
+
+    /**
+     * 创建最多续期 N 次的任务（模板方法）
+     *
+     * @param keys 要续期的 Key 列表
+     * @param ttl TTL 时长
+     * @param maxCount 最大续期次数
+     * @return 续期任务
+     */
+    public static RenewalTask maxRenewals(Collection<String> keys, Duration ttl, long maxCount) {
+        return builder()
+            .keys(keys)
+            .ttlStrategy(new xyz.firestige.infrastructure.redis.renewal.strategy.MaxRenewalsStrategy(ttl, maxCount))
+            .intervalStrategy(new xyz.firestige.infrastructure.redis.renewal.interval.FixedIntervalStrategy(
+                Duration.ofMillis(ttl.toMillis() / 2)
+            ))
+            .stopCondition(new xyz.firestige.infrastructure.redis.renewal.condition.CountBasedStopCondition(maxCount))
+            .build();
     }
 
     // Getters
