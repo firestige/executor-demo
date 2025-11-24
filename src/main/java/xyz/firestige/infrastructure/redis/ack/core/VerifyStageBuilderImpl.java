@@ -164,4 +164,12 @@ public class VerifyStageBuilderImpl implements VerifyStageBuilder {
             writeStage.getRedisTemplate()
         );
     }
+
+    // ===== 新增内部状态访问器 (供包装/装饰使用) =====
+    public WriteStageBuilderImpl getWriteStage() { return writeStage; }
+    public PubSubStageBuilderImpl getPubSubStage() { return pubSubStage; }
+    public AckEndpoint getEndpoint() { return endpoint; }
+    public Function<String, String> getResponseExtractor() { return responseExtractor; }
+    public RetryStrategy getRetryStrategy() { return retryStrategy; }
+    public Duration getTimeout() { return timeout; }
 }

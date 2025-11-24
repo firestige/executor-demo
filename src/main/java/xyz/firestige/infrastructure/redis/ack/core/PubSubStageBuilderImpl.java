@@ -3,6 +3,7 @@ package xyz.firestige.infrastructure.redis.ack.core;
 import xyz.firestige.infrastructure.redis.ack.api.PubSubStageBuilder;
 import xyz.firestige.infrastructure.redis.ack.api.VerifyStageBuilder;
 
+import java.util.Map;
 import java.util.function.Function;
 
 /**
@@ -47,9 +48,9 @@ public class PubSubStageBuilderImpl implements PubSubStageBuilder {
             String result = template;
 
             // 支持 {fieldName} 占位符替换
-            if (value instanceof java.util.Map) {
-                java.util.Map<?, ?> map = (java.util.Map<?, ?>) value;
-                for (java.util.Map.Entry<?, ?> entry : map.entrySet()) {
+            if (value instanceof Map) {
+                Map<?, ?> map = (Map<?, ?>) value;
+                for (Map.Entry<?, ?> entry : map.entrySet()) {
                     String placeholder = "{" + entry.getKey() + "}";
                     if (result.contains(placeholder)) {
                         result = result.replace(placeholder, String.valueOf(entry.getValue()));
@@ -79,8 +80,7 @@ public class PubSubStageBuilderImpl implements PubSubStageBuilder {
 
     // Getters
 
-    String getTopic() { return topic; }
-    Function<Object, String> getMessageBuilder() { return messageBuilder; }
-    WriteStageBuilderImpl getWriteStage() { return writeStage; }
+    public WriteStageBuilderImpl getWriteStage() { return writeStage; }
+    public String getTopic() { return topic; }
+    public Function<Object,String> getMessageBuilder() { return messageBuilder; }
 }
-

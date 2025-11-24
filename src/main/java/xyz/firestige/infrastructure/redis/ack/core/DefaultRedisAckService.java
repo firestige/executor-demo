@@ -92,11 +92,11 @@ public class DefaultRedisAckService implements RedisAckService {
     static class InstrumentedVerifyStageBuilder extends VerifyStageBuilderImpl {
         private final AckMetrics metrics;
         InstrumentedVerifyStageBuilder(VerifyStageBuilderImpl delegate, AckMetrics metrics) {
-            super(delegate.writeStage, delegate.pubSubStage); // 访问原始引用
+            super(delegate.getWriteStage(), delegate.getPubSubStage());
             this.metrics = metrics;
             // 复制配置
-            this.endpoint(delegate.getEndpoint());
-            this.extractWith(delegate.getResponseExtractor());
+            if (delegate.getEndpoint() != null) this.endpoint(delegate.getEndpoint());
+            if (delegate.getResponseExtractor() != null) this.extractWith(delegate.getResponseExtractor());
             if (delegate.getRetryStrategy() != null) this.retry(delegate.getRetryStrategy());
             this.timeout(delegate.getTimeout());
         }
