@@ -1,5 +1,14 @@
 package xyz.firestige.infrastructure.redis.renewal.api;
 
+import xyz.firestige.infrastructure.redis.renewal.condition.CountBasedStopCondition;
+import xyz.firestige.infrastructure.redis.renewal.condition.NeverStopCondition;
+import xyz.firestige.infrastructure.redis.renewal.condition.TimeBasedStopCondition;
+import xyz.firestige.infrastructure.redis.renewal.interval.AdaptiveIntervalStrategy;
+import xyz.firestige.infrastructure.redis.renewal.interval.FixedIntervalStrategy;
+import xyz.firestige.infrastructure.redis.renewal.strategy.FixedTtlStrategy;
+import xyz.firestige.infrastructure.redis.renewal.strategy.MaxRenewalsStrategy;
+import xyz.firestige.infrastructure.redis.renewal.strategy.UntilTimeStrategy;
+
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Collection;
@@ -61,9 +70,9 @@ public class RenewalTask {
     public static RenewalTask fixedRenewal(Collection<String> keys, Duration ttl, Duration interval) {
         return builder()
             .keys(keys)
-            .ttlStrategy(new xyz.firestige.infrastructure.redis.renewal.strategy.FixedTtlStrategy(ttl))
-            .intervalStrategy(new xyz.firestige.infrastructure.redis.renewal.interval.FixedIntervalStrategy(interval))
-            .stopCondition(new xyz.firestige.infrastructure.redis.renewal.condition.NeverStopCondition())
+            .ttlStrategy(new FixedTtlStrategy(ttl))
+            .intervalStrategy(new FixedIntervalStrategy(interval))
+            .stopCondition(new NeverStopCondition())
             .build();
     }
 
@@ -78,9 +87,9 @@ public class RenewalTask {
     public static RenewalTask untilTime(Collection<String> keys, Duration baseTtl, Instant endTime) {
         return builder()
             .keys(keys)
-            .ttlStrategy(new xyz.firestige.infrastructure.redis.renewal.strategy.UntilTimeStrategy(endTime, baseTtl))
-            .intervalStrategy(new xyz.firestige.infrastructure.redis.renewal.interval.AdaptiveIntervalStrategy(0.5))
-            .stopCondition(new xyz.firestige.infrastructure.redis.renewal.condition.TimeBasedStopCondition(endTime))
+            .ttlStrategy(new UntilTimeStrategy(endTime, baseTtl))
+            .intervalStrategy(new AdaptiveIntervalStrategy(0.5))
+            .stopCondition(new TimeBasedStopCondition(endTime))
             .build();
     }
 
@@ -95,11 +104,11 @@ public class RenewalTask {
     public static RenewalTask maxRenewals(Collection<String> keys, Duration ttl, long maxCount) {
         return builder()
             .keys(keys)
-            .ttlStrategy(new xyz.firestige.infrastructure.redis.renewal.strategy.MaxRenewalsStrategy(ttl, maxCount))
-            .intervalStrategy(new xyz.firestige.infrastructure.redis.renewal.interval.FixedIntervalStrategy(
+            .ttlStrategy(new MaxRenewalsStrategy(ttl, maxCount))
+            .intervalStrategy(new FixedIntervalStrategy(
                 Duration.ofMillis(ttl.toMillis() / 2)
             ))
-            .stopCondition(new xyz.firestige.infrastructure.redis.renewal.condition.CountBasedStopCondition(maxCount))
+            .stopCondition(new CountBasedStopCondition(maxCount))
             .build();
     }
 
