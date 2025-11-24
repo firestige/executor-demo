@@ -585,6 +585,76 @@ public class ExecutorStagesConfigurationReporter implements ApplicationListener<
 
 ---
 
+## 2.5 配置加载机制解耦 ✅
+
+**目标**：
+- 业务变更时只需修改 Properties 数据结构
+- 指定默认值即可
+- **不需要修改加载逻辑**
+
+**问题评估**：
+当前 §2.4 中的方案存在一定耦合度：
+- ⚠️ `validateBlueGreenGatewayConfig()` 等方法硬编码了具体配置验证
+- ⚠️ 健康检查和配置报告依赖具体配置类
+- ⚠️ 新增配置类需要修改多处代码（验证、健康检查、报告）
+
+**改进方案**：
+采用**完全解耦的配置加载机制**，实现：
+1. ✅ 引入 `StageConfigurable` 统一接口
+2. ✅ 自动发现机制（通过反射自动注册所有配置）
+3. ✅ 声明式验证（配置类自己实现验证逻辑）
+4. ✅ 统一容器管理（通过 Map 管理所有配置）
+
+**扩展示例**：
+```java
+// 步骤 1：定义新配置类（实现 StageConfigurable 接口）
+public class NewServiceStageConfig implements StageConfigurable {
+    private Boolean enabled = false;
+    private String endpoint;
+    
+    @Override
+    public boolean isEnabled() {
+        return enabled != null && enabled;
+    }
+    
+    @Override
+    public ValidationResult validate() {
+        // 自己的验证逻辑
+        return ValidationResult.success();
+    }
+    
+    public static NewServiceStageConfig defaultConfig() {
+        return new NewServiceStageConfig();
+    }
+}
+
+// 步骤 2：添加到 Properties（唯一需要修改的地方）
+@ConfigurationProperties(prefix = "executor.stages")
+public class ExecutorStagesProperties {
+    @NestedConfigurationProperty
+    private NewServiceStageConfig newService;  // ✅ 仅此一处修改
+    
+    // 其他逻辑完全不需要修改：
+    // ❌ 无需修改 afterPropertiesSet()（自动发现）
+    // ❌ 无需修改健康检查（统一接口）
+    // ❌ 无需修改配置报告（统一接口）
+}
+```
+
+**效果对比**：
+
+| 操作 | 原方案修改点 | 改进方案修改点 | 改进 |
+|------|------------|--------------|------|
+| 新增配置类 | 4处（Properties + 验证 + 健康检查 + 报告） | 2处（配置类 + Properties字段） | 🟢 -50% |
+| 修改配置字段 | 2处（配置类 + 验证方法） | 1处（配置类） | 🟢 -50% |
+| 加载逻辑 | 需要修改 | 完全不修改 | 🟢 零修改 |
+
+> **详细设计参见**：[task-017-coupling-analysis-and-improvement.md](./task-017-coupling-analysis-and-improvement.md)
+
+**推荐**：✅ 采用改进方案，完全满足"只修改 Properties，不修改加载逻辑"的目标
+
+---
+
 ## 3. 当前问题
 
 ### 3.1 现状
