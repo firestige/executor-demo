@@ -75,6 +75,12 @@
             <artifactId>spring-boot-starter-web</artifactId>
         </dependency>
 
+        <!-- Spring Boot Actuator for health checks (T-017 Phase4) -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-actuator</artifactId>
+        </dependency>
+
         <!-- Nacos Client for service discovery (optional, can fallback to fixed IPs) -->
         <dependency>
             <groupId>com.alibaba.nacos</groupId>
