@@ -278,10 +278,29 @@ Result<T> {
 
 ---
 
+## 其他概念
+
+### Footprint
+**定义**: 用于确认远端已采纳配置的最小版本/摘要标识。
+**说明**: 在写入阶段生成 expectedFootprint，在验证阶段提取 actualFootprint 比对。
+
+### ACK 流（Write→Publish→Verify）
+**定义**: Redis 写入 + Pub/Sub 通知 + 端点轮询比对的标准化确认链路。
+**失败类型**: TIMEOUT / MISMATCH / ERROR。
+
+### Renewal Task
+**定义**: 描述一组需要持续续期的 Key 与其 TTL/间隔/停止策略的不可变对象。
+**说明**: 注册后由时间轮驱动批量续期，直到满足停止条件。
+
+### Time Wheel
+**定义**: 环形数组 + 指针驱动的定时调度结构；每个 tick 触发挂载在当前槽位的任务集合。
+**优势**: 大量定时任务下 O(1) 插入/触发，减少级联遍历开销。
+
+---
+
 ## 相关文档
 
 - [架构总纲](architecture-overview.md) - 架构设计概览
 - [逻辑视图](views/logical-view.puml) - 领域模型类图
 - [进程视图](views/process-view.puml) - 状态机与执行流程
 - [执行机设计](design/execution-engine.md) - 执行引擎详细设计
-

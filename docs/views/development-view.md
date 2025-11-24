@@ -174,6 +174,16 @@ public class PlanRepositoryImpl implements PlanRepository {
 - `JpaConfig`: JPA 配置
 - `TransactionConfig`: 事务管理配置
 
+#### infrastructure.redis.renewal 包
+- **职责**: 提供通用 Key 续期调度能力（时间轮 + 可插拔策略）
+- **核心类**: `RedisRenewalAutoConfiguration`, `RenewalService`, `TimeWheelRenewalEngine`
+- **扩展点**: TTL 策略、间隔策略、停止条件、Key 生成器、失败处理器
+
+#### infrastructure.redis.ack 包
+- **职责**: Write→Publish→Verify 流式配置确认；与业务前置健康检查解耦
+- **核心类**: `RedisAckAutoConfiguration`, `RedisAckService`, `AckExecutor`, `WriteStageBuilderImpl`
+- **扩展点**: FootprintExtractor、AckEndpoint、RetryStrategy、RedisOperation、消息模板
+
 ---
 
 ## 依赖管理
@@ -264,4 +274,3 @@ class PlanRepositoryImplTest {
 - [逻辑视图](logical-view.puml) - 领域模型
 - [持久化设计](../design/persistence.md)
 - [事务策略](../design/transaction-strategy.md)
-

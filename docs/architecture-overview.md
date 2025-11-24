@@ -444,6 +444,23 @@ public class CustomExecutorProperties {
 
 ---
 
+### 10.7 基础设施扩展模块（Redis Renewal / Redis ACK）
+为减少部署编排与通用 Redis 操作的耦合，引入两个独立的可复用基础设施模块：
+
+| 模块 | 作用 | 核心接口 | 关键扩展点 | 观测性 | 多实例支持 |
+|------|------|----------|------------|--------|------------|
+| Redis Renewal Service | 统一维护一组 Key 的续期（TTL 延长） | RenewalService / RenewalTask | TTL 策略、间隔策略、停止条件、Key 生成器 | 指标 + 健康检查 | ✅（基于时间轮 + 无共享状态）|
+| Redis ACK Service | 配置写入后确认客户端采纳 | RedisAckService (Write→Publish→Verify) | FootprintExtractor、AckEndpoint、RetryStrategy、RedisOperation、消息模板 | 指标 + 健康检查（可选） | ✅（无状态执行 + Redis）|
+
+设计要点：
+- 与 deploy 业务解耦；上层只通过接口编排，不直接拼装 Redis 操作细节。
+- 均提供 Spring Boot AutoConfiguration 与 properties；未启用时不影响主模块启动。
+- 失败不“吞掉”结果：ACK 以 AckResult 理性暴露失败类型（TIMEOUT/MISMATCH/ERROR），Renewal 以指标/日志标注异常 Key。
+
+> 详见设计文档：[redis-renewal-service](./design/redis-renewal-service.md)、[redis-ack-service](./design/redis-ack-service.md)
+
+---
+
 ## 11. 非功能特性概览
 | 维度 | 当前策略 |
 |------|----------|
@@ -489,7 +506,8 @@ public class CustomExecutorProperties {
 | 工作流 | [documentation-workflow.md](./workflow/documentation-workflow.md) | 文档更新流程 |
 | 开发规范 | [development-workflow.md](./workflow/development-workflow.md) | Git / 测试 / 提交规范 |
 | 执行机设计 | [execution-engine.md](./design/execution-engine.md) | 核心执行机与扩展点 |
-| 领域模型设计 | [domain-model.md](./design/domain-model.md) | 聚合内部结构与不变式 |
+| Redis 续期服务 | [redis-renewal-service.md](./design/redis-renewal-service.md) | 通用 Key 续期模块设计 |
+| Redis ACK 服务 | [redis-ack-service.md](./design/redis-ack-service.md) | 配置写入确认模块设计 |
 | 持久化设计 | [persistence.md](./design/persistence.md) | InMemory 与 Redis 策略 |
 | Checkpoint 机制 | [checkpoint-mechanism.md](./design/checkpoint-mechanism.md) | 序列化与 TTL |
 | 状态管理设计 | [state-management.md](./design/state-management.md) | 状态转换矩阵 |

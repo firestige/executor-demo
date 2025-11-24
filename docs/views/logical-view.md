@@ -119,10 +119,21 @@ Plan save(Plan plan);
 
 ---
 
+## 辅助基础设施服务（Redis Renewal / Redis ACK）
+**定位**: 不属于领域聚合，作为“横向技术能力”供 Application/Executor 组合使用。
+
+| 服务 | 领域依赖 | 输入/输出 | 失败语义 | 与聚合交互 |
+|------|----------|-----------|----------|------------|
+| RenewalService | 无 | 注册 RenewalTask / 定时续期 | Key 续期失败→指标+日志 | 聚合通过配置或执行器注册需要保护的 Key |
+| RedisAckService | 无 | 构建链式 Write→Publish→Verify | AckResult 分类（SUCCESS/TIMEOUT/MISMATCH/ERROR） | Stage 内作为 Step 组合（替代手工 Redis+Polling）|
+
+设计原则：保持“域外纯技术逻辑”，不反向调用领域行为，不持有聚合引用（只处理字符串 Key 与通用对象 value）。
+
+---
+
 ## 相关文档
 
 - [架构总纲](../architecture-overview.md)
 - [进程视图](process-view.puml) - 执行流程与时序
 - [领域模型详细设计](../design/domain-model.md)
 - [状态管理设计](../design/state-management.md)
-

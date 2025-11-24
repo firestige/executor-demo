@@ -21,7 +21,7 @@ public Result<PlanDTO> startPlan(Long planId) {
 ```
 
 **关键步骤**:
-1. 验证 Plan 状态（必须是 CREATED）
+1. 验证 Plan 状态（必须是 CREATED��
 2. Plan 状态转换为 RUNNING
 3. 遍历所有 Task，逐个调用 execute()
 4. 根据 Task 执行结果更新 Plan 状态
@@ -187,3 +187,19 @@ public Result<Void> executeTask(TaskId taskId) {
 - [状态管理详细设计](../design/state-management.md)
 - [执行策略设计](../design/execution-strategy.md)
 
+---
+
+### Redis ACK 执行流程（概述）
+```
+Client → write() → Redis SET/HSET/ZADD ... + extract footprint
+      → andPublish() → convertAndSend(topic,message)
+      → andVerify() → loop { endpoint.query(); extract; compare }
+      → AckResult(success|timeout|mismatch|error)
+```
+特性：发布不阻塞验证；验证独立轮询兜底；结果统一封装 AckResult。
+
+### Redis Renewal 后台续期循环
+```
+Register RenewalTask → TimeWheel slot scheduling → tick 执行 → filter (stop conditions) → renew TTL → metrics
+```
+特性：单线程时间轮批量调度；策略化 TTL 与间隔；失败 Key 不中断整体轮。

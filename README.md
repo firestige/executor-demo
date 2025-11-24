@@ -310,6 +310,12 @@ executor:
     ttl: 7d
 ```
 
+## 通用基础设施模块
+| 模块 | 说明 | 文档 |
+|------|------|------|
+| Redis Renewal Service | 高性能 Key TTL 续期（时间轮调度 + 策略化扩展点） | docs/design/redis-renewal-service.md |
+| Redis ACK Service | 标准化 Write→Publish→Verify 配置确认链路 | docs/design/redis-ack-service.md |
+
 ### 架构说明
 
 查询 API 基于 **CQRS + Event Sourcing** 架构：

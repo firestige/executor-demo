@@ -226,47 +226,37 @@ public Result<Void> retry(TaskExecutor executor, boolean fromCheckpoint) {
 
 ## 扩展场景
 
-### 场景 6: 暂停和恢复 Plan
+### 场景 6: 配置写入并确认生效（Redis ACK）
 
-**触发条件**: 运维人员需要临时中断部署
+**参与者**: 运维人员 / 系统内部 StageExecutor
 
-**暂停流程**:
-1. 运维人员点击"暂停"
-2. Plan 状态变更为 PAUSED
-3. 所有 RUNNING 状态的 Task 被暂停
-4. 每个 Task 保存当前 Checkpoint
+**前置条件**: 目标服务已在运行；Redis 可用
 
-**恢复流程**:
-1. 运维人员点击"恢复"
-2. Plan 状态变更为 RUNNING
-3. 所有 PAUSED 状态的 Task 被恢复
-4. Task 从保存的 Checkpoint 继续执行
+**主流程**:
+1. 写入新配置到 Redis（含版本号）
+2. 发布 Pub/Sub 通知客户端
+3. 轮询客户端状态端点提取当前版本
+4. 比对版本一致 → 成功；否则按重试策略继续
+
+**失败分支**: 超时 / 版本不匹配 / 端点错误
+
+**结果**: AckResult 记录 attempts/elapsed/reason
 
 ---
 
-### 场景 7: 回滚失败的 Task
+### 场景 7: 关键任务锁/配置续期（Redis Renewal）
 
-**触发条件**: Task 执行失败且无法通过重试修复
+**参与者**: RenewalService 后台线程
 
-**回滚流程**:
-1. 运维人员点击"回滚"
-2. Task 状态变更为 RUNNING
-3. 执行器执行回滚操作：
-   - 切换网关回原环境
-   - 恢复租户原始状态
-4. Task 状态变更为 ROLLED_BACK
+**前置条件**: 已注册 RenewalTask（key 集合 + 策略）
 
-**API 示例**:
-```json
-POST /api/tasks/456/rollback
+**主流程**:
+1. 调度时间轮 tick 到期
+2. 评估停止条件（已完成 / 超时 / 次数耗尽）
+3. 满足续期条件则刷新 TTL
+4. 记录指标（成功/失败/跳过）
 
-Response:
-{
-  "taskId": 456,
-  "state": "ROLLED_BACK",
-  "rolledBackAt": "2025-11-22T11:00:00"
-}
-```
+**结果**: Key 保持活跃直至业务结束；失败不阻断其他 Key
 
 ---
 
@@ -290,4 +280,3 @@ Response:
 - [进程视图](process-view.puml) - 执行流程细节
 - [执行策略设计](../design/execution-strategy.md)
 - [API 文档](../api/rest-api.md)（待创建）
-
