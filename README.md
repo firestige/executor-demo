@@ -2,6 +2,49 @@
 
 ## 🎉 最新更新
 
+### 2025-11-24: T-018 Redis 续期服务完成
+
+**✅ 通用 Redis Key 续期服务已完成！**
+
+- ⏰ 基于 Netty 时间轮的高性能调度引擎（支持 1000+ 并发任务）
+- 🔧 26 种预置扩展点实现（策略、选择器、停止条件等）
+- 📊 完整的监控与可观测性（指标收集、定时报告、健康检查）
+- 🚀 Spring Boot 自动配置（零配置开箱即用）
+- 🎨 易用的模板方法和 Builder API
+
+**📖 详细文档**:
+- [设计文档](./docs/design/redis-renewal-service.md)
+- [API 文档](./docs/redis-renewal-service-api.md)
+- [扩展指南](./docs/redis-renewal-extension-guide.md)
+- [CHANGELOG](./CHANGELOG-redis-renewal.md)
+
+**🚀 快速开始**:
+```java
+// 1. 简单固定续期
+RenewalTask task = RenewalTask.fixedRenewal(
+    List.of("deployment:tenant1:task123"),
+    Duration.ofMinutes(5),  // TTL
+    Duration.ofMinutes(2)   // 续期间隔
+);
+renewalService.register(task);
+
+// 2. 续期至指定时间
+RenewalTask task = RenewalTask.untilTime(
+    List.of("deployment:key"),
+    Duration.ofMinutes(10),
+    Instant.now().plus(Duration.ofHours(1))
+);
+
+// 3. Spring Boot 配置
+redis:
+  renewal:
+    enabled: true
+    time-wheel:
+      tick-duration: 100
+      ticks-per-wheel: 512
+    executor-thread-pool-size: 4
+```
+
 ### 2025-11-23: T-016 持久化方案完成
 
 **✅ 状态持久化 + 查询API 已完成！**
