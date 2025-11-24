@@ -1,6 +1,5 @@
 package xyz.firestige.deploy.config;
 
-import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -200,9 +199,9 @@ public class ExecutorConfiguration {
     @Bean
     public DeploymentPlanCreator deploymentPlanCreator(
             PlanDomainService planDomainService,
-            ConflictValidator conflictValidator,
+            TaskDomainService taskDomainService,
+            StageFactory stageFactory,
             BusinessValidator businessValidator,
-            DeploymentConfigLoader configLoader) {
             ExecutorProperties executorProperties,
             TaskRuntimeRepository taskRuntimeRepository) {
         return new DeploymentPlanCreator(

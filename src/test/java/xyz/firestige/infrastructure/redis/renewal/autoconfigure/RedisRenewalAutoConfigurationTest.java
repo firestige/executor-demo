@@ -19,7 +19,7 @@ class RedisRenewalAutoConfigurationTest {
 
     private final ApplicationContextRunner contextRunner = new ApplicationContextRunner()
         .withConfiguration(AutoConfigurations.of(RedisRenewalAutoConfiguration.class))
-        .withBean(RedisClient.class, () -> new MockRedisClient());
+        .withBean(RedisClient.class, MockRedisClient::new);
 
     @Test
     void autoConfiguration_whenEnabled_createsAllBeans() {
