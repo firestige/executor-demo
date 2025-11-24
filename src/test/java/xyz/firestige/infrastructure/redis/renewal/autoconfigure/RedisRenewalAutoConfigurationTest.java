@@ -3,11 +3,15 @@ package xyz.firestige.infrastructure.redis.renewal.autoconfigure;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
-import org.springframework.data.redis.core.RedisTemplate;
 import xyz.firestige.infrastructure.redis.renewal.api.KeyRenewalService;
 import xyz.firestige.infrastructure.redis.renewal.api.RedisClient;
 import xyz.firestige.infrastructure.redis.renewal.core.AsyncRenewalExecutor;
 import xyz.firestige.infrastructure.redis.renewal.metrics.RenewalMetricsCollector;
+
+import java.util.Collection;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -15,10 +19,7 @@ class RedisRenewalAutoConfigurationTest {
 
     private final ApplicationContextRunner contextRunner = new ApplicationContextRunner()
         .withConfiguration(AutoConfigurations.of(RedisRenewalAutoConfiguration.class))
-        .withBean(RedisTemplate.class, () -> {
-            // Mock RedisTemplate
-            return new RedisTemplate<>();
-        });
+        .withBean(RedisClient.class, () -> new MockRedisClient());
 
     @Test
     void autoConfiguration_whenEnabled_createsAllBeans() {
@@ -38,6 +39,7 @@ class RedisRenewalAutoConfigurationTest {
             .withPropertyValues("redis.renewal.enabled=false")
             .run(context -> {
                 assertThat(context).doesNotHaveBean(KeyRenewalService.class);
+                assertThat(context).doesNotHaveBean(AsyncRenewalExecutor.class);
             });
     }
 
@@ -55,5 +57,50 @@ class RedisRenewalAutoConfigurationTest {
                 assertThat(properties.getTimeWheel().getTickDuration()).isEqualTo(50);
             });
     }
+
+    /**
+     * Mock RedisClient 用于测试
+     */
+    static class MockRedisClient implements RedisClient {
+        @Override
+        public boolean expire(String key, long ttlSeconds) {
+            return true;
+        }
+
+        @Override
+        public Map<String, Boolean> batchExpire(Collection<String> keys, long ttlSeconds) {
+            return Map.of();
+        }
+
+        @Override
+        public CompletableFuture<Boolean> expireAsync(String key, long ttlSeconds) {
+            return CompletableFuture.completedFuture(true);
+        }
+
+        @Override
+        public CompletableFuture<Map<String, Boolean>> batchExpireAsync(Collection<String> keys, long ttlSeconds) {
+            return CompletableFuture.completedFuture(Map.of());
+        }
+
+        @Override
+        public Collection<String> scan(String pattern, int count) {
+            return List.of();
+        }
+
+        @Override
+        public boolean exists(String key) {
+            return true;
+        }
+
+        @Override
+        public long ttl(String key) {
+            return 100;
+        }
+
+        @Override
+        public void close() {
+        }
+    }
 }
+
 
