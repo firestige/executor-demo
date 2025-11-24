@@ -9,6 +9,7 @@ import xyz.firestige.infrastructure.redis.ack.endpoint.HttpPostEndpoint;
 import xyz.firestige.infrastructure.redis.ack.exception.AckExecutionException;
 import xyz.firestige.infrastructure.redis.ack.extractor.FunctionFootprintExtractor;
 import xyz.firestige.infrastructure.redis.ack.extractor.JsonFieldExtractor;
+import xyz.firestige.infrastructure.redis.ack.metrics.AckMetrics;
 import xyz.firestige.infrastructure.redis.ack.retry.FixedDelayRetryStrategy;
 
 import java.time.Duration;
@@ -27,6 +28,7 @@ public class WriteStageBuilderImpl implements WriteStageBuilder {
     private final RedisTemplate<String, String> redisTemplate;
     private final RestTemplate restTemplate;
     private final ObjectMapper objectMapper;
+    private final AckMetrics ackMetrics; // 可选指标
 
     // Write 配置
     private String key;
@@ -42,9 +44,16 @@ public class WriteStageBuilderImpl implements WriteStageBuilder {
     public WriteStageBuilderImpl(RedisTemplate<String, String> redisTemplate,
                                  RestTemplate restTemplate,
                                  ObjectMapper objectMapper) {
+        this(redisTemplate, restTemplate, objectMapper, null);
+    }
+    public WriteStageBuilderImpl(RedisTemplate<String, String> redisTemplate,
+                                 RestTemplate restTemplate,
+                                 ObjectMapper objectMapper,
+                                 AckMetrics ackMetrics) {
         this.redisTemplate = redisTemplate;
         this.restTemplate = restTemplate;
         this.objectMapper = objectMapper;
+        this.ackMetrics = ackMetrics;
     }
 
     @Override
@@ -137,4 +146,5 @@ public class WriteStageBuilderImpl implements WriteStageBuilder {
     ObjectMapper getObjectMapper() { return objectMapper; }
     public void zsetScore(double score) { this.zsetScore = score; }
     Double getZsetScore() { return zsetScore; }
+    AckMetrics getAckMetrics() { return ackMetrics; }
 }
