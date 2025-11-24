@@ -10,6 +10,7 @@ import xyz.firestige.deploy.config.PortalStageConfig;
 import xyz.firestige.deploy.config.stage.StageConfigurable;
 import xyz.firestige.deploy.config.stage.ValidationResult;
 
+import java.util.ArrayList;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -58,7 +59,7 @@ class ExecutorStagesPropertiesTest {
         bg.setHealthCheckPath(" ");
         bg.setHealthCheckIntervalSeconds(0);
         bg.setHealthCheckMaxAttempts(-1);
-        bg.setSteps(new java.util.ArrayList<>());
+        bg.setSteps(new ArrayList<>());
         ValidationResult r = bg.validate();
         assertThat(r.getWarnings()).isNotEmpty();
         assertThat(bg.getHealthCheckPath()).isEqualTo("/health");
@@ -70,7 +71,7 @@ class ExecutorStagesPropertiesTest {
     @Test
     void portalShouldFillDefaultSteps() {
         PortalStageConfig portal = properties.getPortal();
-        portal.setSteps(new java.util.ArrayList<>()); // clear
+        portal.setSteps(new ArrayList<>()); // clear
         ValidationResult r = portal.validate();
         assertThat(r.getWarnings()).isNotEmpty();
         assertThat(portal.getSteps()).isNotEmpty();

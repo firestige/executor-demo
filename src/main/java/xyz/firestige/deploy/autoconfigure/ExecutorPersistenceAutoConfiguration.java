@@ -17,6 +17,11 @@ import xyz.firestige.deploy.infrastructure.persistence.projection.*;
 import xyz.firestige.deploy.infrastructure.persistence.projection.redis.*;
 import xyz.firestige.deploy.infrastructure.persistence.projection.memory.*;
 
+import java.time.Duration;
+import java.util.concurrent.ConcurrentHashMap;
+import xyz.firestige.deploy.domain.shared.vo.TenantId;
+import xyz.firestige.deploy.domain.shared.vo.TaskId;
+
 /**
  * 执行器持久化自动配置
  * <p>
@@ -166,12 +171,10 @@ public class ExecutorPersistenceAutoConfiguration {
      * 内存租户锁管理器实现（用于测试和单实例场景）
      */
     private static class InMemoryTenantLockManager implements TenantLockManager {
-        private final java.util.concurrent.ConcurrentHashMap<String, String> locks = new java.util.concurrent.ConcurrentHashMap<>();
+        private final ConcurrentHashMap<String, String> locks = new ConcurrentHashMap<>();
 
         @Override
-        public boolean tryAcquire(xyz.firestige.deploy.domain.shared.vo.TenantId tenantId,
-                                   xyz.firestige.deploy.domain.shared.vo.TaskId taskId,
-                                   java.time.Duration ttl) {
+        public boolean tryAcquire(TenantId tenantId, TaskId taskId, Duration ttl) {
             if (tenantId == null || taskId == null) {
                 return false;
             }
@@ -181,14 +184,14 @@ public class ExecutorPersistenceAutoConfiguration {
         }
 
         @Override
-        public void release(xyz.firestige.deploy.domain.shared.vo.TenantId tenantId) {
+        public void release(TenantId tenantId) {
             if (tenantId != null) {
                 locks.remove(tenantId.getValue());
             }
         }
 
         @Override
-        public boolean exists(xyz.firestige.deploy.domain.shared.vo.TenantId tenantId) {
+        public boolean exists(TenantId tenantId) {
             return tenantId != null && locks.containsKey(tenantId.getValue());
         }
     }

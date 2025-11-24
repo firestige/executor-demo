@@ -16,6 +16,8 @@ import xyz.firestige.deploy.infrastructure.event.SpringDomainEventPublisher;
 import xyz.firestige.deploy.infrastructure.message.KafkaDomainEventPublisher;
 import xyz.firestige.deploy.infrastructure.message.RocketMQDomainEventPublisher;
 
+ import java.util.ArrayList;
+
 /**
  * 领域事件发布器自动配置
  *
@@ -108,7 +110,7 @@ public class DomainEventPublisherAutoConfiguration {
             DomainEventPublisherProperties properties) {
 
         var composite = properties.getComposite();
-        var publishers = new java.util.ArrayList<DomainEventPublisher>();
+        var publishers = new ArrayList<DomainEventPublisher>();
 
         // 本地事件总线
         if (composite.isEnableLocal()) {

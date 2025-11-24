@@ -47,6 +47,7 @@ import xyz.firestige.deploy.infrastructure.persistence.projection.TaskStateProje
 import xyz.firestige.deploy.infrastructure.persistence.projection.PlanStateProjectionStore;
 import xyz.firestige.deploy.infrastructure.persistence.projection.TenantTaskIndexStore;
 import xyz.firestige.deploy.infrastructure.event.SpringDomainEventPublisher;
+import xyz.firestige.deploy.infrastructure.config.DeploymentConfigLoader;
 
 /**
  * 执行器配置类（DDD 重构版）
@@ -192,16 +193,16 @@ public class ExecutorConfiguration {
     public StageFactory stageFactory() { return new SimpleStageFactory(); }
 
     @Bean
-    public xyz.firestige.deploy.infrastructure.config.DeploymentConfigLoader deploymentConfigLoader() {
-        return new xyz.firestige.deploy.infrastructure.config.DeploymentConfigLoader();
+    public DeploymentConfigLoader deploymentConfigLoader() {
+        return new DeploymentConfigLoader();
     }
 
     @Bean
     public DeploymentPlanCreator deploymentPlanCreator(
             PlanDomainService planDomainService,
-            TaskDomainService taskDomainService,
-            StageFactory stageFactory,
+            ConflictValidator conflictValidator,
             BusinessValidator businessValidator,
+            DeploymentConfigLoader configLoader) {
             ExecutorProperties executorProperties,
             TaskRuntimeRepository taskRuntimeRepository) {
         return new DeploymentPlanCreator(
