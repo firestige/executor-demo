@@ -60,20 +60,19 @@ public class TimeWheelRenewalService implements KeyRenewalService {
         if (shutdown) return;
         RenewalTask task = wrapper.task();
         RenewalContext ctx = wrapper.context();
-        if (wrapper.paused()) return; // 暂停直接跳过，下次调度仍继续
-        // 停止条件检查（上一次续期后）
-        if (task.getStopCondition() != null && task.getStopCondition().shouldStop(ctx)) {
-            complete(wrapper, RenewalLifecycleListener.CompletionReason.STOP_CONDITION_MET);
+        // 如果暂停：仍然重新调度（保持任务活跃可恢复）
+        if (wrapper.paused()) {
+            Duration pauseInterval = task.getIntervalStrategy().calculateInterval(ctx);
+            schedule(wrapper, Math.max(pauseInterval.toMillis(), 10));
             return;
         }
-        // 获取 Key 集合
+        // 获取 Key 集合并计算 TTL
         Collection<String> keys = task.getKeySelector().selectKeys(ctx);
-        // 计算 TTL
         Duration ttl = task.getTtlStrategy().calculateTtl(ctx);
         long ttlSeconds = Math.max(ttl.getSeconds(), 1);
-        // 提交异步续期
         executor.submit(wrapper.id(), keys, ttlSeconds)
                 .whenComplete((result, error) -> {
+                    // 更新上下文
                     ctx.setLastRenewalTime(Instant.now());
                     ctx.incrementRenewalCount();
                     if (result != null) {
@@ -84,12 +83,18 @@ public class TimeWheelRenewalService implements KeyRenewalService {
                     if (error != null) {
                         log.error("续期执行异常: id={}", wrapper.id(), error);
                         if (task.getListener() != null) task.getListener().onTaskFailed(wrapper.id(), error);
-                        // 失败不影响后续调度
                     }
+                    // 停止条件与策略继续检查（在次数更新后）
+                    boolean stopByCondition = task.getStopCondition() != null && task.getStopCondition().shouldStop(ctx);
+                    boolean continueByStrategy = task.getTtlStrategy().shouldContinue(ctx);
+                    if (stopByCondition || !continueByStrategy) {
+                        complete(wrapper, stopByCondition ? RenewalLifecycleListener.CompletionReason.STOP_CONDITION_MET : RenewalLifecycleListener.CompletionReason.CANCELLED);
+                        return;
+                    }
+                    // 安排下次调度
+                    Duration nextInterval = task.getIntervalStrategy().calculateInterval(ctx);
+                    schedule(wrapper, Math.max(nextInterval.toMillis(), 10));
                 });
-        // 下次调度
-        Duration nextInterval = task.getIntervalStrategy().calculateInterval(ctx);
-        schedule(wrapper, Math.max(nextInterval.toMillis(), 10));
     }
 
     private void complete(RenewalTaskWrapper wrapper, RenewalLifecycleListener.CompletionReason reason) {
@@ -139,4 +144,3 @@ public class TimeWheelRenewalService implements KeyRenewalService {
         log.info("TimeWheelRenewalService 已关闭");
     }
 }
-
