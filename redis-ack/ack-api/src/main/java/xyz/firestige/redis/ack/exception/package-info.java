@@ -7,8 +7,9 @@
  *   <li>{@link xyz.firestige.redis.ack.exception.AckTimeoutException} - 超时异常</li>
  *   <li>{@link xyz.firestige.redis.ack.exception.AckEndpointException} - 端点异常</li>
  *   <li>{@link xyz.firestige.redis.ack.exception.FootprintExtractionException} - Footprint 提取异常</li>
- *   <li>{@link xyz.firestige.redis.ack.exception.AckExecutionException} - 执行异常</li>
  * </ul>
+ * <p>
+ * 注意：AckExecutionException 已移至 core 层，作为内部实现异常使用。
  *
  * @author AI
  * @since 1.0

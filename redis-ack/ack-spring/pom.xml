@@ -19,15 +19,33 @@
     </properties>
 
     <dependencies>
+        <!-- Core -->
         <dependency>
             <groupId>xyz.firestige.redis-ack</groupId>
             <artifactId>ack-core</artifactId>
             <version>1.0-SNAPSHOT</version>
         </dependency>
+        <!-- Spring Boot Configuration Metadata -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-configuration-processor</artifactId>
             <optional>true</optional>
+        </dependency>
+        <!-- Test Dependencies -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-actuator</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.mockito</groupId>
+            <artifactId>mockito-core</artifactId>
+            <scope>test</scope>
         </dependency>
     </dependencies>
 </project>
