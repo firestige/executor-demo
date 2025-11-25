@@ -5,6 +5,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestTemplate;
+import xyz.firestige.deploy.config.properties.InfrastructureProperties;
 import xyz.firestige.deploy.infrastructure.config.DeploymentConfigLoader;
 import xyz.firestige.deploy.infrastructure.discovery.ServiceDiscoveryHelper;
 import xyz.firestige.redis.ack.api.RedisAckService;
@@ -35,6 +36,7 @@ public class SharedStageResources {
     private final AgentService agentService;  // 可选，OBService 使用
     private final RedisAckService redisAckService;
     private final ServiceDiscoveryHelper serviceDiscoveryHelper;
+    private final InfrastructureProperties infrastructureProperties; // Phase1 optional new config
 
     @Autowired
     public SharedStageResources(
@@ -44,7 +46,8 @@ public class SharedStageResources {
             ObjectMapper objectMapper,
             @Autowired(required = false) AgentService agentService,
             RedisAckService redisAckService,
-            ServiceDiscoveryHelper serviceDiscoveryHelper) {
+            ServiceDiscoveryHelper serviceDiscoveryHelper,
+            @Autowired(required = false) InfrastructureProperties infrastructureProperties) {
 
         // 启动校验必需依赖
         Objects.requireNonNull(restTemplate, "RestTemplate cannot be null");
@@ -62,6 +65,7 @@ public class SharedStageResources {
         this.agentService = agentService;
         this.redisAckService = redisAckService;
         this.serviceDiscoveryHelper = serviceDiscoveryHelper;
+        this.infrastructureProperties = infrastructureProperties; // may be null until auto-config active
     }
 
     // 只提供 getter，无任何业务方法
@@ -105,5 +109,12 @@ public class SharedStageResources {
     public ServiceDiscoveryHelper getServiceDiscoveryHelper() {
         return serviceDiscoveryHelper;
     }
-}
 
+    /** 新配置访问占位：优先返回新值否则返回旧值 */
+    public String getRedisHashKeyPrefix() {
+        if (infrastructureProperties != null) {
+            return infrastructureProperties.getRedis().getHashKeyPrefix();
+        }
+        return configLoader.getInfrastructure().getRedis().getHashKeyPrefix();
+    }
+}
