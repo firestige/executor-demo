@@ -1,0 +1,228 @@
+{
+  "groups": [
+    {
+      "name": "executor.infrastructure",
+      "type": "xyz.firestige.deploy.config.properties.InfrastructureProperties",
+      "description": "基础设施配置（Redis、Nacos、Verify、认证、降级实例）",
+      "sourceType": "xyz.firestige.deploy.config.properties.InfrastructureProperties"
+    },
+    {
+      "name": "executor.infrastructure.redis",
+      "type": "xyz.firestige.deploy.config.properties.InfrastructureProperties$RedisProperties",
+      "description": "Redis 配置（Hash Key 前缀、Pub/Sub Topic）",
+      "sourceType": "xyz.firestige.deploy.config.properties.InfrastructureProperties"
+    },
+    {
+      "name": "executor.infrastructure.nacos",
+      "type": "xyz.firestige.deploy.config.properties.InfrastructureProperties$NacosProperties",
+      "description": "Nacos 服务发现配置（启用开关、服务器地址、健康检查、服务映射）",
+      "sourceType": "xyz.firestige.deploy.config.properties.InfrastructureProperties"
+    },
+    {
+      "name": "executor.infrastructure.verify",
+      "type": "xyz.firestige.deploy.config.properties.InfrastructureProperties$VerifyProperties",
+      "description": "RedisAck Verify 步骤端点配置（端点路径、重试间隔、最大重试次数）",
+      "sourceType": "xyz.firestige.deploy.config.properties.InfrastructureProperties"
+    },
+    {
+      "name": "executor.infrastructure.auth",
+      "type": "xyz.firestige.deploy.config.properties.InfrastructureProperties$AuthProperties",
+      "description": "服务认证配置（启用开关、Token 提供器）",
+      "sourceType": "xyz.firestige.deploy.config.properties.InfrastructureProperties"
+    }
+  ],
+  "properties": [
+    {
+      "name": "executor.infrastructure.redis.hash-key-prefix",
+      "type": "java.lang.String",
+      "description": "Redis Hash Key 前缀，用于租户配置存储。格式：namespace:category:，例如 'icc_ai_ops_srv:tenant_config:'",
+      "sourceType": "xyz.firestige.deploy.config.properties.InfrastructureProperties$RedisProperties",
+      "defaultValue": "icc_ai_ops_srv:tenant_config:"
+    },
+    {
+      "name": "executor.infrastructure.redis.pubsub-topic",
+      "type": "java.lang.String",
+      "description": "Redis Pub/Sub Topic，用于配置更新通知。客户端订阅此 Topic 以接收配置变更消息",
+      "sourceType": "xyz.firestige.deploy.config.properties.InfrastructureProperties$RedisProperties",
+      "defaultValue": "icc_ai_ops_srv:tenant_config:topic"
+    },
+    {
+      "name": "executor.infrastructure.nacos.enabled",
+      "type": "java.lang.Boolean",
+      "description": "是否启用 Nacos 服务发现。false 时使用 fallback-instances 静态配置；true 时从 Nacos 动态获取服务实例",
+      "sourceType": "xyz.firestige.deploy.config.properties.InfrastructureProperties$NacosProperties",
+      "defaultValue": false
+    },
+    {
+      "name": "executor.infrastructure.nacos.server-addr",
+      "type": "java.lang.String",
+      "description": "Nacos 服务器地址。格式：host:port，例如 '127.0.0.1:8848' 或 'nacos-prod:8848'",
+      "sourceType": "xyz.firestige.deploy.config.properties.InfrastructureProperties$NacosProperties",
+      "defaultValue": "127.0.0.1:8848"
+    },
+    {
+      "name": "executor.infrastructure.nacos.health-check-enabled",
+      "type": "java.lang.Boolean",
+      "description": "是否对 Nacos 返回的实例进行健康检查。启用后会过滤不健康的实例",
+      "sourceType": "xyz.firestige.deploy.config.properties.InfrastructureProperties$NacosProperties",
+      "defaultValue": false
+    },
+    {
+      "name": "executor.infrastructure.nacos.services",
+      "type": "java.util.Map<java.lang.String,java.lang.String>",
+      "description": "服务标识到 Nacos 服务名的映射。键为内部服务标识（如 blueGreenGatewayService），值为 Nacos 注册的服务名",
+      "sourceType": "xyz.firestige.deploy.config.properties.InfrastructureProperties$NacosProperties"
+    },
+    {
+      "name": "executor.infrastructure.nacos.services.blueGreenGatewayService",
+      "type": "java.lang.String",
+      "description": "蓝绿网关在 Nacos 中的服务名",
+      "defaultValue": "blue-green-gateway-service"
+    },
+    {
+      "name": "executor.infrastructure.nacos.services.portalService",
+      "type": "java.lang.String",
+      "description": "Portal 在 Nacos 中的服务名",
+      "defaultValue": "portal-service"
+    },
+    {
+      "name": "executor.infrastructure.nacos.services.asbcService",
+      "type": "java.lang.String",
+      "description": "ASBC 网关在 Nacos 中的服务名",
+      "defaultValue": "asbc-gateway-service"
+    },
+    {
+      "name": "executor.infrastructure.nacos.services.obService",
+      "type": "java.lang.String",
+      "description": "OB 服务在 Nacos 中的服务名",
+      "defaultValue": "ob-service"
+    },
+    {
+      "name": "executor.infrastructure.fallback-instances",
+      "type": "java.util.Map<java.lang.String,java.util.List<java.lang.String>>",
+      "description": "Nacos 不可用时的降级实例配置。键为服务标识（kebab-case），值为实例列表（host:port 格式）",
+      "sourceType": "xyz.firestige.deploy.config.properties.InfrastructureProperties"
+    },
+    {
+      "name": "executor.infrastructure.verify.default-path",
+      "type": "java.lang.String",
+      "description": "RedisAck Verify 步骤的端点路径模板。支持占位符 {tenantId}，用于构建验证 URL。例如：'/actuator/bg-sdk/{tenantId}' -> 'http://instance:port/actuator/bg-sdk/tenant001'",
+      "sourceType": "xyz.firestige.deploy.config.properties.InfrastructureProperties$VerifyProperties",
+      "defaultValue": "/actuator/bg-sdk/{tenantId}"
+    },
+    {
+      "name": "executor.infrastructure.verify.interval-seconds",
+      "type": "java.lang.Integer",
+      "description": "RedisAck Verify 步骤的轮询间隔（秒）。每次重试之间等待的时间",
+      "sourceType": "xyz.firestige.deploy.config.properties.InfrastructureProperties$VerifyProperties",
+      "defaultValue": 3
+    },
+    {
+      "name": "executor.infrastructure.verify.max-attempts",
+      "type": "java.lang.Integer",
+      "description": "RedisAck Verify 步骤的最大重试次数。超过此次数后判定为超时失败",
+      "sourceType": "xyz.firestige.deploy.config.properties.InfrastructureProperties$VerifyProperties",
+      "defaultValue": 10
+    },
+    {
+      "name": "executor.infrastructure.auth",
+      "type": "java.util.Map<java.lang.String,xyz.firestige.deploy.config.properties.InfrastructureProperties$AuthProperties>",
+      "description": "服务认证配置。键为服务标识（如 asbc、portal），值为认证配置对象",
+      "sourceType": "xyz.firestige.deploy.config.properties.InfrastructureProperties"
+    }
+  ],
+  "hints": [
+    {
+      "name": "executor.infrastructure.nacos.enabled",
+      "values": [
+        {
+          "value": false,
+          "description": "使用 fallback-instances 静态配置（开发环境推荐）"
+        },
+        {
+          "value": true,
+          "description": "从 Nacos 动态获取服务实例（生产环境推荐）"
+        }
+      ]
+    },
+    {
+      "name": "executor.infrastructure.nacos.health-check-enabled",
+      "values": [
+        {
+          "value": false,
+          "description": "不进行健康检查，使用 Nacos 返回的所有实例"
+        },
+        {
+          "value": true,
+          "description": "启用健康检查，过滤不健康的实例（生产环境推荐）"
+        }
+      ]
+    },
+    {
+      "name": "executor.infrastructure.verify.default-path",
+      "values": [
+        {
+          "value": "/actuator/bg-sdk/{tenantId}",
+          "description": "蓝绿网关 SDK 端点（默认）"
+        },
+        {
+          "value": "/actuator/health",
+          "description": "Spring Actuator 健康检查端点"
+        },
+        {
+          "value": "/api/config/version/{tenantId}",
+          "description": "自定义配置版本端点"
+        }
+      ]
+    },
+    {
+      "name": "executor.infrastructure.auth.*.token-provider",
+      "values": [
+        {
+          "value": "random",
+          "description": "生成随机 Hex Token（默认）"
+        },
+        {
+          "value": "oauth2",
+          "description": "使用 OAuth2 Token（未实现）"
+        },
+        {
+          "value": "custom",
+          "description": "自定义 Token 提供器"
+        }
+      ],
+      "providers": [
+        {
+          "name": "any"
+        }
+      ]
+    },
+    {
+      "name": "executor.infrastructure.fallback-instances",
+      "values": [
+        {
+          "value": "blue-green-gateway",
+          "description": "蓝绿网关服务标识"
+        },
+        {
+          "value": "portal",
+          "description": "Portal 服务标识"
+        },
+        {
+          "value": "asbc",
+          "description": "ASBC 网关服务标识"
+        },
+        {
+          "value": "ob-service",
+          "description": "OB 服务标识"
+        }
+      ],
+      "providers": [
+        {
+          "name": "any"
+        }
+      ]
+    }
+  ]
+}
+
