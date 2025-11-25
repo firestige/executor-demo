@@ -5,6 +5,117 @@
 
 ---
 
+## 2025-11-26
+
+### [Deploy Spring Boot Starter 化设计] 📋 方案评审中
+
+**背景分析**：
+- T-017 完成了 ExecutorStagesProperties 但未完成配置迁移
+- deploy-stages.yml 仍然存在（infrastructure 配置）
+- 使用自定义占位符 `{$VAR:default}`
+- DeploymentConfigLoader 手动加载，与 Spring Boot 标准脱节
+
+**设计目标**：
+1. 约定优于配置（零配置启动）
+2. 条件装配（Nacos enabled 控制）
+3. 类型安全（@ConfigurationProperties + @Validated）
+4. IDE 智能提示（Configuration Metadata）
+
+**配置隔离验证** ✅：
+- 所有配置消费都通过 SharedStageResources（防腐层）
+- 没有直接注入 DeploymentConfigLoader 的消费者
+- 配置加载机制变更不影响消费者代码
+- **结论**：隔离设计良好，可平滑迁移
+
+**关键发现** - healthCheck 语义澄清：
+- **旧理解（错误）**: Spring Actuator 健康检查
+- **实际含义**: RedisAck Verify 步骤的端点配置
+- T-019 集成中用于：
+  - 构建 verifyUrls（如 http://instance/actuator/bg-sdk/{tenantId}）
+  - 配置 Verify 重试间隔和最大次数
+  - 提取 footprint（$.metadata.version）
+- **命名建议**: `healthCheck` → `verify` 或 `ackVerify`
+
+**修改范围统计**：
+- **新增**: 11 个文件（Properties 类、AutoConfiguration、Profile 配置）
+- **修改**: 6 个文件（SharedStageResources 防腐层、配置文件、SPI）
+- **废弃**: 3 个文件（DeploymentConfigLoader 等，标记 @Deprecated）
+- **移除**: 0 个（过渡期保留所有文件）
+
+**迁移策略**（3 个选项）：
+- **选项 A**: 零修改（SharedStageResources 双重注入，旧代码继续工作）
+- **选项 B**: 使用防腐层便捷方法（resources.getRedisKeyPrefix()）
+- **选项 C**: 直接注入 InfrastructureProperties（最终状态）
+- **推荐**: Phase 1 选项 A → Phase 2 选项 B → Phase 3 选项 C
+
+**核心设计**：
+```
+消费者（Assembler）
+    ↓ 零修改
+SharedStageResources（防腐层）← 双重注入（新旧配置）
+    ↓ 内部切换
+InfrastructureProperties（新）+ DeploymentConfigLoader（旧）
+```
+
+**防腐层增强**：
+```java
+@Component
+public class SharedStageResources {
+    private final DeploymentConfigLoader configLoader;  // 旧（@Deprecated）
+    private final InfrastructureProperties infrastructure;  // 新
+    
+    // 新方法（推荐）
+    public String getRedisKeyPrefix() { 
+        return infrastructure.getRedis().getHashKeyPrefix(); 
+    }
+    
+    public int getVerifyMaxAttempts() { 
+        return infrastructure.getVerify().getMaxAttempts(); 
+    }
+    
+    // 旧方法（@Deprecated）
+    @Deprecated
+    public DeploymentConfigLoader getConfigLoader() { 
+        return configLoader; 
+    }
+}
+```
+
+**配置层次结构**：
+```yaml
+executor:
+  infrastructure:  # 基础设施配置
+    redis:         # Redis 配置
+    nacos:         # Nacos 服务发现
+    verify:        # Verify 端点配置（重命名自 healthCheck）
+    fallback-instances:  # 降级实例
+    auth:          # 认证配置
+  stages:          # Stage 配置
+  checkpoint:      # Checkpoint 配置
+  persistence:     # 持久化配置
+```
+
+**时间估算**: 14h (约 2 天)
+- Phase 1: Properties + 防腐层适配 (4h)
+- Phase 2: 配置迁移 + 测试 (2h)
+- Phase 3: Assembler 优化 (3h)
+- Phase 4: 废弃 + 文档 (2h)
+- Phase 5: Configuration Metadata (3h)
+
+**交付文档**：
+- deploy-spring-boot-starter-design.md（初版设计）
+- deploy-config-migration-details.md（迁移详细）
+- deploy-spring-boot-starter-design-v2.md（修订版，含配置隔离验证）
+
+**待决策**：
+1. 配置命名：`healthCheck` → `verify`？
+2. 迁移时机：立即开始 vs 延后？
+3. 旧配置保留期：1-2 版本 + @Deprecated？
+
+**状态**: 方案评审中，等待实施决策
+
+---
+
 ## 2025-11-25
 
 ### [T-019 Redis ACK 服务] ✅ 完成
