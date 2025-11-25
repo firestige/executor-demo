@@ -7,7 +7,7 @@
 ## 待办 (Backlog)
 | ID | 任务 | 负责人 | 优先级 | 备注 |
 |----|------|--------|--------|------|
-| T-027 | Deploy 配置体系 Starter 化（Phase1-5按设计实施，最终态C1） | - | P1 | 设计文档：docs/temp/deploy-spring-boot-starter-design-v2.md |
+| T-028 | Deploy 配置 Metadata（IDE 智能提示） | - | P3 | spring-configuration-metadata.json，hints，自动补全（T-027 遗留 Phase5） |
 | T-026 | Redis ACK 服务 Phase 5 文档补充 | - | P3 | README.md、CHANGELOG.md、扩展指南、性能基准（T-019 遗留） |
 | T-023 | 重建测试体系：ack/renew 单元测试；deploy 单元+集成(应用层)+e2e(Facade) | - | P1 | 设计新的测试包结构：deploy:test/unit, test/integration, test/e2e；ack/renew:test/unit |
 
