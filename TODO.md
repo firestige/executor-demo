@@ -3,11 +3,11 @@
 ## 进行中 (In Progress)
 | ID | 任务 | 负责人 | 优先级 | 开始日期 | 预计完成 | 临时方案 |
 |----|------|--------|--------|----------|----------|----------|
-| T-019 | Redis ACK 服务（通用模块）Phase1-4已完成，进行 Phase5 | - | P1 | 2025-11-24 | 2025-11-27 | docs/design/redis-ack-service.md |
 
 ## 待办 (Backlog)
 | ID | 任务 | 负责人 | 优先级 | 备注 |
 |----|------|--------|--------|------|
+| T-026 | Redis ACK 服务 Phase 5 文档补充 | - | P3 | README.md、CHANGELOG.md、扩展指南、性能基准（T-019 遗留） |
 | T-023 | 重建测试体系：ack/renew 单元测试；deploy 单元+集成(应用层)+e2e(Facade) | - | P1 | 设计新的测试包结构：deploy:test/unit, test/integration, test/e2e；ack/renew:test/unit |
 
 ---
