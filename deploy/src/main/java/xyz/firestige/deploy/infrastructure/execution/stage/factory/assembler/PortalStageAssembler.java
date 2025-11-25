@@ -5,6 +5,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 import xyz.firestige.deploy.application.dto.TenantConfig;
+import xyz.firestige.deploy.infrastructure.discovery.SelectionStrategy;
 import xyz.firestige.deploy.infrastructure.execution.stage.ConfigurableServiceStage;
 import xyz.firestige.deploy.infrastructure.execution.stage.TaskStage;
 import xyz.firestige.deploy.infrastructure.execution.stage.factory.SharedStageResources;
@@ -45,7 +46,7 @@ public class PortalStageAssembler implements StageAssembler {
     public TaskStage buildStage(TenantConfig cfg, SharedStageResources resources) {
         ConfigurableServiceStage.StepConfig stepConfig = ConfigurableServiceStage.StepConfig.builder()
             .stepName("portal-notify")
-            .dataPreparer(createPortalDataPreparer(cfg))
+            .dataPreparer(createPortalDataPreparer(cfg, resources))
             .step(new HttpRequestStep(resources.getRestTemplate()))
             .resultValidator(createPortalResultValidator())
             .build();
@@ -56,11 +57,19 @@ public class PortalStageAssembler implements StageAssembler {
     /**
      * Portal 数据准备器
      */
-    private DataPreparer createPortalDataPreparer(TenantConfig tenantConfig) {
+    private DataPreparer createPortalDataPreparer(TenantConfig tenantConfig, SharedStageResources resources) {
         return (ctx) -> {
-            // 1. 获取 endpoint (暂时硬编码，TODO: 从 Nacos 获取)
-            String baseUrl = "http://192.168.1.20:8080";
-            String endpoint = baseUrl + "/icc-agent-portal/inner/v1/notify/bgSwitch";
+            // 1. 从 Nacos 获取 endpoint（使用 RANDOM 策略选择单实例）
+            String namespace = tenantConfig.getNacosNameSpace();
+            java.util.List<String> instances = resources.getServiceDiscoveryHelper()
+                .selectInstances("portalService", namespace, SelectionStrategy.RANDOM, false);
+
+            if (instances.isEmpty()) {
+                throw new IllegalStateException("No portal service instance available");
+            }
+
+            String instance = instances.get(0);  // RANDOM 策略返回单实例
+            String endpoint = "http://" + instance + "/icc-agent-portal/inner/v1/notify/bgSwitch";
 
             // 2. 构建请求 body
             Map<String, Object> body = new HashMap<>();

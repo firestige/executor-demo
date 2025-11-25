@@ -6,6 +6,7 @@ import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 import xyz.firestige.deploy.application.dto.MediaRoutingConfig;
 import xyz.firestige.deploy.application.dto.TenantConfig;
+import xyz.firestige.deploy.infrastructure.discovery.SelectionStrategy;
 import xyz.firestige.deploy.infrastructure.execution.stage.ConfigurableServiceStage;
 import xyz.firestige.deploy.infrastructure.execution.stage.TaskStage;
 import xyz.firestige.deploy.infrastructure.execution.stage.asbc.ASBCResponse;
@@ -72,8 +73,17 @@ public class AsbcStageAssembler implements StageAssembler {
                 }
             }
 
-            // 2. 获取 endpoint (暂时硬编码，TODO: 从 Nacos 获取)
-            String endpoint = "https://192.168.1.100:8080/api/sbc/traffic-switch";
+            // 2. 从 Nacos 获取 endpoint（使用 RANDOM 策略选择单实例）
+            String namespace = tenantConfig.getNacosNameSpace();
+            java.util.List<String> instances = resources.getServiceDiscoveryHelper()
+                .selectInstances("asbcService", namespace, SelectionStrategy.RANDOM, false);
+
+            if (instances.isEmpty()) {
+                throw new IllegalStateException("No ASBC service instance available");
+            }
+
+            String instance = instances.get(0);  // RANDOM 策略返回单实例
+            String endpoint = "https://" + instance + "/api/sbc/traffic-switch";
 
             // 3. 构建请求数据
             Map<String, Object> body = new HashMap<>();
