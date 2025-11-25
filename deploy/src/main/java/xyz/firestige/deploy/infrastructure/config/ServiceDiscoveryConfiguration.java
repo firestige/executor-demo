@@ -8,7 +8,7 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.client.RestTemplate;
-import xyz.firestige.deploy.infrastructure.config.model.InfrastructureConfig;
+import xyz.firestige.deploy.config.properties.InfrastructureProperties;
 import xyz.firestige.deploy.infrastructure.discovery.NacosServiceDiscovery;
 import xyz.firestige.deploy.infrastructure.discovery.ServiceDiscoveryHelper;
 
@@ -16,6 +16,7 @@ import xyz.firestige.deploy.infrastructure.discovery.ServiceDiscoveryHelper;
  * 服务发现配置
  *
  * @since T-025
+ * @updated T-027 迁移至 InfrastructureProperties
  */
 @Configuration
 public class ServiceDiscoveryConfiguration {
@@ -26,9 +27,9 @@ public class ServiceDiscoveryConfiguration {
      * Nacos 服务发现 Bean（仅在启用时创建）
      */
     @Bean
-    @ConditionalOnProperty(prefix = "infrastructure.nacos", name = "enabled", havingValue = "true")
-    public NacosServiceDiscovery nacosServiceDiscovery(DeploymentConfigLoader configLoader) {
-        InfrastructureConfig.NacosConfig nacosConfig = configLoader.getInfrastructure().getNacos();
+    @ConditionalOnProperty(prefix = "executor.infrastructure.nacos", name = "enabled", havingValue = "true")
+    public NacosServiceDiscovery nacosServiceDiscovery(InfrastructureProperties infrastructureProperties) {
+        InfrastructureProperties.NacosProperties nacosConfig = infrastructureProperties.getNacos();
 
         if (nacosConfig == null || nacosConfig.getServerAddr() == null) {
             throw new IllegalStateException("Nacos enabled but serverAddr not configured");
@@ -50,14 +51,14 @@ public class ServiceDiscoveryConfiguration {
      */
     @Bean
     public ServiceDiscoveryHelper serviceDiscoveryHelper(
-            DeploymentConfigLoader configLoader,
+            InfrastructureProperties infrastructureProperties,
             RestTemplate restTemplate,
             @Autowired(required = false) NacosServiceDiscovery nacosDiscovery) {
 
         log.info("创建 ServiceDiscoveryHelper: nacosEnabled={}", nacosDiscovery != null);
 
         return new ServiceDiscoveryHelper(
-            configLoader.getInfrastructure(),
+            infrastructureProperties,
             nacosDiscovery,  // 可能为 null
             restTemplate
         );

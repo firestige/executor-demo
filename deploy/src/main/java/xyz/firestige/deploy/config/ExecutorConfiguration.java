@@ -1,5 +1,6 @@
 package xyz.firestige.deploy.config;
 
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -7,6 +8,7 @@ import org.springframework.context.annotation.Configuration;
 import jakarta.validation.Validation;
 import jakarta.validation.Validator;
 import jakarta.validation.ValidatorFactory;
+import xyz.firestige.deploy.config.properties.InfrastructureProperties;
 import xyz.firestige.deploy.application.conflict.TenantConflictCoordinator;
 import xyz.firestige.deploy.application.facade.PlanExecutionFacade;
 import xyz.firestige.deploy.application.lifecycle.PlanLifecycleService;
@@ -29,8 +31,6 @@ import xyz.firestige.deploy.infrastructure.execution.DefaultTaskWorkerFactory;
 import xyz.firestige.deploy.infrastructure.execution.TaskWorkerFactory;
 import xyz.firestige.deploy.infrastructure.execution.stage.StageFactory;
 import xyz.firestige.deploy.infrastructure.execution.stage.SimpleStageFactory;
-import xyz.firestige.deploy.infrastructure.external.health.HealthCheckClient;
-import xyz.firestige.deploy.infrastructure.external.health.MockHealthCheckClient;
 import xyz.firestige.deploy.infrastructure.persistence.checkpoint.InMemoryCheckpointRepository;
 import xyz.firestige.deploy.infrastructure.persistence.plan.InMemoryPlanRepository;
 import xyz.firestige.deploy.infrastructure.persistence.task.InMemoryTaskRepository;
@@ -46,7 +46,6 @@ import xyz.firestige.deploy.infrastructure.persistence.projection.TaskStateProje
 import xyz.firestige.deploy.infrastructure.persistence.projection.PlanStateProjectionStore;
 import xyz.firestige.deploy.infrastructure.persistence.projection.TenantTaskIndexStore;
 import xyz.firestige.deploy.infrastructure.event.SpringDomainEventPublisher;
-import xyz.firestige.deploy.infrastructure.config.DeploymentConfigLoader;
 
 /**
  * 执行器配置类（DDD 重构版）
@@ -58,8 +57,10 @@ import xyz.firestige.deploy.infrastructure.config.DeploymentConfigLoader;
  * - 保留旧 Bean 以保持向后兼容（标记为 @Deprecated）
  *
  * @since DDD 重构 Phase 2.2.5
+ * @updated T-027 启用 @ConfigurationProperties（InfrastructureProperties, ExecutorProperties）
  */
 @Configuration
+@EnableConfigurationProperties({ExecutorProperties.class, InfrastructureProperties.class})
 public class ExecutorConfiguration {
 
     // ========== 基础设施 Bean ==========
@@ -85,15 +86,9 @@ public class ExecutorConfiguration {
         return chain;
     }
 
-    @Bean
-    public ExecutorProperties executorProperties() {
-        return new ExecutorProperties();
-    }
+    // ExecutorProperties is now auto-configured via @EnableConfigurationProperties
+    // No manual bean creation needed
 
-    @Bean
-    public HealthCheckClient healthCheckClient() {
-        return new MockHealthCheckClient();
-    }
 
     @Bean
     public TenantConflictManager conflictManager() {
@@ -191,10 +186,7 @@ public class ExecutorConfiguration {
     @Bean
     public StageFactory stageFactory() { return new SimpleStageFactory(); }
 
-    @Bean
-    public DeploymentConfigLoader deploymentConfigLoader() {
-        return new DeploymentConfigLoader();
-    }
+    // DeploymentConfigLoader removed - migrated to @ConfigurationProperties (T-027)
 
     @Bean
     public DeploymentPlanCreator deploymentPlanCreator(
@@ -215,9 +207,8 @@ public class ExecutorConfiguration {
     }
 
     @Bean
-    public TenantConfigConverter tenantConfigConverter(
-            xyz.firestige.deploy.infrastructure.config.DeploymentConfigLoader configLoader) {
-        return new TenantConfigConverter(configLoader);
+    public TenantConfigConverter tenantConfigConverter(ExecutorProperties executorProperties) {
+        return new TenantConfigConverter(executorProperties);
     }
 
     /**

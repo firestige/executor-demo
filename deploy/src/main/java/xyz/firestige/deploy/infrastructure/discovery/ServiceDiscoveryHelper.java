@@ -3,7 +3,7 @@ package xyz.firestige.deploy.infrastructure.discovery;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.web.client.RestTemplate;
-import xyz.firestige.deploy.infrastructure.config.model.InfrastructureConfig;
+import xyz.firestige.deploy.config.properties.InfrastructureProperties;
 
 import java.util.*;
 import java.util.concurrent.*;
@@ -23,12 +23,13 @@ import java.util.stream.Collectors;
  * </ul>
  *
  * @since T-025
+ * @updated T-027 迁移至 InfrastructureProperties
  */
 public class ServiceDiscoveryHelper {
 
     private static final Logger log = LoggerFactory.getLogger(ServiceDiscoveryHelper.class);
 
-    private final InfrastructureConfig config;
+    private final InfrastructureProperties config;
     private final NacosServiceDiscovery nacosDiscovery;  // nullable
     private final RestTemplate restTemplate;
     private final Map<String, AtomicInteger> roundRobinCounters = new ConcurrentHashMap<>();
@@ -44,7 +45,7 @@ public class ServiceDiscoveryHelper {
      * @param nacosDiscovery Nacos 服务发现（可选）
      * @param restTemplate HTTP 客户端（用于健康检查）
      */
-    public ServiceDiscoveryHelper(InfrastructureConfig config,
+    public ServiceDiscoveryHelper(InfrastructureProperties config,
                                    NacosServiceDiscovery nacosDiscovery,
                                    RestTemplate restTemplate) {
         this.config = config;
@@ -206,7 +207,7 @@ public class ServiceDiscoveryHelper {
             throw new ServiceDiscoveryException("Nacos services 配置为空");
         }
 
-        String serviceName = config.getNacos().getServiceName(serviceKey);
+        String serviceName = config.getNacos().getServices().get(serviceKey);
         if (serviceName == null) {
             throw new ServiceDiscoveryException("未找到 Nacos 服务映射: " + serviceKey);
         }

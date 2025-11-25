@@ -7,7 +7,7 @@ import org.springframework.context.annotation.Primary;
 import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 import xyz.firestige.deploy.application.dto.TenantConfig;
-import xyz.firestige.deploy.infrastructure.config.DeploymentConfigLoader;
+import xyz.firestige.deploy.config.ExecutorProperties;
 import xyz.firestige.deploy.infrastructure.execution.stage.StageFactory;
 import xyz.firestige.deploy.infrastructure.execution.stage.TaskStage;
 
@@ -23,6 +23,7 @@ import java.util.stream.Collectors;
  * - 执行构建（buildStage）
  *
  * @since RF-19-06 策略化重构
+ * @updated T-027 迁移至 ExecutorProperties
  */
 @Component
 @Primary
@@ -32,15 +33,15 @@ public class OrchestratedStageFactory implements StageFactory {
 
     private final List<StageAssembler> sortedAssemblers;
     private final SharedStageResources resources;
-    private final DeploymentConfigLoader configLoader;
+    private final ExecutorProperties executorProperties;
 
     @Autowired
     public OrchestratedStageFactory(
             List<StageAssembler> assemblers,
             SharedStageResources resources,
-            DeploymentConfigLoader configLoader) {
+            ExecutorProperties executorProperties) {
         this.resources = resources;
-        this.configLoader = configLoader;
+        this.executorProperties = executorProperties;
 
         // 启动时计算并缓存排序后的策略列表
         this.sortedAssemblers = sortAndCache(assemblers);
@@ -70,7 +71,7 @@ public class OrchestratedStageFactory implements StageFactory {
      */
     private List<StageAssembler> sortAndCache(List<StageAssembler> assemblers) {
         // 1. 加载配置中的默认顺序
-        List<String> defaultServiceNames = configLoader.getDefaultServiceNames();
+        List<String> defaultServiceNames = executorProperties.getDefaultServiceNames();
         Map<String, Integer> defaultOrderMap = new HashMap<>();
         for (int i = 0; i < defaultServiceNames.size(); i++) {
             defaultOrderMap.put(defaultServiceNames.get(i), i * 10);
@@ -120,7 +121,7 @@ public class OrchestratedStageFactory implements StageFactory {
         log.info("Loaded {} StageAssemblers:", sortedAssemblers.size());
 
         // 重新计算 orderMap 用于日志（避免重复逻辑）
-        List<String> defaultServiceNames = configLoader.getDefaultServiceNames();
+        List<String> defaultServiceNames = executorProperties.getDefaultServiceNames();
         Map<String, Integer> defaultOrderMap = new HashMap<>();
         for (int i = 0; i < defaultServiceNames.size(); i++) {
             defaultOrderMap.put(defaultServiceNames.get(i), i * 10);

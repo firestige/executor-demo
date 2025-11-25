@@ -1,70 +1,54 @@
 package xyz.firestige.deploy.infrastructure.template;
 
 import org.springframework.stereotype.Component;
-import org.springframework.util.StringUtils;
 
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * 模板变量解析器
+ * 模板解析器 - 支持占位符替换
  *
- * 职责：
- * 1. 解析配置中的占位符并替换为实际值
- * 2. 支持递归处理嵌套配置（Map、List）
- * 3. 支持占位符格式: {variableName}
+ * <p>支持的占位符格式：{变量名}
  *
- * 示例：
- * - "/actuator/bg-sdk/{tenantId}" + {tenantId: "tenant-001"} → "/actuator/bg-sdk/tenant-001"
- * - '{"tenantId":"{tenantId}","appName":"gateway"}' + {tenantId: "tenant-001"}
- *   → '{"tenantId":"tenant-001","appName":"gateway"}'
+ * <p>示例：
+ * <pre>
+ * String template = "/actuator/bg-sdk/{tenantId}/version/{version}";
+ * Map<String, String> variables = Map.of(
+ *     "tenantId", "tenant001",
+ *     "version", "v1.0.0"
+ * );
+ * String result = templateResolver.resolve(template, variables);
+ * // 结果: /actuator/bg-sdk/tenant001/version/v1.0.0
+ * </pre>
+ *
+ * @since RF-19 三层抽象架构
+ * @updated T-027 重新启用，用于 StageAssembler 动态路径构建
  */
 @Component
 public class TemplateResolver {
 
-    private static final Pattern PLACEHOLDER_PATTERN = Pattern.compile("\\{([a-zA-Z0-9_-]+)\\}");
+    // 匹配 {变量名} 格式的占位符
+    private static final Pattern PLACEHOLDER_PATTERN = Pattern.compile("\\{([^}]+)}");
 
     /**
-     * 解析对象中的所有模板变量（递归处理）
+     * 解析模板字符串，替换所有占位符
      *
-     * @param obj 待解析对象（Map, String, List等）
-     * @param variables 变量上下文
-     * @return 解析后的对象
+     * @param template 模板字符串（如 "/api/{tenantId}/config"）
+     * @param variables 变量映射（key=变量名, value=变量值）
+     * @return 解析后的字符串
+     * @throws IllegalArgumentException 如果模板中的占位符在 variables 中找不到
      */
-    public Object resolve(Object obj, Map<String, String> variables) {
-        if (obj == null) {
-            return null;
+    public String resolve(String template, Map<String, String> variables) {
+        if (template == null || template.isEmpty()) {
+            return template;
         }
 
-        if (obj instanceof String) {
-            return resolveString((String) obj, variables);
-        }
-
-        if (obj instanceof Map) {
-            return resolveMap((Map<?, ?>) obj, variables);
-        }
-
-        if (obj instanceof List) {
-            return resolveList((List<?>) obj, variables);
-        }
-
-        // 其他类型直接返回（Integer, Boolean等）
-        return obj;
-    }
-
-    /**
-     * 解析字符串中的占位符
-     *
-     * @param template 模板字符串，如 "/actuator/bg-sdk/{tenantId}"
-     * @param variables 变量 Map
-     * @return 替换后的字符串
-     */
-    private String resolveString(String template, Map<String, String> variables) {
-        if (!StringUtils.hasText(template)) {
+        if (variables == null || variables.isEmpty()) {
+            // 如果没有变量，检查模板中是否还有未解析的占位符
+            if (template.contains("{")) {
+                throw new IllegalArgumentException("模板中包含占位符，但未提供变量映射: " + template);
+            }
             return template;
         }
 
@@ -72,50 +56,44 @@ public class TemplateResolver {
         StringBuffer result = new StringBuffer();
 
         while (matcher.find()) {
-            String varName = matcher.group(1);
-            String value = variables.get(varName);
+            String variableName = matcher.group(1);
+            String value = variables.get(variableName);
 
             if (value == null) {
                 throw new IllegalArgumentException(
-                    "Missing variable value for placeholder: {" + varName + "} in template: " + template
+                    String.format("模板占位符 '%s' 在变量映射中找不到。模板: %s, 可用变量: %s",
+                        variableName, template, variables.keySet())
                 );
             }
 
-            // 使用 Matcher.quoteReplacement 避免特殊字符问题
+            // 替换占位符，注意需要转义特殊字符
             matcher.appendReplacement(result, Matcher.quoteReplacement(value));
         }
-        matcher.appendTail(result);
 
+        matcher.appendTail(result);
         return result.toString();
     }
 
     /**
-     * 递归解析 Map 中的所有值
+     * 快捷方法：只替换单个变量
+     *
+     * @param template 模板字符串
+     * @param variableName 变量名
+     * @param value 变量值
+     * @return 解析后的字符串
      */
-    @SuppressWarnings("unchecked")
-    private Map<String, Object> resolveMap(Map<?, ?> map, Map<String, String> variables) {
-        Map<String, Object> resolved = new HashMap<>();
-
-        for (Map.Entry<?, ?> entry : map.entrySet()) {
-            String key = entry.getKey().toString();
-            Object value = entry.getValue();
-            resolved.put(key, resolve(value, variables));
-        }
-
-        return resolved;
+    public String resolve(String template, String variableName, String value) {
+        return resolve(template, Map.of(variableName, value));
     }
 
     /**
-     * 递归解析 List 中的所有元素
+     * 检查模板是否包含占位符
+     *
+     * @param template 模板字符串
+     * @return true 如果包含占位符
      */
-    private List<Object> resolveList(List<?> list, Map<String, String> variables) {
-        List<Object> resolved = new ArrayList<>();
-
-        for (Object item : list) {
-            resolved.add(resolve(item, variables));
-        }
-
-        return resolved;
+    public boolean hasPlaceholders(String template) {
+        return template != null && PLACEHOLDER_PATTERN.matcher(template).find();
     }
 }
 

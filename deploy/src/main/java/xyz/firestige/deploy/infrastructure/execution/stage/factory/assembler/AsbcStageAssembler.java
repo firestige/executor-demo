@@ -94,7 +94,7 @@ public class AsbcStageAssembler implements StageAssembler {
             headers.put("Content-Type", "application/json");
 
             // 4. 从 auth 配置读取认证信息
-            var authConfig = resources.getConfigLoader().getInfrastructure().getAuthConfig("asbc");
+            var authConfig = resources.getAuthConfig("asbc");
             if (authConfig != null && authConfig.isEnabled()) {
                 String token = generateToken(authConfig.getTokenProvider());
                 if (token != null) {

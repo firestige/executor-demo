@@ -3,12 +3,12 @@ package xyz.firestige.deploy.facade.converter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
+import xyz.firestige.deploy.config.ExecutorProperties;
 import xyz.firestige.deploy.domain.shared.vo.RouteRule;
 import xyz.firestige.dto.deploy.TenantDeployConfig;
 import xyz.firestige.deploy.application.dto.DeployUnitIdentifier;
 import xyz.firestige.deploy.application.dto.MediaRoutingConfig;
 import xyz.firestige.deploy.application.dto.TenantConfig;
-import xyz.firestige.deploy.infrastructure.config.DeploymentConfigLoader;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -23,16 +23,17 @@ import java.util.stream.Collectors;
  * - 解析服务名称列表（显式传入或使用默认值）
  *
  * @since DDD 重构 Phase 2.3
+ * @updated T-027 迁移至 ExecutorProperties
  */
 @Component
 public class TenantConfigConverter {
 
     private static final Logger log = LoggerFactory.getLogger(TenantConfigConverter.class);
 
-    private final DeploymentConfigLoader configLoader;
+    private final ExecutorProperties executorProperties;
 
-    public TenantConfigConverter(DeploymentConfigLoader configLoader) {
-        this.configLoader = configLoader;
+    public TenantConfigConverter(ExecutorProperties executorProperties) {
+        this.executorProperties = executorProperties;
     }
 
     /**
@@ -133,7 +134,7 @@ public class TenantConfigConverter {
 //        }
 
         // 策略 2：使用配置文件默认值
-        List<String> defaultNames = configLoader.getDefaultServiceNames();
+        List<String> defaultNames = executorProperties.getDefaultServiceNames();
         log.debug("Using default service names for tenant {}: {}",
                 external.getTenantId(), defaultNames);
         return new ArrayList<>(defaultNames);

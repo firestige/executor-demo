@@ -6,7 +6,6 @@ import xyz.firestige.deploy.domain.task.TaskAggregate;
 import xyz.firestige.deploy.domain.task.TaskRuntimeContext;
 import xyz.firestige.deploy.domain.task.TenantDeployConfigSnapshot;
 import xyz.firestige.deploy.config.ExecutorProperties;
-import xyz.firestige.deploy.infrastructure.external.health.HealthCheckClient;
 
 /**
  * 使用上一版可用配置进行回滚：重发旧配置 + 健康确认旧版本号。
@@ -16,11 +15,9 @@ public class PreviousConfigRollbackStrategy implements RollbackStrategy {
 
     private static final Logger log = LoggerFactory.getLogger(PreviousConfigRollbackStrategy.class);
 
-    private final HealthCheckClient healthCheckClient;
     private final ExecutorProperties props;
 
-    public PreviousConfigRollbackStrategy(HealthCheckClient healthCheckClient, ExecutorProperties props) {
-        this.healthCheckClient = healthCheckClient;
+    public PreviousConfigRollbackStrategy(ExecutorProperties props) {
         this.props = props;
     }
 

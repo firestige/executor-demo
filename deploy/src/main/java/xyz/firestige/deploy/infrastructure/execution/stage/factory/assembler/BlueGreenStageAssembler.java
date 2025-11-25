@@ -218,7 +218,7 @@ public class BlueGreenStageAssembler implements StageAssembler {
             return config.getHealthCheckEndpoints().get(0);
         }
         String template = resources.getVerifyDefaultPath();
-        return template.replace("{tenantId}", config.getTenantId().getValue());
+        return resources.getTemplateResolver().resolve(template, "tenantId", config.getTenantId().getValue());
     }
 
     /**

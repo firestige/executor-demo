@@ -6,6 +6,12 @@ spring:
 
 # Executor 配置
 executor:
+  # 默认服务切换顺序（T-027 迁移）
+  default-service-names:
+    - asbc-gateway
+    - portal
+    - blue-green-gateway
+
   # Infrastructure 新增（Phase2 迁移）
   infrastructure:
     redis:

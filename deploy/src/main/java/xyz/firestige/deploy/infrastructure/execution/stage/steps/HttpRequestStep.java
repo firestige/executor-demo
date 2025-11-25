@@ -156,7 +156,7 @@ public class HttpRequestStep implements StageStep {
             }
 
             // 填充响应
-            responseBuilder.statusCode(responseEntity.getStatusCodeValue());
+            responseBuilder.statusCode(responseEntity.getStatusCode().value());
             responseBuilder.body(responseEntity.getBody());
 
             // 提取响应 headers

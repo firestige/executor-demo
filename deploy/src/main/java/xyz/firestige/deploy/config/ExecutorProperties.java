@@ -1,17 +1,31 @@
 package xyz.firestige.deploy.config;
 
+import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.validation.annotation.Validated;
 import xyz.firestige.deploy.infrastructure.scheduling.TenantConflictManager;
+
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * 全局配置（通过 application 配置覆盖默认值）。
  * 优先级：TenantDeployConfig > application config > 内置默认
  */
+@ConfigurationProperties(prefix = "executor")
+@Validated
 public class ExecutorProperties {
     private int maxConcurrency = 10; // Plan 默认并发阈值
     private int maxRetry = 3;        // Task 默认最大重试次数
     
     // RF-14: 冲突检测策略（合并 PlanSchedulingStrategy）
     private TenantConflictManager.ConflictPolicy conflictPolicy = TenantConflictManager.ConflictPolicy.FINE_GRAINED;
+
+    // T-027: 默认服务名称列表（迁移自 deploy-stages.yml）
+    private List<String> defaultServiceNames = new ArrayList<>(List.of(
+        "asbc-gateway",
+        "portal",
+        "blue-green-gateway"
+    ));
 
     private int healthCheckIntervalSeconds = 3;
     private int healthCheckMaxAttempts = 10;
@@ -44,5 +58,11 @@ public class ExecutorProperties {
     public TenantConflictManager.ConflictPolicy getConflictPolicy() { return conflictPolicy; }
     public void setConflictPolicy(TenantConflictManager.ConflictPolicy conflictPolicy) { 
         this.conflictPolicy = conflictPolicy; 
+    }
+
+    // T-027: 默认服务名称列表
+    public List<String> getDefaultServiceNames() { return defaultServiceNames; }
+    public void setDefaultServiceNames(List<String> defaultServiceNames) {
+        this.defaultServiceNames = defaultServiceNames;
     }
 }

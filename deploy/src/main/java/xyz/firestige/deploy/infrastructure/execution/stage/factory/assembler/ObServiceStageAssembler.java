@@ -153,7 +153,7 @@ public class ObServiceStageAssembler implements StageAssembler {
             String footprint = String.valueOf(config.getPlanVersion());
 
             // 4. Pub/Sub 配置
-            String topic = resources.getConfigLoader().getInfrastructure().getRedis().getPubsubTopic();
+            String topic = resources.getRedisPubsubTopic();
 
             Map<String, Object> messageBody = new HashMap<>();
             messageBody.put("tenantId", config.getTenantId().getValue());
@@ -272,7 +272,7 @@ public class ObServiceStageAssembler implements StageAssembler {
             return config.getHealthCheckEndpoints().get(0);
         }
         String template = resources.getVerifyDefaultPath();
-        return template.replace("{tenantId}", config.getTenantId().getValue());
+        return resources.getTemplateResolver().resolve(template, "tenantId", config.getTenantId().getValue());
     }
 
     /**

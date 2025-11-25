@@ -9,13 +9,12 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.web.client.RestTemplate;
 import xyz.firestige.deploy.config.properties.InfrastructureProperties;
-import xyz.firestige.deploy.infrastructure.config.InfrastructureConfigAdapter;
-import xyz.firestige.deploy.infrastructure.config.model.InfrastructureConfig;
 import xyz.firestige.deploy.infrastructure.discovery.NacosServiceDiscovery;
 import xyz.firestige.deploy.infrastructure.discovery.ServiceDiscoveryHelper;
 
 /**
  * 基础设施自动装配（Phase1 新增）
+ * @updated T-027 完全迁移至 InfrastructureProperties
  */
 @AutoConfiguration
 @EnableConfigurationProperties(InfrastructureProperties.class)
@@ -38,17 +37,9 @@ public class InfrastructureAutoConfiguration {
             log.info("[Infrastructure] Initializing NacosServiceDiscovery serverAddr={}", serverAddr);
             return new NacosServiceDiscovery(serverAddr);
         } catch (com.alibaba.nacos.api.exception.NacosException e) {
-            log.error("[Infrastructure] Nacos init failed: {}", e.getMessage());
-            // 返回一个不可用的占位实现（available=false）供后续降级
-            return new NacosServiceDiscoveryPlaceholder();
+            log.error("[Infrastructure] Nacos init failed, will use fallback: {}", e.getMessage());
+            throw new IllegalStateException("Failed to initialize Nacos", e);
         }
-    }
-
-    /** 占位 NacosServiceDiscovery，标记不可用 */
-    static class NacosServiceDiscoveryPlaceholder extends NacosServiceDiscovery {
-        NacosServiceDiscoveryPlaceholder() { superSafe(); }
-        private void superSafe() { /* no-op unsafe constructor bypass */ }
-        @Override public boolean isAvailable() { return false; }
     }
 
     @Bean
@@ -56,8 +47,7 @@ public class InfrastructureAutoConfiguration {
     public ServiceDiscoveryHelper serviceDiscoveryHelper(InfrastructureProperties props,
                                                          RestTemplate restTemplate,
                                                          @org.springframework.beans.factory.annotation.Autowired(required = false) NacosServiceDiscovery nacosServiceDiscovery) {
-        InfrastructureConfig adapted = InfrastructureConfigAdapter.adapt(props);
         log.info("[Infrastructure] Building ServiceDiscoveryHelper (nacosEnabled={})", props.getNacos().isEnabled());
-        return new ServiceDiscoveryHelper(adapted, nacosServiceDiscovery, restTemplate);
+        return new ServiceDiscoveryHelper(props, nacosServiceDiscovery, restTemplate);
     }
 }
