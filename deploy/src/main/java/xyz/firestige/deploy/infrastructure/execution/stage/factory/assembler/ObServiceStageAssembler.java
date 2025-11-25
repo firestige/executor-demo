@@ -11,15 +11,18 @@ import xyz.firestige.deploy.infrastructure.execution.stage.TaskStage;
 import xyz.firestige.deploy.infrastructure.execution.stage.factory.SharedStageResources;
 import xyz.firestige.deploy.infrastructure.execution.stage.factory.StageAssembler;
 import xyz.firestige.deploy.infrastructure.execution.stage.preparer.DataPreparer;
-import xyz.firestige.deploy.infrastructure.execution.stage.redis.ConfigWriteResult;
-import xyz.firestige.deploy.infrastructure.execution.stage.steps.ConfigWriteStep;
 import xyz.firestige.deploy.infrastructure.execution.stage.steps.PollingStep;
+import xyz.firestige.deploy.infrastructure.execution.stage.steps.RedisAckStep;
 import xyz.firestige.deploy.infrastructure.execution.stage.validator.ResultValidator;
 import xyz.firestige.deploy.infrastructure.execution.stage.validator.ValidationResult;
 import xyz.firestige.deploy.domain.stage.model.ObConfig;
 
+import java.time.Duration;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 /**
  * OBService Stage 组装器
@@ -54,12 +57,12 @@ public class ObServiceStageAssembler implements StageAssembler {
             .resultValidator(createOBPollingValidator())
             .build());
 
-        // Step 2: ConfigWrite (写入 ObConfig 到 Redis)
+        // Step 2: RedisAck (Write + Pub/Sub + Verify)
         stepConfigs.add(ConfigurableServiceStage.StepConfig.builder()
-            .stepName("ob-config-write")
-            .dataPreparer(createOBConfigWriteDataPreparer(cfg, resources))
-            .step(new ConfigWriteStep(resources.getRedisTemplate()))
-            .resultValidator(createOBConfigWriteValidator())
+            .stepName("ob-redis-ack")
+            .dataPreparer(createRedisAckDataPreparer(cfg, resources))
+            .step(new RedisAckStep(resources.getRedisAckService()))
+            .resultValidator(createRedisAckValidator())
             .build());
 
         return new ConfigurableServiceStage(stageName(), stepConfigs);
@@ -113,42 +116,130 @@ public class ObServiceStageAssembler implements StageAssembler {
         };
     }
 
-    // ---- ConfigWrite ----
+    // ---- RedisAck DataPreparer & Validator ----
 
-    private DataPreparer createOBConfigWriteDataPreparer(TenantConfig config, SharedStageResources resources) {
+    /**
+     * RedisAck 数据准备器
+     * 整合了 Write、Pub/Sub、Verify 三个步骤
+     */
+    private DataPreparer createRedisAckDataPreparer(TenantConfig config, SharedStageResources resources) {
         return (ctx) -> {
+            // 1. Redis Write 配置
             String redisKeyPrefix = resources.getConfigLoader().getInfrastructure().getRedis().getHashKeyPrefix();
-            String key = redisKeyPrefix + config.getTenantId().getValue();
-            String field = "ob-campaign";
+            String redisKey = redisKeyPrefix + config.getTenantId().getValue();
+            String redisField = "ob-campaign";
 
+            // 2. 构建 ObConfig（包含业务数据和 metadata）
             ObConfig obConfig = new ObConfig(
                 config.getTenantId().getValue(),
                 extractSourceUnit(config),
                 extractTargetUnit(config)
             );
 
-            String value;
+            // 转换为 Map 以便添加 metadata
+            Map<String, Object> redisValue = new HashMap<>();
+            redisValue.put("tenantId", obConfig.getTenantId());
+            redisValue.put("sourceUnitName", obConfig.getSourceUnitName());
+            redisValue.put("targetUnitName", obConfig.getTargetUnitName());
+            redisValue.put("timestamp", obConfig.getTimestamp());
+
+            // 添加 metadata（包含 version 作为 footprint）
+            Map<String, Object> metadata = new HashMap<>();
+            metadata.put("version", config.getPlanVersion());
+            redisValue.put("metadata", metadata);
+
+            // 3. Footprint（从 PlanVersion）
+            String footprint = String.valueOf(config.getPlanVersion());
+
+            // 4. Pub/Sub 配置
+            String topic = resources.getConfigLoader().getInfrastructure().getRedis().getPubsubTopic();
+
+            Map<String, Object> messageBody = new HashMap<>();
+            messageBody.put("tenantId", config.getTenantId().getValue());
+            messageBody.put("appName", "ob-campaign");
+            messageBody.put("version", config.getPlanVersion());
+            messageBody.put("timestamp", System.currentTimeMillis());
+
+            String message;
             try {
-                value = resources.getObjectMapper().writeValueAsString(obConfig);
+                message = resources.getObjectMapper().writeValueAsString(messageBody);
             } catch (JsonProcessingException e) {
-                throw new RuntimeException("Failed to serialize ObConfig", e);
+                throw new RuntimeException("Failed to serialize message", e);
             }
 
-            ctx.addVariable("key", key);
-            ctx.addVariable("field", field);
-            ctx.addVariable("value", value);
+            // 5. Verify 配置
+            List<String> endpoints = resolveEndpoints("obService", "ob-service", resources);
+            String healthCheckPath = extractHealthCheckPath(config, resources);
+            List<String> verifyUrls = endpoints.stream()
+                .map(ep -> "http://" + ep + healthCheckPath)
+                .collect(Collectors.toList());
 
-            log.debug("OB ConfigWrite 数据准备完成: key={}, field={}", key, field);
+            int maxAttempts = resources.getConfigLoader().getInfrastructure().getHealthCheck().getMaxAttempts();
+            int intervalSec = resources.getConfigLoader().getInfrastructure().getHealthCheck().getIntervalSeconds();
+
+            // 6. 放入 Context
+            ctx.addVariable("redisKey", redisKey);
+            ctx.addVariable("redisField", redisField);
+            ctx.addVariable("redisValue", redisValue);
+            ctx.addVariable("footprint", footprint);
+            ctx.addVariable("pubsubTopic", topic);
+            ctx.addVariable("pubsubMessage", message);
+            ctx.addVariable("verifyUrls", verifyUrls);
+            ctx.addVariable("verifyJsonPath", "$.metadata.version");
+            ctx.addVariable("retryMaxAttempts", maxAttempts);
+            ctx.addVariable("retryDelay", Duration.ofSeconds(intervalSec));
+            ctx.addVariable("timeout", Duration.ofSeconds(maxAttempts * intervalSec + 10));
+
+            log.debug("OB RedisAck 数据准备完成: key={}, field={}, endpoints={}, version={}",
+                redisKey, redisField, verifyUrls.size(), footprint);
         };
     }
 
-    private ResultValidator createOBConfigWriteValidator() {
+    /**
+     * RedisAck 结果验证器
+     */
+    private ResultValidator createRedisAckValidator() {
         return (ctx) -> {
-            ConfigWriteResult result = ctx.getAdditionalData("configWriteResult", ConfigWriteResult.class);
-            if (result != null && result.isSuccess()) {
-                return ValidationResult.success("OB 配置写入成功");
+            // 1. 优先检查 FailureInfo
+            xyz.firestige.deploy.domain.shared.exception.FailureInfo failureInfo =
+                ctx.getAdditionalData("failureInfo", xyz.firestige.deploy.domain.shared.exception.FailureInfo.class);
+            if (failureInfo != null) {
+                return ValidationResult.failure(failureInfo.getErrorMessage());
             }
-            return ValidationResult.failure("OB 配置写入失败");
+
+            // 2. 检查 AckResult
+            xyz.firestige.redis.ack.api.AckResult result =
+                ctx.getAdditionalData("ackResult", xyz.firestige.redis.ack.api.AckResult.class);
+
+            if (result == null) {
+                return ValidationResult.failure("未获取到 ACK 结果");
+            }
+
+            if (result.isSuccess()) {
+                return ValidationResult.success(
+                    String.format("OB 配置推送并验证成功（尝试 %d 次，耗时 %s）",
+                        result.getAttempts(),
+                        result.getElapsed())
+                );
+            }
+
+            if (result.isTimeout()) {
+                return ValidationResult.failure(
+                    String.format("OB 验证超时（尝试 %d 次，耗时 %s）",
+                        result.getAttempts(),
+                        result.getElapsed())
+                );
+            }
+
+            if (result.isFootprintMismatch()) {
+                return ValidationResult.failure(
+                    String.format("OB 版本不匹配（期望：%s，实际：%s）",
+                        result.getExpectedFootprint(),
+                        result.getActualFootprint())
+                );
+            }
+
+            return ValidationResult.failure("OB ACK 失败：" + result.getReason());
         };
     }
 
@@ -166,6 +257,27 @@ public class ObServiceStageAssembler implements StageAssembler {
             return config.getDeployUnit().name();
         }
         throw new IllegalArgumentException("deployUnit.name is required");
+    }
+
+    private String extractHealthCheckPath(TenantConfig config, SharedStageResources resources) {
+        if (config.getHealthCheckEndpoints() != null && !config.getHealthCheckEndpoints().isEmpty()) {
+            return config.getHealthCheckEndpoints().get(0);
+        }
+        String template = resources.getConfigLoader().getInfrastructure().getHealthCheck().getDefaultPath();
+        return template.replace("{tenantId}", config.getTenantId().getValue());
+    }
+
+    private List<String> resolveEndpoints(String nacosServiceKey, String fallbackKey, SharedStageResources resources) {
+        List<String> fallbackInstances = resources.getConfigLoader().getInfrastructure()
+            .getFallbackInstances()
+            .get(fallbackKey);
+
+        if (fallbackInstances == null || fallbackInstances.isEmpty()) {
+            throw new IllegalStateException("No fallback instances configured for: " + fallbackKey);
+        }
+
+        log.debug("使用 fallback 实例: service={}, count={}", fallbackKey, fallbackInstances.size());
+        return fallbackInstances;
     }
 }
 
