@@ -1,4 +1,4 @@
-package xyz.firestige.infrastructure.redis.renewal.metrics;
+package xyz.firestige.redis.renewal.metrics;
 
 import java.time.Instant;
 import java.util.concurrent.atomic.AtomicLong;

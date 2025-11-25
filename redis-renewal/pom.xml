@@ -11,6 +11,7 @@
 
     <groupId>xyz.firestige</groupId>
     <artifactId>redis-renewal</artifactId>
+    <packaging>pom</packaging>
 
     <properties>
         <maven.compiler.source>17</maven.compiler.source>

@@ -1,4 +1,4 @@
-package xyz.firestige.infrastructure.redis.renewal.condition;
+package xyz.firestige.redis.renewal.condition;
 
 import xyz.firestige.infrastructure.redis.renewal.api.RenewalContext;
 import xyz.firestige.infrastructure.redis.renewal.api.StopCondition;

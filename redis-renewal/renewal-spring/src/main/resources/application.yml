@@ -1,0 +1,46 @@
+# Redis 续期服务配置示例
+
+# ========== 基础配置 ==========
+redis:
+  renewal:
+    # 是否启用续期服务（默认 true）
+    enabled: true
+
+    # 时间轮配置
+    time-wheel:
+      # Tick 间隔（毫秒，默认 100）
+      tick-duration: 100
+      # 时间轮槽数（默认 512）
+      ticks-per-wheel: 512
+
+    # 执行器线程池大小（默认 4）
+    executor-thread-pool-size: 4
+    # 执行器队列容量（默认 1000）
+    executor-queue-capacity: 1000
+
+    # 指标报告间隔（秒，默认 60）
+    metrics-report-interval: 60
+
+    # 默认续期间隔（秒，默认 30）
+    default-renewal-interval: 30
+    # 默认 TTL（秒，默认 300）
+    default-ttl: 300
+
+# ========== 生产环境配置 ==========
+# redis:
+#   renewal:
+#     enabled: true
+#     time-wheel:
+#       tick-duration: 50  # 更高精度
+#       ticks-per-wheel: 1024  # 更多槽位
+#     executor-thread-pool-size: 8  # 更多线程
+#     executor-queue-capacity: 2000
+#     metrics-report-interval: 300  # 5分钟报告一次
+#     default-renewal-interval: 60
+#     default-ttl: 600
+
+# ========== 禁用续期服务 ==========
+# redis:
+#   renewal:
+#     enabled: false
+

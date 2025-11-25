@@ -1,4 +1,4 @@
-package xyz.firestige.infrastructure.redis.renewal.selector;
+package xyz.firestige.redis.renewal.selector;
 
 import xyz.firestige.infrastructure.redis.renewal.api.KeySelector;
 import xyz.firestige.infrastructure.redis.renewal.api.RenewalContext;

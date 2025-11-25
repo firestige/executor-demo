@@ -1,4 +1,4 @@
-package xyz.firestige.infrastructure.redis.renewal.core;
+package xyz.firestige.redis.renewal.core;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

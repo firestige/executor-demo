@@ -1,4 +1,4 @@
-package xyz.firestige.infrastructure.redis.renewal.keygen;
+package xyz.firestige.redis.renewal.keygen;
 
 import xyz.firestige.infrastructure.redis.renewal.api.KeyGenerationStrategy;
 

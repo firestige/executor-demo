@@ -1,4 +1,4 @@
-package xyz.firestige.infrastructure.redis.renewal.autoconfigure;
+package xyz.firestige.redis.renewal.spring.autoconfigure;
 
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;

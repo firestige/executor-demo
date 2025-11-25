@@ -1,4 +1,4 @@
-package xyz.firestige.infrastructure.redis.renewal.core;
+package xyz.firestige.redis.renewal.core;
 
 import xyz.firestige.infrastructure.redis.renewal.api.RenewalContext;
 import xyz.firestige.infrastructure.redis.renewal.api.RenewalTask;

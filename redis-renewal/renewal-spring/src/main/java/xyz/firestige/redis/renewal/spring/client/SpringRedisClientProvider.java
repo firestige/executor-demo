@@ -1,4 +1,4 @@
-package xyz.firestige.infrastructure.redis.renewal.client.spring;
+package xyz.firestige.redis.renewal.spring.client;
 
 import org.springframework.data.redis.core.RedisTemplate;
 import xyz.firestige.infrastructure.redis.renewal.api.RedisClient;

@@ -1,4 +1,4 @@
-package xyz.firestige.infrastructure.redis.renewal.metrics;
+package xyz.firestige.redis.renewal.metrics;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

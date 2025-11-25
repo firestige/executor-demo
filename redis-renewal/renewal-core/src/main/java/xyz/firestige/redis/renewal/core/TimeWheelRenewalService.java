@@ -1,4 +1,4 @@
-package xyz.firestige.infrastructure.redis.renewal.core;
+package xyz.firestige.redis.renewal.core;
 
 import io.netty.util.HashedWheelTimer;
 import io.netty.util.Timeout;

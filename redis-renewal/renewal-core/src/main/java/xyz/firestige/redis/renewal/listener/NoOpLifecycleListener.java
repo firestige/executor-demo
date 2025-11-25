@@ -1,4 +1,4 @@
-package xyz.firestige.infrastructure.redis.renewal.listener;
+package xyz.firestige.redis.renewal.listener;
 
 import xyz.firestige.infrastructure.redis.renewal.api.RenewalLifecycleListener;
 import xyz.firestige.infrastructure.redis.renewal.api.RenewalResult;

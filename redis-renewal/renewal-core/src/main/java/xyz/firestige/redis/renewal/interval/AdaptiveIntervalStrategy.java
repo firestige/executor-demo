@@ -1,4 +1,4 @@
-package xyz.firestige.infrastructure.redis.renewal.interval;
+package xyz.firestige.redis.renewal.interval;
 
 import xyz.firestige.infrastructure.redis.renewal.api.RenewalContext;
 import xyz.firestige.infrastructure.redis.renewal.api.RenewalIntervalStrategy;

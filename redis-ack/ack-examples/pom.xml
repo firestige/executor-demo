@@ -4,32 +4,27 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
 
-    <parent>
-        <groupId>xyz.firestige.infrastructure</groupId>
-        <artifactId>redis-ack-parent</artifactId>
-        <version>1.0.0-SNAPSHOT</version>
-    </parent>
-
     <artifactId>ack-examples</artifactId>
     <name>Redis ACK Examples</name>
     <description>Usage examples for Redis ACK service (not published to Maven Central)</description>
+    <packaging>jar</packaging>
 
     <dependencies>
         <!-- Redis ACK Core -->
         <dependency>
-            <groupId>xyz.firestige.infrastructure</groupId>
+            <groupId>xyz.firestige.redis-ack</groupId>
             <artifactId>ack-api</artifactId>
-            <version>${project.version}</version>
+            <version>1.0-SNAPSHOT</version>
         </dependency>
         <dependency>
-            <groupId>xyz.firestige.infrastructure</groupId>
+            <groupId>xyz.firestige.redis-ack</groupId>
             <artifactId>ack-core</artifactId>
-            <version>${project.version}</version>
+            <version>1.0-SNAPSHOT</version>
         </dependency>
         <dependency>
-            <groupId>xyz.firestige.infrastructure</groupId>
+            <groupId>xyz.firestige.redis-ack</groupId>
             <artifactId>ack-spring</artifactId>
-            <version>${project.version}</version>
+            <version>1.0-SNAPSHOT</version>
         </dependency>
     </dependencies>
 

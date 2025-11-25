@@ -1,4 +1,4 @@
-package xyz.firestige.infrastructure.redis.renewal.filter;
+package xyz.firestige.redis.renewal.filter;
 
 import xyz.firestige.infrastructure.redis.renewal.api.RenewalFilter;
 

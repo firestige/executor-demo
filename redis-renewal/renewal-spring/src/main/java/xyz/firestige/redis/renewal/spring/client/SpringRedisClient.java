@@ -1,4 +1,4 @@
-package xyz.firestige.infrastructure.redis.renewal.client.spring;
+package xyz.firestige.redis.renewal.spring.client;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

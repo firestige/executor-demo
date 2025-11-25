@@ -1,4 +1,4 @@
-package xyz.firestige.infrastructure.redis.renewal.metrics;
+package xyz.firestige.redis.renewal.metrics;
 
 import org.springframework.boot.actuate.health.Health;
 import org.springframework.boot.actuate.health.HealthIndicator;

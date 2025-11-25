@@ -1,4 +1,4 @@
-package xyz.firestige.infrastructure.redis.renewal.batch;
+package xyz.firestige.redis.renewal.batch;
 
 import xyz.firestige.infrastructure.redis.renewal.api.BatchStrategy;
 
