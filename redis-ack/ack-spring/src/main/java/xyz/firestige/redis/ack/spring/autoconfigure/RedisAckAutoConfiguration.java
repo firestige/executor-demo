@@ -14,9 +14,13 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.web.client.RestTemplate;
+import xyz.firestige.redis.ack.api.AckMetricsRecorder;
+import xyz.firestige.redis.ack.api.HttpClient;
 import xyz.firestige.redis.ack.api.RedisAckService;
 import xyz.firestige.redis.ack.spring.DefaultRedisAckService;
 import xyz.firestige.redis.ack.spring.config.AckExecutorConfig;
+import xyz.firestige.redis.ack.spring.http.RestTemplateHttpClient;
+import xyz.firestige.redis.ack.spring.metrics.MicrometerAckMetricsRecorder;
 
 import java.util.concurrent.Executor;
 
@@ -34,22 +38,35 @@ import java.util.concurrent.Executor;
 public class RedisAckAutoConfiguration {
 
     /**
+     * HttpClient Bean（基于 RestTemplate）
+     */
+    @Bean(name = "ackHttpClient")
+    @ConditionalOnMissingBean(name = "ackHttpClient")
+    public HttpClient ackHttpClient(@Qualifier("ackRestTemplate") RestTemplate ackRestTemplate) {
+        return new RestTemplateHttpClient(ackRestTemplate);
+    }
+
+    /**
      * Redis ACK 服务 Bean
      */
     @Bean
     @ConditionalOnMissingBean
     public RedisAckService redisAckService(
             RedisTemplate<String, String> redisTemplate,
-            RestTemplate ackRestTemplate,
+            @Qualifier("ackHttpClient") HttpClient ackHttpClient,
             ObjectMapper objectMapper,
             ObjectProvider<MeterRegistry> meterRegistryProvider,
             @Qualifier("ackVerifyExecutor") Executor ackVerifyExecutor) {
         MeterRegistry registry = meterRegistryProvider.getIfAvailable();
+        AckMetricsRecorder metricsRecorder = registry != null
+            ? new MicrometerAckMetricsRecorder(registry)
+            : AckMetricsRecorder.noop();
+
         return new DefaultRedisAckService(
             redisTemplate,
-            ackRestTemplate,
+            ackHttpClient,
             objectMapper,
-            registry,
+            metricsRecorder,
             (java.util.concurrent.ExecutorService) ackVerifyExecutor
         );
     }

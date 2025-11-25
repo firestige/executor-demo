@@ -1,9 +1,9 @@
 package xyz.firestige.redis.ack.endpoint;
 
-import org.springframework.http.ResponseEntity;
-import org.springframework.web.client.RestTemplate;
 import xyz.firestige.redis.ack.api.AckContext;
 import xyz.firestige.redis.ack.api.AckEndpoint;
+import xyz.firestige.redis.ack.api.HttpClient;
+import xyz.firestige.redis.ack.api.HttpResponse;
 import xyz.firestige.redis.ack.exception.AckEndpointException;
 
 /**
@@ -15,19 +15,19 @@ import xyz.firestige.redis.ack.exception.AckEndpointException;
 public class HttpGetEndpoint implements AckEndpoint {
 
     private final String url;
-    private final RestTemplate restTemplate;
+    private final HttpClient httpClient;
 
-    public HttpGetEndpoint(String url, RestTemplate restTemplate) {
+    public HttpGetEndpoint(String url, HttpClient httpClient) {
         this.url = url;
-        this.restTemplate = restTemplate;
+        this.httpClient = httpClient;
     }
 
     @Override
     public String query(AckContext context) throws AckEndpointException {
         try {
-            ResponseEntity<String> response = restTemplate.getForEntity(url, String.class);
+            HttpResponse response = httpClient.get(url);
 
-            if (!response.getStatusCode().is2xxSuccessful()) {
+            if (!response.isSuccess()) {
                 throw new AckEndpointException("HTTP GET failed with status: " + response.getStatusCode());
             }
 

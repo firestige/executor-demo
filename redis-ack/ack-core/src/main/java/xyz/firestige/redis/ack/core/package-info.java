@@ -1,7 +1,8 @@
 /**
  * Redis ACK 服务核心实现
  * <p>
- * 提供 API 的默认实现，不依赖 Spring 框架（仅依赖 Spring Data Redis、Jackson、RestTemplate 作为技术选型）。
+ * 提供 API 的默认实现，不依赖 Spring 框架（仅依赖 Spring Data Redis、Jackson 作为技术选型）。
+ * HTTP 客户端通过 {@link xyz.firestige.redis.ack.api.HttpClient} 接口抽象，具体实现由上层模块提供。
  * <p>
  * 核心类：
  * <ul>

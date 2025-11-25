@@ -1,13 +1,10 @@
 package xyz.firestige.redis.ack.endpoint;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import org.springframework.http.HttpEntity;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.MediaType;
-import org.springframework.http.ResponseEntity;
-import org.springframework.web.client.RestTemplate;
 import xyz.firestige.redis.ack.api.AckContext;
 import xyz.firestige.redis.ack.api.AckEndpoint;
+import xyz.firestige.redis.ack.api.HttpClient;
+import xyz.firestige.redis.ack.api.HttpResponse;
 import xyz.firestige.redis.ack.exception.AckEndpointException;
 
 import java.util.function.Function;
@@ -22,14 +19,14 @@ public class HttpPostEndpoint implements AckEndpoint {
 
     private final String url;
     private final Function<String, Object> bodyBuilder;
-    private final RestTemplate restTemplate;
+    private final HttpClient httpClient;
     private final ObjectMapper objectMapper;
 
     public HttpPostEndpoint(String url, Function<String, Object> bodyBuilder,
-                           RestTemplate restTemplate, ObjectMapper objectMapper) {
+                           HttpClient httpClient, ObjectMapper objectMapper) {
         this.url = url;
         this.bodyBuilder = bodyBuilder;
-        this.restTemplate = restTemplate;
+        this.httpClient = httpClient;
         this.objectMapper = objectMapper;
     }
 
@@ -39,16 +36,13 @@ public class HttpPostEndpoint implements AckEndpoint {
             // 构建请求体
             Object requestBody = bodyBuilder.apply(context.getFootprint());
 
-            // 设置 Headers
-            HttpHeaders headers = new HttpHeaders();
-            headers.setContentType(MediaType.APPLICATION_JSON);
-
-            HttpEntity<Object> request = new HttpEntity<>(requestBody, headers);
+            // 序列化为 JSON
+            String jsonBody = objectMapper.writeValueAsString(requestBody);
 
             // 发送 POST 请求
-            ResponseEntity<String> response = restTemplate.postForEntity(url, request, String.class);
+            HttpResponse response = httpClient.post(url, jsonBody);
 
-            if (!response.getStatusCode().is2xxSuccessful()) {
+            if (!response.isSuccess()) {
                 throw new AckEndpointException("HTTP POST failed with status: " + response.getStatusCode());
             }
 

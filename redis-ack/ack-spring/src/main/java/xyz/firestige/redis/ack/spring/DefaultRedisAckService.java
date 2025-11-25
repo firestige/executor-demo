@@ -2,9 +2,9 @@ package xyz.firestige.redis.ack.spring;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.data.redis.core.RedisTemplate;
-import org.springframework.web.client.RestTemplate;
 import xyz.firestige.redis.ack.api.AckMetricsRecorder;
 import xyz.firestige.redis.ack.api.AckResult;
+import xyz.firestige.redis.ack.api.HttpClient;
 import xyz.firestige.redis.ack.api.PubSubStageBuilder;
 import xyz.firestige.redis.ack.api.RedisAckService;
 import xyz.firestige.redis.ack.api.VerifyStageBuilder;
@@ -25,31 +25,31 @@ import java.util.concurrent.ExecutorService;
 public class DefaultRedisAckService implements RedisAckService {
 
     private final RedisTemplate<String, String> redisTemplate;
-    private final RestTemplate restTemplate;
+    private final HttpClient httpClient;
     private final ObjectMapper objectMapper;
     private final AckMetricsRecorder metricsRecorder;
     private final ExecutorService executorService;
 
     public DefaultRedisAckService(RedisTemplate<String, String> redisTemplate,
-                                  RestTemplate restTemplate,
+                                  HttpClient httpClient,
                                   ObjectMapper objectMapper) {
-        this(redisTemplate, restTemplate, objectMapper, AckMetricsRecorder.noop(), null);
+        this(redisTemplate, httpClient, objectMapper, AckMetricsRecorder.noop(), null);
     }
 
     public DefaultRedisAckService(RedisTemplate<String, String> redisTemplate,
-                                  RestTemplate restTemplate,
+                                  HttpClient httpClient,
                                   ObjectMapper objectMapper,
                                   AckMetricsRecorder metricsRecorder) {
-        this(redisTemplate, restTemplate, objectMapper, metricsRecorder, null);
+        this(redisTemplate, httpClient, objectMapper, metricsRecorder, null);
     }
 
     public DefaultRedisAckService(RedisTemplate<String, String> redisTemplate,
-                                  RestTemplate restTemplate,
+                                  HttpClient httpClient,
                                   ObjectMapper objectMapper,
                                   AckMetricsRecorder metricsRecorder,
                                   ExecutorService executorService) {
         this.redisTemplate = redisTemplate;
-        this.restTemplate = restTemplate;
+        this.httpClient = httpClient;
         this.objectMapper = objectMapper;
         this.metricsRecorder = metricsRecorder != null ? metricsRecorder : AckMetricsRecorder.noop();
         this.executorService = executorService;
@@ -57,25 +57,28 @@ public class DefaultRedisAckService implements RedisAckService {
 
     @Override
     public WriteStageBuilder write() {
-        return new InstrumentedWriteStageBuilder(redisTemplate, restTemplate, objectMapper, metricsRecorder, executorService);
+        return new InstrumentedWriteStageBuilder(redisTemplate, httpClient, objectMapper, metricsRecorder, executorService);
     }
 
     /**
      * 带指标的 WriteStageBuilder 包装实现
      */
     static class InstrumentedWriteStageBuilder extends WriteStageBuilderImpl {
+        private final AckMetricsRecorder metricsRecorder;
+
         InstrumentedWriteStageBuilder(RedisTemplate<String, String> redisTemplate,
-                                      RestTemplate restTemplate,
+                                      HttpClient httpClient,
                                       ObjectMapper objectMapper,
                                       AckMetricsRecorder metricsRecorder,
                                       ExecutorService executorService) {
-            super(redisTemplate, restTemplate, objectMapper, metricsRecorder, executorService);
+            super(redisTemplate, httpClient, objectMapper, metricsRecorder, executorService);
+            this.metricsRecorder = metricsRecorder;
         }
 
         @Override
         public PubSubStageBuilder andPublish() {
             PubSubStageBuilder delegate = super.andPublish();
-            return new InstrumentedPubSubStageBuilder((PubSubStageBuilderImpl) delegate, getMetricsRecorder());
+            return new InstrumentedPubSubStageBuilder((PubSubStageBuilderImpl) delegate, metricsRecorder);
         }
     }
 

@@ -2,9 +2,9 @@ package xyz.firestige.redis.ack.core;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.data.redis.core.RedisTemplate;
-import org.springframework.web.client.RestTemplate;
 import xyz.firestige.redis.ack.api.AckMetricsRecorder;
 import xyz.firestige.redis.ack.api.FootprintExtractor;
+import xyz.firestige.redis.ack.api.HttpClient;
 import xyz.firestige.redis.ack.api.PubSubStageBuilder;
 import xyz.firestige.redis.ack.api.RedisOperation;
 import xyz.firestige.redis.ack.api.WriteStageBuilder;
@@ -24,7 +24,7 @@ import java.util.function.Function;
 public class WriteStageBuilderImpl implements WriteStageBuilder {
 
     private final RedisTemplate<String, String> redisTemplate;
-    private final RestTemplate restTemplate;
+    private final HttpClient httpClient;
     private final ObjectMapper objectMapper;
     private final AckMetricsRecorder metricsRecorder;
     private final ExecutorService executorService; // 用于并发验证
@@ -41,25 +41,25 @@ public class WriteStageBuilderImpl implements WriteStageBuilder {
     private FootprintExtractor footprintExtractor;
 
     public WriteStageBuilderImpl(RedisTemplate<String, String> redisTemplate,
-                                 RestTemplate restTemplate,
+                                 HttpClient httpClient,
                                  ObjectMapper objectMapper) {
-        this(redisTemplate, restTemplate, objectMapper, AckMetricsRecorder.noop(), null);
+        this(redisTemplate, httpClient, objectMapper, AckMetricsRecorder.noop(), null);
     }
 
     public WriteStageBuilderImpl(RedisTemplate<String, String> redisTemplate,
-                                 RestTemplate restTemplate,
+                                 HttpClient httpClient,
                                  ObjectMapper objectMapper,
                                  AckMetricsRecorder metricsRecorder) {
-        this(redisTemplate, restTemplate, objectMapper, metricsRecorder, null);
+        this(redisTemplate, httpClient, objectMapper, metricsRecorder, null);
     }
 
     public WriteStageBuilderImpl(RedisTemplate<String, String> redisTemplate,
-                                 RestTemplate restTemplate,
+                                 HttpClient httpClient,
                                  ObjectMapper objectMapper,
                                  AckMetricsRecorder metricsRecorder,
                                  ExecutorService executorService) {
         this.redisTemplate = redisTemplate;
-        this.restTemplate = restTemplate;
+        this.httpClient = httpClient;
         this.objectMapper = objectMapper;
         this.metricsRecorder = metricsRecorder;
         this.executorService = executorService;
@@ -151,7 +151,7 @@ public class WriteStageBuilderImpl implements WriteStageBuilder {
     }
     FootprintExtractor getFootprintExtractor() { return footprintExtractor; }
     RedisTemplate<String, String> getRedisTemplate() { return redisTemplate; }
-    RestTemplate getRestTemplate() { return restTemplate; }
+    HttpClient getHttpClient() { return httpClient; }
     ObjectMapper getObjectMapper() { return objectMapper; }
     ExecutorService getExecutorService() { return executorService; }
     public WriteStageBuilder zsetScore(double score) { this.zsetScore = score; return this; }

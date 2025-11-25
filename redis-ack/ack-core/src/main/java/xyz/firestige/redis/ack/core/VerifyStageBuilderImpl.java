@@ -41,7 +41,7 @@ public class VerifyStageBuilderImpl implements VerifyStageBuilder {
 
     @Override
     public VerifyStageBuilder httpGet(String url) {
-        this.endpoint = new HttpGetEndpoint(url, writeStage.getRestTemplate());
+        this.endpoint = new HttpGetEndpoint(url, writeStage.getHttpClient());
         return this;
     }
 
@@ -58,7 +58,7 @@ public class VerifyStageBuilderImpl implements VerifyStageBuilder {
             List<CompletableFuture<String>> futures = urls.stream()
                 .map(url -> CompletableFuture.supplyAsync(() -> {
                     try {
-                        HttpGetEndpoint endpoint = new HttpGetEndpoint(url, writeStage.getRestTemplate());
+                        HttpGetEndpoint endpoint = new HttpGetEndpoint(url, writeStage.getHttpClient());
                         return endpoint.query(context);
                     } catch (Exception e) {
                         throw new CompletionException("Failed to query URL: " + url, e);
@@ -92,7 +92,7 @@ public class VerifyStageBuilderImpl implements VerifyStageBuilder {
     public VerifyStageBuilder httpPost(String url, Function<String, Object> bodyBuilder) {
         this.endpoint = new HttpPostEndpoint(
             url, bodyBuilder,
-            writeStage.getRestTemplate(),
+            writeStage.getHttpClient(),
             writeStage.getObjectMapper()
         );
         return this;

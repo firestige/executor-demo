@@ -2,6 +2,7 @@
  * Redis ACK Core 模块
  * <p>
  * 提供 API 的默认实现，包括执行器、Builder 实现、扩展点实现。
+ * 不直接依赖 Spring Web，HTTP 客户端通过 HttpClient 接口抽象。
  */
 module xyz.firestige.redis.ack.core {
     // 导出核心实现包
@@ -17,8 +18,5 @@ module xyz.firestige.redis.ack.core {
     // 依赖外部库
     requires com.fasterxml.jackson.databind;
     requires spring.data.redis;
-    requires spring.web;
-    requires spring.context;
     requires org.slf4j;
-    requires spring.beans;
 }
