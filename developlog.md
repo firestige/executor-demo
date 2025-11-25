@@ -7,26 +7,33 @@
 
 ## 2025-11-25
 
-### [T-024 重构 ack-core RestTemplate 依赖] ✅
-- 在 ack-api 层定义 HttpClient 抽象接口（get/post 方法）
-- 创建 HttpResponse、HttpClientException 封装类
-- 在 ack-spring 中实现 RestTemplateHttpClient 适配器
-- 重构 ack-core 所有 Endpoint 类（HttpGetEndpoint、HttpPostEndpoint）使用 HttpClient 接口
-- 更新 WriteStageBuilderImpl、VerifyStageBuilderImpl 使用 HttpClient
-- 移除 ack-core 的 Spring Web 依赖，module-info.java 仅保留 Jackson、Spring Data Redis、SLF4J
-- 添加 ack-core pom.xml 缺失的依赖声明
-- 修复 RedisAckAutoConfiguration 使用 MicrometerAckMetricsRecorder 适配器
-- **成果**：ack-core 不再直接依赖 Spring Web，HTTP 客户端完全通过接口抽象
+### [T-024 重构 ack-core 依赖抽象] ✅
+- **HttpClient 抽象**：在 ack-api 定义 HttpClient 接口，ack-spring 实现 RestTemplateHttpClient
+- **RedisClient 抽象**：在 ack-api 定义 RedisClient 接口（set/hset/expire/lpush/sadd/zadd/publish），ack-spring 实现 SpringRedisClient
+- 重构 ack-core 核心类（AckExecutor、AckTask、WriteStageBuilderImpl、VerifyStageBuilderImpl）使用接口
+- 移除 ack-core 的所有 Spring 依赖（Spring Web、Spring Data Redis）
+- **成果**：ack-core 完全独立，仅依赖 Jackson 和 SLF4J，可扩展支持 Jedis/Lettuce 等客户端
 
-### [T-020 集成 RedisAckService 到 BlueGreenStageAssembler] ✅
-- 扩展 RedisAckService API：添加 httpGetMultiple(List<String>) 支持多 URL 并发验证
-- 创建 AckExecutorConfig 配置类，支持 application.yml 配置线程池（core-pool-size/max-pool-size/queue-capacity）
-- 创建 RedisAckStep 替换原有 3 个 Step（ConfigWrite + MessageBroadcast + HealthCheck）
-- 修改 BlueGreenStageAssembler：用 1 个 RedisAckStep 实现完整 Write→Pub/Sub→Verify 流程
-- Redis 数据结构：field=metadata，value 包含 {version: planVersion} 作为 footprint
-- 异常处理：AckTimeoutException→TIMEOUT_ERROR(retryable), AckExecutionException→SERVICE_UNAVAILABLE
-- 修改 SharedStageResources 注入 RedisAckService
-- **成果**：BlueGreenStage 从 3 步简化为 1 步，支持多实例并发健康检查
+### [T-022 拆分 ack/renewal 为独立子模块，多 jar 分层] ✅
+- **redis-ack 模块**：api（接口定义）、core（核心实现）、spring（Spring Boot 集成）
+- **redis-renewal 模块**：renewal-core（核心实现）、renewal-spring（Spring Boot 集成）
+- **deploy 模块**：保持当前结构，依赖 ack-spring 和 renewal-spring
+- 配置 module-info.java 和 pom.xml 依赖关系
+- **成果**：清晰的模块边界，ack 和 renewal 可独立发布和复用
+
+### [T-021 废弃现有单元测试] ✅
+- 评估现有测试结构，确认需要重建
+- 为后续 T-023（重建测试体系）做准备
+- **成果**：明确测试重建方向，为新测试架构铺路
+
+### [T-020 集成 RedisAckService 到业务编排] ✅
+- **BlueGreenStageAssembler**：用 1 个 RedisAckStep 替换 3 个 Step（ConfigWrite + MessageBroadcast + HealthCheck）
+- **ObServiceStageAssembler**：Step 2 替换为 RedisAckStep，保持 Step 1（Agent 轮询）
+- 扩展 RedisAckService API：添加 httpGetMultiple() 支持多 URL 并发验证
+- 创建 AckExecutorConfig 线程池配置，支持 application.yml 配置
+- 创建 RedisAckStep 包装 RedisAckService，处理异常转换为 FailureInfo
+- Redis 数据结构统一：field=metadata，value 包含 {version: planVersion} 作为 footprint
+- **成果**：业务 Stage 代码简化，Write→Pub/Sub→Verify 流程统一，支持多实例并发健康检查
 
 ### [T-019 Redis ACK 服务 Phase1-4 完成] ✅
 - Phase1 核心框架：API 接口 (Write/Pub/Sub/Verify)、数据模型 (AckResult/AckContext/RedisOperation)、异常体系、基础执行器 AckExecutor、默认实现 DefaultRedisAckService

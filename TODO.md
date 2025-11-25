@@ -8,9 +8,6 @@
 ## 待办 (Backlog)
 | ID | 任务 | 负责人 | 优先级 | 备注 |
 |----|------|--------|--------|------|
-| T-020 | 集成 redis-ack 与 redis-renewal 模块到 deploy 业务编排 | - | P1 | 在 Stage/Step 层以外部可复用服务替换现有内联逻辑 |
-| T-021 | 废弃现有单元测试（为模块重构与测试体系重建做准备） | - | P1 | 暂时标记为 deprecated，后续通过新测试结构替换 |
-| T-022 | 拆分 deploy / ack / renewal 为独立子模块，多 jar 分层（api/core/spring） | - | P1 | 按设计：ack & renew 输出 api + core + spring；deploy 保持当前结构迁移到独立模块 |
 | T-023 | 重建测试体系：ack/renew 单元测试；deploy 单元+集成(应用层)+e2e(Facade) | - | P1 | 设计新的测试包结构：deploy:test/unit, test/integration, test/e2e；ack/renew:test/unit |
 
 ---
