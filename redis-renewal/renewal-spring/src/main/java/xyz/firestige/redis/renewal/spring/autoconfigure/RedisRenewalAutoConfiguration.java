@@ -11,10 +11,10 @@ import xyz.firestige.redis.renewal.AsyncRenewalExecutor;
 import xyz.firestige.redis.renewal.KeyRenewalService;
 import xyz.firestige.redis.renewal.RedisClient;
 import xyz.firestige.redis.renewal.TimeWheelRenewalService;
-import xyz.firestige.redis.renewal.metrics.RenewalHealthIndicator;
 import xyz.firestige.redis.renewal.metrics.RenewalMetricsCollector;
 import xyz.firestige.redis.renewal.metrics.RenewalMetricsReporter;
 import xyz.firestige.redis.renewal.spring.client.SpringRedisClient;
+import xyz.firestige.redis.renewal.spring.metric.ActuatorHealthIndicator;
 
 /**
  * Redis 续期服务自动配置
@@ -96,8 +96,8 @@ public class RedisRenewalAutoConfiguration {
     @Bean
     @ConditionalOnMissingBean
     @ConditionalOnClass(name = "org.springframework.boot.actuate.health.HealthIndicator")
-    public RenewalHealthIndicator renewalHealthIndicator(RenewalMetricsCollector collector) {
-        return new RenewalHealthIndicator(collector);
+    public ActuatorHealthIndicator renewalHealthIndicator(RenewalMetricsCollector collector) {
+        return new ActuatorHealthIndicator(collector);
     }
 }
 
