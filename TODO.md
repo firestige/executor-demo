@@ -12,7 +12,6 @@
 | T-021 | 废弃现有单元测试（为模块重构与测试体系重建做准备） | - | P1 | 暂时标记为 deprecated，后续通过新测试结构替换 |
 | T-022 | 拆分 deploy / ack / renewal 为独立子模块，多 jar 分层（api/core/spring） | - | P1 | 按设计：ack & renew 输出 api + core + spring；deploy 保持当前结构迁移到独立模块 |
 | T-023 | 重建测试体系：ack/renew 单元测试；deploy 单元+集成(应用层)+e2e(Facade) | - | P1 | 设计新的测试包结构：deploy:test/unit, test/integration, test/e2e；ack/renew:test/unit |
-| T-024 | 重构 ack-core 的 RestTemplate 依赖，在 ack-api 定义 HttpClient 抽象接口 | - | P2 | 当前 ack-core 直接依赖 RestTemplate，应抽象为 HttpClient 接口，在 ack-spring 中实现 |
 
 ---
 

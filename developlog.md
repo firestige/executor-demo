@@ -6,6 +6,28 @@
 ---
 
 ## 2025-11-25
+
+### [T-024 重构 ack-core RestTemplate 依赖] ✅
+- 在 ack-api 层定义 HttpClient 抽象接口（get/post 方法）
+- 创建 HttpResponse、HttpClientException 封装类
+- 在 ack-spring 中实现 RestTemplateHttpClient 适配器
+- 重构 ack-core 所有 Endpoint 类（HttpGetEndpoint、HttpPostEndpoint）使用 HttpClient 接口
+- 更新 WriteStageBuilderImpl、VerifyStageBuilderImpl 使用 HttpClient
+- 移除 ack-core 的 Spring Web 依赖，module-info.java 仅保留 Jackson、Spring Data Redis、SLF4J
+- 添加 ack-core pom.xml 缺失的依赖声明
+- 修复 RedisAckAutoConfiguration 使用 MicrometerAckMetricsRecorder 适配器
+- **成果**：ack-core 不再直接依赖 Spring Web，HTTP 客户端完全通过接口抽象
+
+### [T-020 集成 RedisAckService 到 BlueGreenStageAssembler] ✅
+- 扩展 RedisAckService API：添加 httpGetMultiple(List<String>) 支持多 URL 并发验证
+- 创建 AckExecutorConfig 配置类，支持 application.yml 配置线程池（core-pool-size/max-pool-size/queue-capacity）
+- 创建 RedisAckStep 替换原有 3 个 Step（ConfigWrite + MessageBroadcast + HealthCheck）
+- 修改 BlueGreenStageAssembler：用 1 个 RedisAckStep 实现完整 Write→Pub/Sub→Verify 流程
+- Redis 数据结构：field=metadata，value 包含 {version: planVersion} 作为 footprint
+- 异常处理：AckTimeoutException→TIMEOUT_ERROR(retryable), AckExecutionException→SERVICE_UNAVAILABLE
+- 修改 SharedStageResources 注入 RedisAckService
+- **成果**：BlueGreenStage 从 3 步简化为 1 步，支持多实例并发健康检查
+
 ### [T-019 Redis ACK 服务 Phase1-4 完成] ✅
 - Phase1 核心框架：API 接口 (Write/Pub/Sub/Verify)、数据模型 (AckResult/AckContext/RedisOperation)、异常体系、基础执行器 AckExecutor、默认实现 DefaultRedisAckService
 - Phase2 集成示例：BlueGreenGateway/ObService/generic 三类使用示例；集成测试 7 个用例验证必填参数与流程拼装
