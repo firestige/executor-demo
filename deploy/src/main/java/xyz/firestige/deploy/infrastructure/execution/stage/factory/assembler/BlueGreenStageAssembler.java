@@ -7,6 +7,7 @@ import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 import xyz.firestige.deploy.application.dto.TenantConfig;
 import xyz.firestige.deploy.domain.shared.exception.FailureInfo;
+import xyz.firestige.deploy.infrastructure.discovery.SelectionStrategy;
 import xyz.firestige.deploy.infrastructure.execution.stage.ConfigurableServiceStage;
 import xyz.firestige.deploy.infrastructure.execution.stage.TaskStage;
 import xyz.firestige.deploy.infrastructure.execution.stage.factory.SharedStageResources;
@@ -99,8 +100,15 @@ public class BlueGreenStageAssembler implements StageAssembler {
                 throw new RuntimeException("Failed to serialize message", e);
             }
 
-            // 6. Verify 配置
-            List<String> endpoints = resolveEndpoints("blueGreenGatewayService", "blue-green-gateway", resources);
+            // 6. Verify 配置 - 使用 ServiceDiscoveryHelper
+            String namespace = config.getNacosNameSpace();  // 从 TenantConfig 获取 namespace
+            List<String> endpoints = resolveEndpoints(
+                "blueGreenGatewayService",
+                namespace,
+                SelectionStrategy.ALL,  // BG 需要全部实例并发验证
+                true,  // 启用健康检查
+                resources
+            );
             String healthCheckPath = extractHealthCheckPath(config, resources);
             List<String> verifyUrls = endpoints.stream()
                 .map(ep -> "http://" + ep + healthCheckPath)
@@ -213,17 +221,28 @@ public class BlueGreenStageAssembler implements StageAssembler {
         return template.replace("{tenantId}", config.getTenantId().getValue());
     }
 
-    private List<String> resolveEndpoints(String nacosServiceKey, String fallbackKey, SharedStageResources resources) {
-        List<String> fallbackInstances = resources.getConfigLoader().getInfrastructure()
-            .getFallbackInstances()
-            .get(fallbackKey);
-
-        if (fallbackInstances == null || fallbackInstances.isEmpty()) {
-            throw new IllegalStateException("No fallback instances configured for: " + fallbackKey);
+    /**
+     * 解析服务实例端点
+     *
+     * @param serviceKey 服务标识
+     * @param namespace Nacos 命名空间（从 TenantConfig 获取）
+     * @param strategy 实例选择策略
+     * @param enableHealthCheck 是否启用健康检查
+     * @param resources 共享资源
+     * @return 实例列表（host:port）
+     */
+    private List<String> resolveEndpoints(String serviceKey,
+                                          String namespace,
+                                          SelectionStrategy strategy,
+                                          boolean enableHealthCheck,
+                                          SharedStageResources resources) {
+        try {
+            return resources.getServiceDiscoveryHelper()
+                .selectInstances(serviceKey, namespace, strategy, enableHealthCheck);
+        } catch (Exception e) {
+            log.error("服务发现失败: service={}, namespace={}", serviceKey, namespace, e);
+            throw new IllegalStateException("Failed to resolve service instances: " + serviceKey, e);
         }
-
-        log.debug("使用 fallback 实例: service={}, count={}", fallbackKey, fallbackInstances.size());
-        return fallbackInstances;
     }
 }
 

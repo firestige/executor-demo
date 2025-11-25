@@ -101,8 +101,35 @@ public class InfrastructureConfig {
      * Nacos 配置
      */
     public static class NacosConfig {
+        private boolean enabled = false;  // 是否启用 Nacos
+        private String serverAddr;        // Nacos 服务器地址（如 "127.0.0.1:8848"）
+        private boolean healthCheckEnabled = false;  // 是否启用健康检查
         private Map<String, String> services;  // key: 服务标识, value: Nacos 服务名
         
+        public boolean isEnabled() {
+            return enabled;
+        }
+
+        public void setEnabled(boolean enabled) {
+            this.enabled = enabled;
+        }
+
+        public String getServerAddr() {
+            return serverAddr;
+        }
+
+        public void setServerAddr(String serverAddr) {
+            this.serverAddr = serverAddr;
+        }
+
+        public boolean isHealthCheckEnabled() {
+            return healthCheckEnabled;
+        }
+
+        public void setHealthCheckEnabled(boolean healthCheckEnabled) {
+            this.healthCheckEnabled = healthCheckEnabled;
+        }
+
         public Map<String, String> getServices() {
             return services;
         }

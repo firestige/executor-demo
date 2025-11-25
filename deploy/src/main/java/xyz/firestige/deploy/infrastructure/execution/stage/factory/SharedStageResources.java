@@ -6,6 +6,7 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestTemplate;
 import xyz.firestige.deploy.infrastructure.config.DeploymentConfigLoader;
+import xyz.firestige.deploy.infrastructure.discovery.ServiceDiscoveryHelper;
 import xyz.firestige.redis.ack.api.RedisAckService;
 import xyz.firestige.service.AgentService;
 
@@ -33,6 +34,7 @@ public class SharedStageResources {
     private final ObjectMapper objectMapper;
     private final AgentService agentService;  // 可选，OBService 使用
     private final RedisAckService redisAckService;
+    private final ServiceDiscoveryHelper serviceDiscoveryHelper;
 
     @Autowired
     public SharedStageResources(
@@ -41,7 +43,8 @@ public class SharedStageResources {
             DeploymentConfigLoader configLoader,
             ObjectMapper objectMapper,
             @Autowired(required = false) AgentService agentService,
-            RedisAckService redisAckService) {
+            RedisAckService redisAckService,
+            ServiceDiscoveryHelper serviceDiscoveryHelper) {
 
         // 启动校验必需依赖
         Objects.requireNonNull(restTemplate, "RestTemplate cannot be null");
@@ -49,6 +52,7 @@ public class SharedStageResources {
         Objects.requireNonNull(configLoader, "DeploymentConfigLoader cannot be null");
         Objects.requireNonNull(objectMapper, "ObjectMapper cannot be null");
         Objects.requireNonNull(redisAckService, "RedisAckService cannot be null");
+        Objects.requireNonNull(serviceDiscoveryHelper, "ServiceDiscoveryHelper cannot be null");
         // agentService 可选（OBService 有降级逻辑）
 
         this.restTemplate = restTemplate;
@@ -57,6 +61,7 @@ public class SharedStageResources {
         this.objectMapper = objectMapper;
         this.agentService = agentService;
         this.redisAckService = redisAckService;
+        this.serviceDiscoveryHelper = serviceDiscoveryHelper;
     }
 
     // 只提供 getter，无任何业务方法
@@ -91,6 +96,14 @@ public class SharedStageResources {
      */
     public RedisAckService getRedisAckService() {
         return redisAckService;
+    }
+
+    /**
+     * 获取 ServiceDiscoveryHelper
+     * @return ServiceDiscoveryHelper 实例
+     */
+    public ServiceDiscoveryHelper getServiceDiscoveryHelper() {
+        return serviceDiscoveryHelper;
     }
 }
 

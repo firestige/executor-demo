@@ -84,12 +84,11 @@
             <artifactId>spring-boot-starter-actuator</artifactId>
         </dependency>
 
-        <!-- Nacos Client for service discovery (optional, can fallback to fixed IPs) -->
+        <!-- Nacos Client for service discovery -->
         <dependency>
             <groupId>com.alibaba.nacos</groupId>
             <artifactId>nacos-client</artifactId>
             <version>2.2.3</version>
-            <optional>true</optional>
         </dependency>
 
 
