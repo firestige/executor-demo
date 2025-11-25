@@ -5,6 +5,17 @@
 
 ---
 
+## 2025-11-25
+### [T-019 Redis ACK 服务 Phase1-4 完成] ✅
+- Phase1 核心框架：API 接口 (Write/Pub/Sub/Verify)、数据模型 (AckResult/AckContext/RedisOperation)、异常体系、基础执行器 AckExecutor、默认实现 DefaultRedisAckService
+- Phase2 集成示例：BlueGreenGateway/ObService/generic 三类使用示例；集成测试 7 个用例验证必填参数与流程拼装
+- Phase3 扩展能力：新增 LPUSH/SADD/ZADD 操作；RegexFootprintExtractor；ExponentialBackoffRetryStrategy；消息模板占位符；新增 9 个测试（策略/提取器/模板）
+- Phase4 Spring Boot 集成：AutoConfiguration + Properties + HealthIndicator + Micrometer 指标 (redis_ack_executions/redis_ack_success/...); 自动注册 SPI；示例配置文件 redis-ack-example.yml；配置装配测试 4 个用例
+- 指标：共 28 个测试用例通过；核心流程支持 Write→Publish→Verify 全链路；可选指标收集与健康检查
+- 后续 Phase5：文档补充（使用指南/迁移指南/扩展点说明）、性能基准、README 增量、TODO 更新
+
+---
+
 ## 2025-11-24
 
 ### [T-018 Redis 续期服务 - 全部完成] ✅
@@ -262,7 +273,7 @@
 - 微调：补充错误分支总览时序图、事件触发点速查表、DoD 增强；更新 execution-engine-internal.puml / execution-engine.md
 - 创建执行机内部 UML 视图（类图 + 正常/重试/暂停/回滚时序）；新增 execution-engine-internal.puml
 - 初版执行机详细设计文档完成（execution-engine.md），涵盖核心数据结构/执行路径/扩展点/风险
-- 启动执行机详细设计任务，创建临时设计文档；新增 task-003-execution-engine-design.md
+- 启动执行机详细设计任务，创建 临时设计文档；新增 task-003-execution-engine-design.md
 
 ### [T-002]
 - 架构总纲重写完成，更新 architecture-overview.md（移除错误技术栈与物理视图引用，加入原则与索引）

@@ -1,0 +1,59 @@
+# Redis ACK 服务配置示例
+
+# ========== 基础配置 ==========
+redis:
+  ack:
+    # 是否启用（默认 true）
+    enabled: true
+
+    # 默认超时时间（默认 60s）
+    default-timeout: 60s
+
+    # 默认重试策略
+    default-retry:
+      # 策略类型：fixed-delay 或 exponential-backoff
+      type: fixed-delay
+      # 最大重试次数
+      max-attempts: 10
+      # 固定延迟（fixed-delay 策略）
+      delay: 3s
+      # 初始延迟（exponential-backoff 策略）
+      initial-delay: 1s
+      # 倍增因子（exponential-backoff 策略）
+      multiplier: 2.0
+
+    # HTTP 客户端配置
+    http:
+      connect-timeout: 5s
+      read-timeout: 10s
+      max-connections: 50
+
+    # Pub/Sub 配置
+    pubsub:
+      default-topic-prefix: "ack:"
+
+    # 监控配置
+    metrics:
+      enabled: true
+      report-interval: 60s
+
+# ========== 生产环境配置示例 ==========
+# redis:
+#   ack:
+#     enabled: true
+#     default-timeout: 120s
+#     default-retry:
+#       type: exponential-backoff
+#       max-attempts: 15
+#       initial-delay: 1s
+#       multiplier: 2.0
+#     http:
+#       connect-timeout: 10s
+#       read-timeout: 30s
+#       max-connections: 100
+
+# ========== 禁用 ACK 服务 ==========
+# redis:
+#   ack:
+#     enabled: false
+

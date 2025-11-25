@@ -7,6 +7,15 @@
     <groupId>xyz.firestige.qcare</groupId>
     <artifactId>executor-demo</artifactId>
     <version>1.0-SNAPSHOT</version>
+    <packaging>pom</packaging>
+    <modules>
+        <module>deploy</module>
+        <module>redis-ack</module>
+        <module>redis-renewal</module>
+        <module>redis-renewal/renewal-api</module>
+        <module>redis-renewal/renewal-core</module>
+        <module>redis-renewal/renewal-spring</module>
+    </modules>
 
     <properties>
         <maven.compiler.source>17</maven.compiler.source>
