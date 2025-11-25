@@ -7,7 +7,7 @@ import org.springframework.data.redis.core.RedisTemplate;
 import xyz.firestige.redis.ack.api.AckContext;
 import xyz.firestige.redis.ack.api.AckResult;
 import xyz.firestige.redis.ack.api.RedisOperation;
-import xyz.firestige.redis.ack.exception.AckExecutionException;
+import xyz.firestige.redis.ack.core.exception.AckExecutionException;
 import xyz.firestige.redis.ack.exception.AckTimeoutException;
 
 import java.time.Duration;

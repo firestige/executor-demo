@@ -3,4 +3,3 @@ xyz.firestige.deploy.autoconfigure.ExecutorPersistenceAutoConfiguration
 xyz.firestige.deploy.autoconfigure.DomainEventPublisherAutoConfiguration
 xyz.firestige.deploy.autoconfigure.ExecutorStagesAutoConfiguration
 xyz.firestige.infrastructure.redis.renewal.autoconfigure.RedisRenewalAutoConfiguration
-xyz.firestige.infrastructure.redis.ack.autoconfigure.RedisAckAutoConfiguration

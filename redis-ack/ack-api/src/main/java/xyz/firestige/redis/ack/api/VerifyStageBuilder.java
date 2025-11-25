@@ -122,8 +122,8 @@ public interface VerifyStageBuilder {
      * 阻塞等待验证结果
      *
      * @return ACK 结果
-     * @throws xyz.firestige.infrastructure.redis.ack.exception.AckTimeoutException 超时
-     * @throws xyz.firestige.infrastructure.redis.ack.exception.AckExecutionException 执行异常
+     * @throws xyz.firestige.redis.ack.exception.AckTimeoutException 超时
+     * @throws xyz.firestige.redis.ack.exception.AckExecutionException 执行异常
      */
     AckResult executeAndWait();
 
@@ -135,4 +135,3 @@ public interface VerifyStageBuilder {
      */
     CompletableFuture<AckResult> executeAsync();
 }
-

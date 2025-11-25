@@ -6,6 +6,7 @@
 module xyz.firestige.redis.ack.core {
     // 导出核心实现包
     exports xyz.firestige.redis.ack.core;
+    exports xyz.firestige.redis.ack.core.exception; // 内部异常包（非公共 API）
     exports xyz.firestige.redis.ack.endpoint;
     exports xyz.firestige.redis.ack.extractor;
     exports xyz.firestige.redis.ack.retry;
