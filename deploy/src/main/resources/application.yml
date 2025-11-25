@@ -1,5 +1,3 @@
-
-
 spring:
   data:
     redis:
@@ -8,6 +6,44 @@ spring:
 
 # Executor 配置
 executor:
+  # Infrastructure 新增（Phase2 迁移）
+  infrastructure:
+    redis:
+      hash-key-prefix: ${REDIS_HASH_PREFIX:icc_ai_ops_srv:tenant_config:}
+      pubsub-topic: ${REDIS_PUBSUB_TOPIC:icc_ai_ops_srv:tenant_config:topic}
+    nacos:
+      enabled: ${NACOS_ENABLED:false}
+      server-addr: ${NACOS_SERVER_ADDR:127.0.0.1:8848}
+      health-check-enabled: ${NACOS_HEALTH_CHECK_ENABLED:false}
+      services:
+        blueGreenGatewayService: ${NACOS_BG_SERVICE_NAME:blue-green-gateway-service}
+        portalService: ${NACOS_PORTAL_SERVICE_NAME:portal-service}
+        asbcService: ${NACOS_ASBC_SERVICE_NAME:asbc-gateway-service}
+        obService: ${NACOS_OB_SERVICE_NAME:ob-service}
+    fallback-instances:
+      blue-green-gateway:
+        - ${BG_GW_IP1:192.168.1.10:8080}
+        - ${BG_GW_IP2:192.168.1.11:8080}
+      portal:
+        - ${PORTAL_IP1:192.168.1.20:8080}
+      asbc:
+        - ${ASBC_IP1:192.168.1.100:8080}
+        - ${ASBC_IP2:192.168.1.101:8080}
+      ob-service:
+        - ${OB_SVC_IP1:192.168.1.30:8080}
+    auth:
+      asbc:
+        enabled: false
+        token-provider: ${ASBC_TOKEN_PROVIDER:random}
+      portal:
+        enabled: false
+      ob-service:
+        enabled: false
+    verify:
+      default-path: ${VERIFY_DEFAULT_PATH:/actuator/bg-sdk/{tenantId}}
+      interval-seconds: ${VERIFY_INTERVAL_SECONDS:3}
+      max-attempts: ${VERIFY_MAX_ATTEMPTS:10}
+
   # Checkpoint 持久化配置
   checkpoint:
     store-type: redis  # redis 或 memory
@@ -25,4 +61,3 @@ debug: true
 logging:
   level:
     xyz.firestige.deploy: DEBUG
-

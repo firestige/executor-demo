@@ -4,7 +4,6 @@ import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import org.springframework.boot.context.properties.ConfigurationProperties;
-import org.springframework.stereotype.Component;
 import org.springframework.validation.annotation.Validated;
 
 import java.util.HashMap;
@@ -17,7 +16,6 @@ import java.util.Map;
  * 包含 redis / nacos / verify / fallbackInstances / auth
  * 仅用于配置绑定与防腐层访问，不直接暴露给业务代码（通过 SharedStageResources 封装）
  */
-@Component
 @ConfigurationProperties(prefix = "executor.infrastructure")
 @Validated
 public class InfrastructureProperties {

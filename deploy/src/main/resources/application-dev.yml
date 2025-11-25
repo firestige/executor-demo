@@ -1,0 +1,18 @@
+executor:
+    xyz.firestige.deploy: DEBUG
+  level:
+logging:
+        - localhost:8085
+      ob-service:
+        - localhost:8084
+      asbc:
+        - localhost:8083
+      portal:
+        - localhost:8082
+        - localhost:8081
+      blue-green-gateway:
+    fallback-instances:
+      enabled: false
+    nacos:
+  infrastructure:
+

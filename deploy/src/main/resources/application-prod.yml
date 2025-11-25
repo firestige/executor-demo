@@ -1,0 +1,21 @@
+executor:
+  infrastructure:
+    redis:
+      hash-key-prefix: prod:tenant:config:
+      pubsub-topic: prod:tenant:config:topic
+    nacos:
+      enabled: true
+      server-addr: ${NACOS_SERVER_ADDR:nacos-prod:8848}
+      health-check-enabled: true
+      services:
+        blueGreenGatewayService: icc-bg-gateway-prod
+        portalService: icc-portal-prod
+        asbcService: asbc-config-prod
+        obService: ob-campaign-prod
+    verify:
+      interval-seconds: 5
+      max-attempts: 20
+logging:
+  level:
+    xyz.firestige.deploy: INFO
+
