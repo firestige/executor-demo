@@ -7,27 +7,37 @@
 
 ## 2025-11-25
 
-### [T-025 Nacos 服务发现集成 Phase 1-3] ✅
-**Phase 3 完成 - Portal/ASBC Assembler 改造**
-- 改造 PortalStageAssembler：使用 ServiceDiscoveryHelper，RANDOM 策略选择单实例
-- 改造 AsbcStageAssembler：使用 ServiceDiscoveryHelper，RANDOM 策略选择单实例
-- 替换硬编码 endpoint 为动态 Nacos 服务发现
-- 支持从 TenantConfig 获取 namespace
+### [T-025 Nacos 服务发现集成] ✅ 完成
+**Phase 1-4 全部完成**
 
-**Phase 1-2 完成 - 基础设施 + BlueGreen/ObService**
-- 创建 discovery 包（ServiceDiscoveryHelper, NacosServiceDiscovery, SelectionStrategy）
-- 扩展 InfrastructureConfig.NacosConfig（enabled, serverAddr, healthCheckEnabled）
-- 更新 SharedStageResources 注入 ServiceDiscoveryHelper
-- 改造 BlueGreen/ObService Assembler：ALL 策略 + 健康检查
+**Phase 4 - 配置文件与文档**
+- 更新 deploy-stages.yml：添加 nacos.enabled、serverAddr、healthCheckEnabled 配置
+- 创建正式设计文档：docs/design/nacos-service-discovery.md
+- 归档临时方案文档
+
+**Phase 1-3 - 实现与集成**
+- Phase 1: 创建 discovery 包（ServiceDiscoveryHelper, NacosServiceDiscovery, SelectionStrategy）
+- Phase 2: 改造 BlueGreen/ObService Assembler（ALL 策略 + 健康检查）
+- Phase 3: 改造 Portal/ASBC Assembler（RANDOM 策略，无健康检查）
 
 **核心功能**：
-- 动态服务发现（Nacos + Fallback 降级）
-- Namespace 支持（从 TenantConfig 动态获取）
-- 缓存机制（30秒 TTL + Failback 标记失败实例）
-- 实例选择策略（ALL 用于并发验证，RANDOM 用于负载均衡）
-- 可选健康检查
+- ✅ 动态服务发现（Nacos + Fallback 降级）
+- ✅ Namespace 支持（从 TenantConfig 动态获取）
+- ✅ 缓存机制（30秒 TTL + Failback 标记失败实例）
+- ✅ 实例选择策略（ALL/RANDOM/ROUND_ROBIN）
+- ✅ 可选健康检查
 
-**待完成**：Phase 4（配置文件更新）、Phase 5（测试编写）
+**成果**：
+- 新增文件：4 个（discovery 包 + ServiceDiscoveryConfiguration）
+- 修改文件：6 个（Config + SharedStageResources + 4个 Assembler）
+- 配置文件：deploy-stages.yml 扩展 Nacos 配置
+- 设计文档：docs/design/nacos-service-discovery.md
+- 代码行数：约 600+ 行
+
+**影响范围**：
+- BlueGreen/ObService：多实例并发验证，启用健康检查
+- Portal/ASBC：随机单实例调用，负载均衡
+- 配置：支持环境变量覆盖，保持向后兼容（默认 enabled=false）
 
 ### [T-024 重构 ack-core 依赖抽象] ✅
 - **HttpClient 抽象**：在 ack-api 定义 HttpClient 接口，ack-spring 实现 RestTemplateHttpClient

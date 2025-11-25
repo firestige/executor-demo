@@ -3,7 +3,6 @@
 ## 进行中 (In Progress)
 | ID | 任务 | 负责人 | 优先级 | 开始日期 | 预计完成 | 临时方案 |
 |----|------|--------|--------|----------|----------|----------|
-| T-025 | 接入 Nacos 服务发现功能到 StageAssembler | - | P1 | 2025-11-25 | 2025-11-26 | docs/temp/task-025-nacos-service-discovery-plan.md |
 | T-019 | Redis ACK 服务（通用模块）Phase1-4已完成，进行 Phase5 | - | P1 | 2025-11-24 | 2025-11-27 | docs/design/redis-ack-service.md |
 
 ## 待办 (Backlog)

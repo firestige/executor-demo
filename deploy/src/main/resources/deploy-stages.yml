@@ -11,7 +11,14 @@ infrastructure:
     pubsubTopic: "{$REDIS_PUBSUB_TOPIC:icc_ai_ops_srv:tenant_config:topic}"
 
   # Nacos Service Discovery Configuration
+  # enabled: 是否启用 Nacos 服务发现（false 时使用 fallbackInstances）
+  # serverAddr: Nacos 服务器地址
+  # healthCheckEnabled: 是否对 Nacos 返回的实例进行健康检查
+  # services: 服务标识到 Nacos 服务名的映射
   nacos:
+    enabled: "{$NACOS_ENABLED:false}"
+    serverAddr: "{$NACOS_SERVER_ADDR:127.0.0.1:8848}"
+    healthCheckEnabled: "{$NACOS_HEALTH_CHECK_ENABLED:false}"
     services:
       blueGreenGatewayService: "{$NACOS_BG_SERVICE_NAME:blue-green-gateway-service}"
       portalService: "{$NACOS_PORTAL_SERVICE_NAME:portal-service}"
@@ -79,3 +86,12 @@ defaultServiceNames:
 # - DataPreparer: 准备 Step 执行数据
 # - ResultValidator: 验证 Step 执行结果
 # - ConfigurableServiceStage: 编排 Preparer + Step + Validator
+#
+# Nacos 服务发现机制 (T-025):
+# - ServiceDiscoveryHelper: 核心服务发现逻辑（Nacos + Fallback 降级）
+# - 支持缓存（30秒 TTL）和 Failback（标记失败实例）
+# - 实例选择策略：
+#   * ALL: 多实例并发（BlueGreen/OBService 健康检查）
+#   * RANDOM: 随机单实例（Portal/ASBC 负载均衡）
+# - Namespace: 从 TenantConfig.nacosNameSpace 动态获取
+# - 降级策略: Nacos 失败 → fallbackInstances → 抛出异常
