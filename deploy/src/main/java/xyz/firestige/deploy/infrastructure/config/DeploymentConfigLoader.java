@@ -17,14 +17,17 @@ import java.util.List;
 /**
  * YAML 配置加载器
  * 
- * 职责：
- * 1. 从 classpath 加载 deploy-stages.yml
- * 2. 解析为配置对象
- * 3. 提供配置查询接口
+ * @deprecated 已迁移到 InfrastructureProperties（T-027 Phase4）
+ * 使用 @ConfigurationProperties 绑定 executor.infrastructure.*
+ * 通过 SharedStageResources 的便捷方法访问配置（防腐层）
  *
- * RF-19: 只提供 infrastructure 和 defaultServiceNames 访问
- * Stage/Step 编排已迁移到 DynamicStageFactory 代码编排
+ * 迁移路径：
+ * - 旧：resources.getConfigLoader().getInfrastructure().getRedis().getHashKeyPrefix()
+ * - 新：resources.getRedisHashKeyPrefix()
+ *
+ * 计划删除时间：v2.0（当前保留供过渡兼容）
  */
+@Deprecated
 @Component
 public class DeploymentConfigLoader {
     

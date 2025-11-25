@@ -65,7 +65,7 @@ public class BlueGreenStageAssembler implements StageAssembler {
     private DataPreparer createRedisAckDataPreparer(TenantConfig config, SharedStageResources resources) {
         return (ctx) -> {
             // 1. Redis Write 配置
-            String redisKeyPrefix = resources.getConfigLoader().getInfrastructure().getRedis().getHashKeyPrefix();
+            String redisKeyPrefix = resources.getRedisHashKeyPrefix();
             String redisKey = redisKeyPrefix + config.getTenantId().getValue();
             String redisField = "icc-bg-gateway";
 
@@ -85,7 +85,7 @@ public class BlueGreenStageAssembler implements StageAssembler {
             String footprint = String.valueOf(config.getPlanVersion());
 
             // 5. Pub/Sub 配置
-            String topic = resources.getConfigLoader().getInfrastructure().getRedis().getPubsubTopic();
+            String topic = resources.getRedisPubsubTopic();
 
             Map<String, Object> messageBody = new HashMap<>();
             messageBody.put("tenantId", config.getTenantId().getValue());
@@ -114,8 +114,8 @@ public class BlueGreenStageAssembler implements StageAssembler {
                 .map(ep -> "http://" + ep + healthCheckPath)
                 .collect(java.util.stream.Collectors.toList());
 
-            int maxAttempts = resources.getConfigLoader().getInfrastructure().getHealthCheck().getMaxAttempts();
-            int intervalSec = resources.getConfigLoader().getInfrastructure().getHealthCheck().getIntervalSeconds();
+            int maxAttempts = resources.getVerifyMaxAttempts();
+            int intervalSec = resources.getVerifyIntervalSeconds();
 
             // 7. 放入 Context
             ctx.addVariable("redisKey", redisKey);
@@ -217,7 +217,7 @@ public class BlueGreenStageAssembler implements StageAssembler {
         if (config.getHealthCheckEndpoints() != null && !config.getHealthCheckEndpoints().isEmpty()) {
             return config.getHealthCheckEndpoints().get(0);
         }
-        String template = resources.getConfigLoader().getInfrastructure().getHealthCheck().getDefaultPath();
+        String template = resources.getVerifyDefaultPath();
         return template.replace("{tenantId}", config.getTenantId().getValue());
     }
 

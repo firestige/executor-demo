@@ -8,7 +8,12 @@ import java.util.Map;
 /**
  * 基础设施配置
  * 包含 Redis、Nacos、ASBC、健康检查等固定配置
+ *
+ * @deprecated 已迁移到 InfrastructureProperties（T-027 Phase4）
+ * 新配置使用 @ConfigurationProperties 绑定 executor.infrastructure.*
+ * 计划删除时间：v2.0
  */
+@Deprecated
 public class InfrastructureConfig {
     
     private RedisConfig redis;

@@ -6,9 +6,11 @@ import java.util.List;
  * 部署配置根对象
  * 映射 deploy-stages.yml 的根结构
  *
- * RF-19: 只保留 infrastructure 和 defaultServiceNames
- * Stage/Step 编排已迁移到 DynamicStageFactory 代码编排
+ * @deprecated 已迁移到 InfrastructureProperties（T-027 Phase4）
+ * 新配置使用 application.yml executor.infrastructure.*
+ * 计划删除时间：v2.0
  */
+@Deprecated
 public class DeploymentConfig {
     
     private InfrastructureConfig infrastructure;

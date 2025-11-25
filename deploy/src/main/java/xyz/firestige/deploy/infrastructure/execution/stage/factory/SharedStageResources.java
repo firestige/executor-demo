@@ -78,6 +78,15 @@ public class SharedStageResources {
         return redisTemplate;
     }
 
+    /**
+     * 获取配置加载器（旧）
+     * @deprecated 使用便捷方法访问配置（T-027 Phase4）
+     * - getRedisHashKeyPrefix()
+     * - getRedisPubsubTopic()
+     * - getVerifyDefaultPath() / getVerifyIntervalSeconds() / getVerifyMaxAttempts()
+     * 计划删除时间：v2.0
+     */
+    @Deprecated
     public DeploymentConfigLoader getConfigLoader() {
         return configLoader;
     }
@@ -110,11 +119,46 @@ public class SharedStageResources {
         return serviceDiscoveryHelper;
     }
 
-    /** 新配置访问占位：优先返回新值否则返回旧值 */
+    // ========== 防腐层便捷方法（Phase3）==========
+    // 优先使用新配置，降级到旧配置（过渡期兼容）
+
+    /** Redis Hash Key 前缀 */
     public String getRedisHashKeyPrefix() {
         if (infrastructureProperties != null) {
             return infrastructureProperties.getRedis().getHashKeyPrefix();
         }
         return configLoader.getInfrastructure().getRedis().getHashKeyPrefix();
+    }
+
+    /** Redis Pub/Sub Topic */
+    public String getRedisPubsubTopic() {
+        if (infrastructureProperties != null) {
+            return infrastructureProperties.getRedis().getPubsubTopic();
+        }
+        return configLoader.getInfrastructure().getRedis().getPubsubTopic();
+    }
+
+    /** Verify 端点默认路径模板 */
+    public String getVerifyDefaultPath() {
+        if (infrastructureProperties != null) {
+            return infrastructureProperties.getVerify().getDefaultPath();
+        }
+        return configLoader.getInfrastructure().getHealthCheck().getDefaultPath();
+    }
+
+    /** Verify 重试间隔（秒）*/
+    public int getVerifyIntervalSeconds() {
+        if (infrastructureProperties != null) {
+            return infrastructureProperties.getVerify().getIntervalSeconds();
+        }
+        return configLoader.getInfrastructure().getHealthCheck().getIntervalSeconds();
+    }
+
+    /** Verify 最大重试次数 */
+    public int getVerifyMaxAttempts() {
+        if (infrastructureProperties != null) {
+            return infrastructureProperties.getVerify().getMaxAttempts();
+        }
+        return configLoader.getInfrastructure().getHealthCheck().getMaxAttempts();
     }
 }

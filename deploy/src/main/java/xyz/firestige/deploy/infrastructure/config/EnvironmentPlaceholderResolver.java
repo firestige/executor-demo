@@ -8,12 +8,13 @@ import java.util.*;
 
 /**
  * 环境变量占位符解析器
- * 语法:
- *  - {$VAR}
- *  - {$VAR:defaultValue}
- * 支持 defaultValue 中嵌套普通模板占位符，如: {$HEALTH_CHECK_PATH:/actuator/bg-sdk/{tenantId}}
- * 其中最后两个连续的 '}}' 分别关闭内部模板和外层环境占位符。
+ *
+ * @deprecated 已迁移到 Spring 标准占位符 ${VAR:default}（T-027 Phase4）
+ * 新配置使用 application.yml 中的 Spring Boot 标准占位符
+ * 不再需要自定义 {$VAR:default} 语法
+ * 计划删除时间：v2.0
  */
+@Deprecated
 public class EnvironmentPlaceholderResolver {
     private static final Logger log = LoggerFactory.getLogger(EnvironmentPlaceholderResolver.class);
     private final boolean allowMissing;
