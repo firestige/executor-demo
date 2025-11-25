@@ -1,8 +1,8 @@
 package xyz.firestige.redis.renewal.spring.client;
 
 import org.springframework.data.redis.core.RedisTemplate;
-import xyz.firestige.infrastructure.redis.renewal.api.RedisClient;
-import xyz.firestige.infrastructure.redis.renewal.client.spi.RedisClientProvider;
+import xyz.firestige.redis.renewal.RedisClient;
+import xyz.firestige.redis.renewal.spi.RedisClientProvider;
 
 /**
  * Spring Redis 客户端提供者（SPI 实现）

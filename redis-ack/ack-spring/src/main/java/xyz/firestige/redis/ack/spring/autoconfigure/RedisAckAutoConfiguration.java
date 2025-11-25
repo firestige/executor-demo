@@ -13,7 +13,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.web.client.RestTemplate;
 import xyz.firestige.redis.ack.api.RedisAckService;
-import xyz.firestige.redis.ack.core.DefaultRedisAckService;
+import xyz.firestige.redis.ack.spring.DefaultRedisAckService;
 
 /**
  * Redis ACK 服务自动配置

@@ -12,6 +12,12 @@
     <groupId>xyz.firestige</groupId>
     <artifactId>redis-renewal</artifactId>
     <packaging>pom</packaging>
+    <name>Redis Renewal Parent</name>
+
+    <modules>
+        <module>renewal-core</module>
+        <module>renewal-spring</module>
+    </modules>
 
     <properties>
         <maven.compiler.source>17</maven.compiler.source>

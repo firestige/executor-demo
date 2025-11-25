@@ -7,14 +7,14 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.data.redis.core.RedisTemplate;
-import xyz.firestige.infrastructure.redis.renewal.api.KeyRenewalService;
-import xyz.firestige.infrastructure.redis.renewal.api.RedisClient;
-import xyz.firestige.infrastructure.redis.renewal.client.spring.SpringRedisClient;
-import xyz.firestige.infrastructure.redis.renewal.core.AsyncRenewalExecutor;
-import xyz.firestige.infrastructure.redis.renewal.core.TimeWheelRenewalService;
-import xyz.firestige.infrastructure.redis.renewal.metrics.RenewalHealthIndicator;
-import xyz.firestige.infrastructure.redis.renewal.metrics.RenewalMetricsCollector;
-import xyz.firestige.infrastructure.redis.renewal.metrics.RenewalMetricsReporter;
+import xyz.firestige.redis.renewal.AsyncRenewalExecutor;
+import xyz.firestige.redis.renewal.KeyRenewalService;
+import xyz.firestige.redis.renewal.RedisClient;
+import xyz.firestige.redis.renewal.TimeWheelRenewalService;
+import xyz.firestige.redis.renewal.metrics.RenewalHealthIndicator;
+import xyz.firestige.redis.renewal.metrics.RenewalMetricsCollector;
+import xyz.firestige.redis.renewal.metrics.RenewalMetricsReporter;
+import xyz.firestige.redis.renewal.spring.client.SpringRedisClient;
 
 /**
  * Redis 续期服务自动配置

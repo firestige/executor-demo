@@ -133,7 +133,7 @@ package xyz.firestige.infrastructure.redis.renewal.client.jedis;
 
 import redis.clients.jedis.JedisPool;
 import xyz.firestige.infrastructure.redis.renewal.api.RedisClient;
-import xyz.firestige.infrastructure.redis.renewal.client.spi.RedisClientProvider;
+import xyz.firestige.redis.renewal.spi.RedisClientProvider;
 
 public class JedisRedisClientProvider implements RedisClientProvider {
     
@@ -162,7 +162,7 @@ public class JedisRedisClientProvider implements RedisClientProvider {
 ```
 
 #### 步骤 5：注册 SPI
-在 `META-INF/services/xyz.firestige.infrastructure.redis.renewal.client.spi.RedisClientProvider` 中添加：
+在 `META-INF/services/xyz.firestige.redis.renewal.spi.RedisClientProvider` 中添加：
 ```
 xyz.firestige.infrastructure.redis.renewal.client.jedis.JedisRedisClientProvider
 ```
@@ -219,7 +219,7 @@ class JedisRedisClientTest {
 ### 非 Spring 环境使用 SPI
 
 ```java
-import xyz.firestige.infrastructure.redis.renewal.client.spi.RedisClientLoader;
+import xyz.firestige.redis.renewal.spi.RedisClientLoader;
 
 // 加载第一个可用的客户端
 RedisClient client = RedisClientLoader.loadFirst();
@@ -288,7 +288,7 @@ RenewalTask task = RenewalTask.builder()
     .keys(List.of("business:key"))
     .ttlStrategy(new BusinessHoursTtlStrategy())
     .intervalStrategy(new FixedIntervalStrategy(Duration.ofMinutes(2)))
-    .stopCondition(new NeverStopCondition())
+    .stopStrategy(new NeverStopCondition())
     .build();
 
 renewalService.register(task);

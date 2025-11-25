@@ -84,7 +84,7 @@ public class DeploymentService {
             .keys(List.of("deployment:" + tenantId + ":config"))
             .ttlStrategy(new FixedTtlStrategy(Duration.ofMinutes(5)))
             .intervalStrategy(new FixedIntervalStrategy(Duration.ofMinutes(2)))
-            .stopCondition(new TimeBasedStopCondition(estimatedEndTime))
+            .stopStrategy(new TimeBasedStopCondition(estimatedEndTime))
             .build();
         
         String taskId = renewalService.register(task);
@@ -518,7 +518,7 @@ public class DeploymentService {
             .intervalStrategy(new FixedIntervalStrategy(Duration.ofMinutes(2)))
             
             // 2 小时后停止
-            .stopCondition(new TimeBasedStopCondition(estimatedEndTime))
+            .stopStrategy(new TimeBasedStopCondition(estimatedEndTime))
             
             .build();
         
@@ -569,7 +569,7 @@ public class AdvancedRenewalExample {
             .intervalStrategy(new AdaptiveIntervalStrategy(0.5))
             
             // 组合停止条件
-            .stopCondition(CompositeStopCondition.anyOf(
+            .stopStrategy(CompositeStopCondition.anyOf(
                 new CountBasedStopCondition(100),
                 new KeyNotExistsStopCondition(redisClient)
             ))
@@ -607,7 +607,7 @@ public class CompleteRenewalExample {
             ))
             
             // 外部信号停止
-            .stopCondition(new ExternalSignalStopCondition(() -> 
+            .stopStrategy(new ExternalSignalStopCondition(() -> 
                 deploymentService.isCompleted()
             ))
             
@@ -784,7 +784,7 @@ class RenewalServiceTest {
             .keys(List.of("test:key"))
             .ttlStrategy(new FixedTtlStrategy(Duration.ofSeconds(10)))
             .intervalStrategy(new FixedIntervalStrategy(Duration.ofSeconds(3)))
-            .stopCondition(new CountBasedStopCondition(3))
+            .stopStrategy(new CountBasedStopCondition(3))
             .build();
         
         String taskId = renewalService.register(task);
