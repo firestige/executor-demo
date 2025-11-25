@@ -1,4 +1,4 @@
-package xyz.firestige.deploy.config.stage;
+package xyz.firestige.deploy.infrastructure.execution.stage.config.stage;
 
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;

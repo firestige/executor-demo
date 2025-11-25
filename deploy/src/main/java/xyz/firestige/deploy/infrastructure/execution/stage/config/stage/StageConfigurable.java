@@ -1,4 +1,4 @@
-package xyz.firestige.deploy.config.stage;
+package xyz.firestige.deploy.infrastructure.execution.stage.config.stage;
 
 /**
  * 可配置阶段标记接口

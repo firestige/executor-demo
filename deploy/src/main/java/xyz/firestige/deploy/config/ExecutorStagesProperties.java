@@ -5,9 +5,12 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.InitializingBean;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.boot.context.properties.NestedConfigurationProperty;
-import xyz.firestige.deploy.config.stage.StageConfigurable;
-import xyz.firestige.deploy.config.stage.StageConfigUtils;
-import xyz.firestige.deploy.config.stage.ValidationResult;
+import xyz.firestige.deploy.infrastructure.execution.stage.config.ASBCGatewayStageConfig;
+import xyz.firestige.deploy.infrastructure.execution.stage.config.BlueGreenGatewayStageConfig;
+import xyz.firestige.deploy.infrastructure.execution.stage.config.PortalStageConfig;
+import xyz.firestige.deploy.infrastructure.execution.stage.config.stage.StageConfigurable;
+import xyz.firestige.deploy.infrastructure.execution.stage.config.stage.StageConfigUtils;
+import xyz.firestige.deploy.infrastructure.execution.stage.config.stage.ValidationResult;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;

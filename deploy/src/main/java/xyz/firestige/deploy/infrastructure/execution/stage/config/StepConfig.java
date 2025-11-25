@@ -1,4 +1,4 @@
-package xyz.firestige.deploy.config;
+package xyz.firestige.deploy.infrastructure.execution.stage.config;
 
 import java.util.Collections;
 import java.util.LinkedHashMap;

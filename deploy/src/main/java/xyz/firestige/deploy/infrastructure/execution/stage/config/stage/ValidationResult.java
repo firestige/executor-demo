@@ -1,4 +1,4 @@
-package xyz.firestige.deploy.config.stage;
+package xyz.firestige.deploy.infrastructure.execution.stage.config.stage;
 
 import java.util.ArrayList;
 import java.util.Collections;

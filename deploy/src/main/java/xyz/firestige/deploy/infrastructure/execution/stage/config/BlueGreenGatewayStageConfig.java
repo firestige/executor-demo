@@ -1,7 +1,7 @@
-package xyz.firestige.deploy.config;
+package xyz.firestige.deploy.infrastructure.execution.stage.config;
 
-import xyz.firestige.deploy.config.stage.StageConfigurable;
-import xyz.firestige.deploy.config.stage.ValidationResult;
+import xyz.firestige.deploy.infrastructure.execution.stage.config.stage.StageConfigurable;
+import xyz.firestige.deploy.infrastructure.execution.stage.config.stage.ValidationResult;
 
 import java.util.ArrayList;
 import java.util.List;

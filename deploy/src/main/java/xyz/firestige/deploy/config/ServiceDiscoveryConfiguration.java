@@ -1,4 +1,4 @@
-package xyz.firestige.deploy.infrastructure.config;
+package xyz.firestige.deploy.config;
 
 import com.alibaba.nacos.api.exception.NacosException;
 import org.slf4j.Logger;

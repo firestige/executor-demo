@@ -7,8 +7,8 @@ import org.springframework.boot.actuate.health.HealthIndicator;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.stereotype.Component;
 import xyz.firestige.deploy.config.ExecutorStagesProperties;
-import xyz.firestige.deploy.config.stage.StageConfigurable;
-import xyz.firestige.deploy.config.stage.ValidationResult;
+import xyz.firestige.deploy.infrastructure.execution.stage.config.stage.StageConfigurable;
+import xyz.firestige.deploy.infrastructure.execution.stage.config.stage.ValidationResult;
 
 import java.util.HashMap;
 import java.util.Map;

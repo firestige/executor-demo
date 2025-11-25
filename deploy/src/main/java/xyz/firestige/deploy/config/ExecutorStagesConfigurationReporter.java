@@ -5,8 +5,8 @@ import org.slf4j.LoggerFactory;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.ApplicationListener;
 import org.springframework.stereotype.Component;
-import xyz.firestige.deploy.config.stage.StageConfigurable;
-import xyz.firestige.deploy.config.stage.ValidationResult;
+import xyz.firestige.deploy.infrastructure.execution.stage.config.stage.StageConfigurable;
+import xyz.firestige.deploy.infrastructure.execution.stage.config.stage.ValidationResult;
 
 import java.util.Map;
 

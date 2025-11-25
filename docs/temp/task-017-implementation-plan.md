@@ -52,57 +52,57 @@ src/main/java/xyz/firestige/deploy/
 #### 步骤 1.1: 创建 StageConfigurable 接口
 
 ```java
-package xyz.firestige.deploy.config.stage;
+package xyz.firestige.deploy.infrastructure.execution.stage.config.stage;
 
 /**
  * 可配置阶段标记接口
- * 
+ *
  * <p>所有阶段配置类实现此接口，以支持自动发现和统一管理。
- * 
+ *
  * <p>设计理念：
  * <ul>
  *   <li>约定优于配置：通过接口约定行为</li>
  *   <li>零侵入扩展：新增配置类只需实现接口</li>
  *   <li>自动发现：无需手动注册配置类</li>
  * </ul>
- * 
+ *
  * @since T-017
  */
 public interface StageConfigurable {
-    
+
     /**
      * 是否启用此阶段
-     * 
+     *
      * @return true 如果阶段已启用
      */
     boolean isEnabled();
-    
+
     /**
      * 阶段名称（用于日志和报告）
-     * 
+     *
      * <p>默认实现：从类名推断（移除 "StageConfig" 或 "Config" 后缀）
-     * 
+     *
      * @return 阶段显示名称
      */
     default String getStageName() {
         String className = this.getClass().getSimpleName();
         return className
-            .replace("StageConfig", "")
-            .replace("Config", "");
+                .replace("StageConfig", "")
+                .replace("Config", "");
     }
-    
+
     /**
      * 验证配置有效性
-     * 
+     *
      * <p>设计原则：
      * <ul>
      *   <li>永不抛异常：返回验证结果，不阻塞启动</li>
      *   <li>自动修复：发现问题时尝试使用默认值</li>
      *   <li>记录警告：将问题记录在 ValidationResult 中</li>
      * </ul>
-     * 
+     *
      * <p>默认实现：返回成功（无验证）
-     * 
+     *
      * @return 验证结果
      */
     default ValidationResult validate() {
@@ -121,7 +121,7 @@ public interface StageConfigurable {
 #### 步骤 1.2: 创建 ValidationResult 类
 
 ```java
-package xyz.firestige.deploy.config.stage;
+package xyz.firestige.deploy.infrastructure.execution.stage.config.stage;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -129,65 +129,65 @@ import java.util.List;
 
 /**
  * 配置验证结果
- * 
+ *
  * <p>不可变对象，包含验证状态、警告和错误信息。
- * 
+ *
  * @since T-017
  */
 public class ValidationResult {
-    
+
     private final boolean valid;
     private final List<String> warnings;
     private final List<String> errors;
-    
+
     private ValidationResult(boolean valid, List<String> warnings, List<String> errors) {
         this.valid = valid;
         this.warnings = Collections.unmodifiableList(new ArrayList<>(warnings));
         this.errors = Collections.unmodifiableList(new ArrayList<>(errors));
     }
-    
+
     /**
      * 创建成功结果
      */
     public static ValidationResult success() {
         return new ValidationResult(true, List.of(), List.of());
     }
-    
+
     /**
      * 创建带警告的成功结果
      */
     public static ValidationResult warning(String message) {
         return new ValidationResult(true, List.of(message), List.of());
     }
-    
+
     /**
      * 创建失败结果
      */
     public static ValidationResult error(String message) {
         return new ValidationResult(false, List.of(), List.of(message));
     }
-    
+
     /**
      * 创建 Builder
      */
     public static Builder builder() {
         return new Builder();
     }
-    
+
     // Getters
-    
+
     public boolean isValid() {
         return valid;
     }
-    
+
     public List<String> getWarnings() {
         return warnings;
     }
-    
+
     public List<String> getErrors() {
         return errors;
     }
-    
+
     /**
      * ValidationResult Builder
      */
@@ -195,23 +195,23 @@ public class ValidationResult {
         private boolean valid = true;
         private final List<String> warnings = new ArrayList<>();
         private final List<String> errors = new ArrayList<>();
-        
+
         public Builder warning(String message) {
             this.warnings.add(message);
             return this;
         }
-        
+
         public Builder error(String message) {
             this.errors.add(message);
             this.valid = false;
             return this;
         }
-        
+
         public Builder warnings(List<String> messages) {
             this.warnings.addAll(messages);
             return this;
         }
-        
+
         public Builder errors(List<String> messages) {
             this.errors.addAll(messages);
             if (!messages.isEmpty()) {
@@ -219,12 +219,12 @@ public class ValidationResult {
             }
             return this;
         }
-        
+
         public ValidationResult build() {
             return new ValidationResult(valid, warnings, errors);
         }
     }
-    
+
     @Override
     public String toString() {
         return "ValidationResult{" +
@@ -246,24 +246,24 @@ public class ValidationResult {
 #### 步骤 1.3: 创建工具类
 
 ```java
-package xyz.firestige.deploy.config.stage;
+package xyz.firestige.deploy.infrastructure.execution.stage.config.stage;
 
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
  * 阶段配置工具类
- * 
+ *
  * @since T-017
  */
 public class StageConfigUtils {
-    
-    private static final Pattern CAMEL_CASE_PATTERN = 
-        Pattern.compile("([a-z])([A-Z])");
-    
+
+    private static final Pattern CAMEL_CASE_PATTERN =
+            Pattern.compile("([a-z])([A-Z])");
+
     /**
      * 驼峰命名转烤串命名
-     * 
+     *
      * @param camelCase 驼峰命名字符串，如 "blueGreenGateway"
      * @return 烤串命名字符串，如 "blue-green-gateway"
      */
@@ -271,14 +271,14 @@ public class StageConfigUtils {
         if (camelCase == null || camelCase.isEmpty()) {
             return camelCase;
         }
-        
+
         Matcher matcher = CAMEL_CASE_PATTERN.matcher(camelCase);
         return matcher.replaceAll("$1-$2").toLowerCase();
     }
-    
+
     /**
      * 烤串命名转驼峰命名
-     * 
+     *
      * @param kebabCase 烤串命名字符串，如 "blue-green-gateway"
      * @return 驼峰命名字符串，如 "blueGreenGateway"
      */
@@ -286,10 +286,10 @@ public class StageConfigUtils {
         if (kebabCase == null || kebabCase.isEmpty()) {
             return kebabCase;
         }
-        
+
         StringBuilder result = new StringBuilder();
         boolean capitalizeNext = false;
-        
+
         for (char c : kebabCase.toCharArray()) {
             if (c == '-') {
                 capitalizeNext = true;
@@ -302,10 +302,10 @@ public class StageConfigUtils {
                 }
             }
         }
-        
+
         return result.toString();
     }
-    
+
     private StageConfigUtils() {
         throw new UnsupportedOperationException("Utility class");
     }
@@ -361,9 +361,9 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.InitializingBean;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.boot.context.properties.NestedConfigurationProperty;
-import xyz.firestige.deploy.config.stage.StageConfigurable;
-import xyz.firestige.deploy.config.stage.StageConfigUtils;
-import xyz.firestige.deploy.config.stage.ValidationResult;
+import xyz.firestige.deploy.infrastructure.execution.stage.config.stage.StageConfigurable;
+import xyz.firestige.deploy.infrastructure.execution.stage.config.stage.StageConfigUtils;
+import xyz.firestige.deploy.infrastructure.execution.stage.config.stage.ValidationResult;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
@@ -372,82 +372,82 @@ import java.util.stream.Collectors;
 
 /**
  * 执行阶段配置容器
- * 
+ *
  * <p>完全解耦的设计：
  * <ul>
  *   <li>通过 Map 统一管理所有阶段配置</li>
  *   <li>自动发现实现 StageConfigurable 的字段</li>
  *   <li>统一验证，永不抛异常</li>
  * </ul>
- * 
+ *
  * <p>扩展方式：
  * <pre>
  * // 1. 创建配置类实现 StageConfigurable
  * public class NewServiceConfig implements StageConfigurable { ... }
- * 
+ *
  * // 2. 在此类添加字段（仅此一处修改）
  * {@literal @}NestedConfigurationProperty
  * private NewServiceConfig newService;
- * 
+ *
  * // 3. 无需修改其他任何代码，自动生效！
  * </pre>
- * 
+ *
  * @since T-017
  */
 @ConfigurationProperties(prefix = "executor.stages")
 public class ExecutorStagesProperties implements InitializingBean {
-    
+
     private static final Logger log = LoggerFactory.getLogger(ExecutorStagesProperties.class);
-    
+
     /**
      * 所有阶段配置的统一容器
      * Key: 阶段名称（blue-green-gateway, portal, asbc-gateway, ...）
      * Value: 具体配置对象
      */
     private final Map<String, StageConfigurable> stages = new LinkedHashMap<>();
-    
+
     // ========== 具体配置字段（用于 Spring 绑定）==========
-    
+
     /**
      * 蓝绿网关阶段配置
      */
     @NestedConfigurationProperty
     private BlueGreenGatewayStageConfig blueGreenGateway;
-    
+
     /**
      * Portal 阶段配置
      */
     @NestedConfigurationProperty
     private PortalStageConfig portal;
-    
+
     /**
      * ASBC 网关阶段配置
      */
     @NestedConfigurationProperty
     private ASBCGatewayStageConfig asbcGateway;
-    
+
     // 未来新增配置只需在此添加字段，无需修改其他逻辑
     // @NestedConfigurationProperty
     // private NewServiceStageConfig newService;
-    
+
     @Override
     public void afterPropertiesSet() {
         log.info("开始初始化 Executor Stages 配置...");
-        
+
         // 自动发现所有配置字段并注册到统一容器
         registerStageConfigurations();
-        
+
         // 统一验证所有配置
         validateAllConfigurations();
-        
+
         log.info("Executor Stages 配置初始化完成，共 {} 个阶段，{} 个已启用",
-            stages.size(),
-            stages.values().stream().filter(StageConfigurable::isEnabled).count());
+                stages.size(),
+                stages.values().stream().filter(StageConfigurable::isEnabled).count());
     }
-    
+
     /**
      * 自动发现并注册所有阶段配置
-     * 
+     *
      * <p>通过反射找到所有实现 StageConfigurable 的字段，
      * 自动注册到统一容器，无需手动维护配置列表。
      */
@@ -455,21 +455,21 @@ public class ExecutorStagesProperties implements InitializingBean {
         try {
             Field[] fields = this.getClass().getDeclaredFields();
             int registeredCount = 0;
-            
+
             for (Field field : fields) {
                 // 跳过非配置字段
                 if (shouldSkipField(field)) {
                     continue;
                 }
-                
+
                 field.setAccessible(true);
                 Object fieldValue = field.get(this);
-                
+
                 // 检查字段类型是否实现 StageConfigurable
                 if (!StageConfigurable.class.isAssignableFrom(field.getType())) {
                     continue;
                 }
-                
+
                 // 如果字段为 null，尝试创建默认配置
                 if (fieldValue == null) {
                     fieldValue = createDefaultConfig(field.getType());
@@ -481,86 +481,86 @@ public class ExecutorStagesProperties implements InitializingBean {
                         continue;
                     }
                 }
-                
+
                 // 注册到统一容器
                 StageConfigurable config = (StageConfigurable) fieldValue;
                 String stageName = StageConfigUtils.toKebabCase(field.getName());
                 stages.put(stageName, config);
                 registeredCount++;
-                
-                log.debug("注册阶段配置: {} -> {} (enabled={})", 
-                    stageName, 
-                    config.getClass().getSimpleName(),
-                    config.isEnabled());
+
+                log.debug("注册阶段配置: {} -> {} (enabled={})",
+                        stageName,
+                        config.getClass().getSimpleName(),
+                        config.isEnabled());
             }
-            
+
             log.info("已注册 {} 个阶段配置", registeredCount);
-            
+
         } catch (Exception e) {
             log.error("注册阶段配置失败: {}", e.getMessage(), e);
             // 不抛异常，确保应用可以启动
         }
     }
-    
+
     /**
      * 判断是否应该跳过字段
      */
     private boolean shouldSkipField(Field field) {
         String fieldName = field.getName();
         // 跳过统一容器本身和日志对象
-        return fieldName.equals("stages") || 
-               fieldName.equals("log") ||
-               fieldName.equals("$jacocoData") ||  // Jacoco 插桩字段
-               field.isSynthetic();  // 合成字段
+        return fieldName.equals("stages") ||
+                fieldName.equals("log") ||
+                fieldName.equals("$jacocoData") ||  // Jacoco 插桩字段
+                field.isSynthetic();  // 合成字段
     }
-    
+
     /**
      * 统一验证所有配置
-     * 
+     *
      * <p>关键原则：永不抛异常，只记录警告和错误
      */
     private void validateAllConfigurations() {
         int validCount = 0;
         int warningCount = 0;
         int errorCount = 0;
-        
+
         for (Map.Entry<String, StageConfigurable> entry : stages.entrySet()) {
             String stageName = entry.getKey();
             StageConfigurable config = entry.getValue();
-            
+
             try {
                 ValidationResult result = config.validate();
-                
+
                 if (!result.isValid()) {
                     errorCount++;
-                    log.error("阶段配置验证失败: {}, 错误: {}", 
-                        stageName, 
-                        String.join("; ", result.getErrors()));
+                    log.error("阶段配置验证失败: {}, 错误: {}",
+                            stageName,
+                            String.join("; ", result.getErrors()));
                     // 不抛异常，允许应用继续启动
                 } else {
                     validCount++;
                 }
-                
+
                 if (!result.getWarnings().isEmpty()) {
                     warningCount++;
-                    log.warn("阶段配置警告: {}, 警告: {}", 
-                        stageName, 
-                        String.join("; ", result.getWarnings()));
+                    log.warn("阶段配置警告: {}, 警告: {}",
+                            stageName,
+                            String.join("; ", result.getWarnings()));
                 }
-                
+
             } catch (Exception e) {
                 errorCount++;
                 log.error("验证阶段配置异常: {}, 错误: {}", stageName, e.getMessage(), e);
                 // 不抛异常，允许应用继续启动
             }
         }
-        
+
         log.info("配置验证完成: 成功 {}, 警告 {}, 错误 {}", validCount, warningCount, errorCount);
     }
-    
+
     /**
      * 创建默认配置
-     * 
+     *
      * <p>尝试两种方式：
      * <ol>
      *   <li>调用静态 defaultConfig() 方法（推荐）</li>
@@ -583,19 +583,19 @@ public class ExecutorStagesProperties implements InitializingBean {
             return null;
         }
     }
-    
+
     // ========== 公共访问方法 ==========
-    
+
     /**
      * 获取所有阶段配置（不可变视图）
      */
     public Map<String, StageConfigurable> getAllStages() {
         return Collections.unmodifiableMap(stages);
     }
-    
+
     /**
      * 获取指定阶段配置
-     * 
+     *
      * @param stageName 阶段名称（kebab-case）
      * @param configClass 配置类型
      * @return 配置对象，不存在则返回 null
@@ -604,21 +604,21 @@ public class ExecutorStagesProperties implements InitializingBean {
         StageConfigurable config = stages.get(stageName);
         return config != null ? configClass.cast(config) : null;
     }
-    
+
     /**
      * 获取所有已启用的阶段
      */
     public Map<String, StageConfigurable> getEnabledStages() {
         return stages.entrySet().stream()
-            .filter(entry -> entry.getValue().isEnabled())
-            .collect(Collectors.toMap(
-                Map.Entry::getKey, 
-                Map.Entry::getValue,
-                (a, b) -> a,
-                LinkedHashMap::new
-            ));
+                .filter(entry -> entry.getValue().isEnabled())
+                .collect(Collectors.toMap(
+                        Map.Entry::getKey,
+                        Map.Entry::getValue,
+                        (a, b) -> a,
+                        LinkedHashMap::new
+                ));
     }
-    
+
     /**
      * 检查指定阶段是否存在且已启用
      */
@@ -626,29 +626,29 @@ public class ExecutorStagesProperties implements InitializingBean {
         StageConfigurable config = stages.get(stageName);
         return config != null && config.isEnabled();
     }
-    
+
     // ========== 兼容性方法（保留原有 getter/setter）==========
-    
+
     public BlueGreenGatewayStageConfig getBlueGreenGateway() {
         return blueGreenGateway;
     }
-    
+
     public void setBlueGreenGateway(BlueGreenGatewayStageConfig blueGreenGateway) {
         this.blueGreenGateway = blueGreenGateway;
     }
-    
+
     public PortalStageConfig getPortal() {
         return portal;
     }
-    
+
     public void setPortal(PortalStageConfig portal) {
         this.portal = portal;
     }
-    
+
     public ASBCGatewayStageConfig getAsbcGateway() {
         return asbcGateway;
     }
-    
+
     public void setAsbcGateway(ASBCGatewayStageConfig asbcGateway) {
         this.asbcGateway = asbcGateway;
     }
@@ -687,8 +687,8 @@ public class ExecutorStagesProperties implements InitializingBean {
 ```java
 package xyz.firestige.deploy.config;
 
-import xyz.firestige.deploy.config.stage.StageConfigurable;
-import xyz.firestige.deploy.config.stage.ValidationResult;
+import xyz.firestige.deploy.infrastructure.execution.stage.config.stage.StageConfigurable;
+import xyz.firestige.deploy.infrastructure.execution.stage.config.stage.ValidationResult;
 
 import javax.validation.Valid;
 import javax.validation.constraints.Min;
@@ -699,80 +699,80 @@ import java.util.List;
 
 /**
  * 蓝绿网关阶段配置
- * 
+ *
  * @since T-017 - 实现 StageConfigurable 接口
  */
 public class BlueGreenGatewayStageConfig implements StageConfigurable {
-    
+
     @NotNull(message = "enabled 不能为 null")
     private Boolean enabled = true;
-    
+
     @NotBlank(message = "healthCheckPath 不能为空")
     private String healthCheckPath = "/health";
-    
+
     private String healthCheckVersionKey = "version";
-    
+
     @Min(value = 1, message = "healthCheckIntervalSeconds 必须 >= 1")
     private Integer healthCheckIntervalSeconds = 3;
-    
+
     @Min(value = 1, message = "healthCheckMaxAttempts 必须 >= 1")
     private Integer healthCheckMaxAttempts = 10;
-    
+
     @Valid
     private List<StepConfig> steps = new ArrayList<>();
-    
+
     // ========== StageConfigurable 实现 ==========
-    
+
     @Override
     public boolean isEnabled() {
         return enabled != null && enabled;
     }
-    
+
     @Override
     public String getStageName() {
         return "蓝绿网关";
     }
-    
+
     @Override
     public ValidationResult validate() {
         ValidationResult.Builder result = ValidationResult.builder();
-        
+
         // 只在启用时验证详细配置
         if (!isEnabled()) {
             return result.build();
         }
-        
+
         // 验证健康检查路径
         if (healthCheckPath == null || healthCheckPath.isBlank()) {
             result.warning("健康检查路径为空，将使用默认值: /health");
             this.healthCheckPath = "/health";
         }
-        
+
         // 验证健康检查间隔
         if (healthCheckIntervalSeconds == null || healthCheckIntervalSeconds <= 0) {
             result.warning(String.format(
-                "健康检查间隔无效: %s，将使用默认值: 3", 
-                healthCheckIntervalSeconds));
+                    "健康检查间隔无效: %s，将使用默认值: 3",
+                    healthCheckIntervalSeconds));
             this.healthCheckIntervalSeconds = 3;
         }
-        
+
         // 验证最大尝试次数
         if (healthCheckMaxAttempts == null || healthCheckMaxAttempts <= 0) {
             result.warning(String.format(
-                "健康检查最大尝试次数无效: %s，将使用默认值: 10", 
-                healthCheckMaxAttempts));
+                    "健康检查最大尝试次数无效: %s，将使用默认值: 10",
+                    healthCheckMaxAttempts));
             this.healthCheckMaxAttempts = 10;
         }
-        
+
         // 验证步骤配置
         if (steps == null || steps.isEmpty()) {
             result.warning("未配置步骤，将使用默认步骤");
             this.steps = defaultSteps();
         }
-        
+
         return result.build();
     }
-    
+
     /**
      * 创建默认配置
      */
@@ -786,7 +786,7 @@ public class BlueGreenGatewayStageConfig implements StageConfigurable {
         config.setSteps(defaultSteps());
         return config;
     }
-    
+
     /**
      * 默认步骤
      */
@@ -797,53 +797,53 @@ public class BlueGreenGatewayStageConfig implements StageConfigurable {
         // steps.add(StepConfig.healthCheck());
         return steps;
     }
-    
+
     // ========== Getters and Setters ==========
-    
+
     public Boolean getEnabled() {
         return enabled;
     }
-    
+
     public void setEnabled(Boolean enabled) {
         this.enabled = enabled;
     }
-    
+
     public String getHealthCheckPath() {
         return healthCheckPath;
     }
-    
+
     public void setHealthCheckPath(String healthCheckPath) {
         this.healthCheckPath = healthCheckPath;
     }
-    
+
     public String getHealthCheckVersionKey() {
         return healthCheckVersionKey;
     }
-    
+
     public void setHealthCheckVersionKey(String healthCheckVersionKey) {
         this.healthCheckVersionKey = healthCheckVersionKey;
     }
-    
+
     public Integer getHealthCheckIntervalSeconds() {
         return healthCheckIntervalSeconds;
     }
-    
+
     public void setHealthCheckIntervalSeconds(Integer healthCheckIntervalSeconds) {
         this.healthCheckIntervalSeconds = healthCheckIntervalSeconds;
     }
-    
+
     public Integer getHealthCheckMaxAttempts() {
         return healthCheckMaxAttempts;
     }
-    
+
     public void setHealthCheckMaxAttempts(Integer healthCheckMaxAttempts) {
         this.healthCheckMaxAttempts = healthCheckMaxAttempts;
     }
-    
+
     public List<StepConfig> getSteps() {
         return steps;
     }
-    
+
     public void setSteps(List<StepConfig> steps) {
         this.steps = steps;
     }
@@ -902,143 +902,143 @@ import org.springframework.boot.actuate.health.Health;
 import org.springframework.boot.actuate.health.HealthIndicator;
 import org.springframework.stereotype.Component;
 import xyz.firestige.deploy.config.ExecutorStagesProperties;
-import xyz.firestige.deploy.config.stage.StageConfigurable;
-import xyz.firestige.deploy.config.stage.ValidationResult;
+import xyz.firestige.deploy.infrastructure.execution.stage.config.stage.StageConfigurable;
+import xyz.firestige.deploy.infrastructure.execution.stage.config.stage.ValidationResult;
 
 import java.util.HashMap;
 import java.util.Map;
 
 /**
  * Executor Stages 健康检查
- * 
+ *
  * <p>完全解耦的实现：
  * <ul>
  *   <li>自动发现所有阶段配置</li>
  *   <li>无需硬编码配置类列表</li>
  *   <li>新增配置类自动包含在健康检查中</li>
  * </ul>
- * 
+ *
  * @since T-017
  */
 @Component
 public class ExecutorStagesHealthIndicator implements HealthIndicator {
-    
+
     private static final Logger log = LoggerFactory.getLogger(ExecutorStagesHealthIndicator.class);
-    
+
     private final ExecutorStagesProperties properties;
-    
+
     public ExecutorStagesHealthIndicator(ExecutorStagesProperties properties) {
         this.properties = properties;
     }
-    
+
     @Override
     public Health health() {
         try {
             Map<String, Object> details = new HashMap<>();
-            
+
             // 遍历所有阶段配置（自动发现，无需硬编码）
             Map<String, StageConfigurable> allStages = properties.getAllStages();
-            
+
             if (allStages.isEmpty()) {
                 return Health.down()
-                    .withDetail("message", "未发现任何阶段配置")
-                    .build();
+                        .withDetail("message", "未发现任何阶段配置")
+                        .build();
             }
-            
+
             // 检查每个阶段配置
             allStages.forEach((stageName, config) -> {
                 details.put(stageName, checkStageConfig(config));
             });
-            
+
             // 统计信息
             long enabledCount = allStages.values().stream()
-                .filter(StageConfigurable::isEnabled)
-                .count();
-            
+                    .filter(StageConfigurable::isEnabled)
+                    .count();
+
             details.put("summary", Map.of(
-                "totalStages", allStages.size(),
-                "enabledStages", enabledCount,
-                "disabledStages", allStages.size() - enabledCount
+                    "totalStages", allStages.size(),
+                    "enabledStages", enabledCount,
+                    "disabledStages", allStages.size() - enabledCount
             ));
-            
+
             // 判断健康状态
             boolean hasErrors = details.values().stream()
-                .filter(v -> v instanceof Map)
-                .anyMatch(v -> "ERROR".equals(((Map<?, ?>) v).get("status")));
-            
+                    .filter(v -> v instanceof Map)
+                    .anyMatch(v -> "ERROR".equals(((Map<?, ?>) v).get("status")));
+
             boolean hasWarnings = details.values().stream()
-                .filter(v -> v instanceof Map)
-                .anyMatch(v -> "WARNING".equals(((Map<?, ?>) v).get("status")));
-            
+                    .filter(v -> v instanceof Map)
+                    .anyMatch(v -> "WARNING".equals(((Map<?, ?>) v).get("status")));
+
             if (hasErrors) {
                 return Health.down()
-                    .withDetail("message", "部分配置存在错误")
-                    .withDetails(details)
-                    .build();
+                        .withDetail("message", "部分配置存在错误")
+                        .withDetails(details)
+                        .build();
             }
-            
+
             if (hasWarnings) {
                 return Health.status("WARNING")
-                    .withDetail("message", "部分配置存在警告，但应用可正常运行")
+                        .withDetail("message", "部分配置存在警告，但应用可正常运行")
+                        .withDetails(details)
+                        .build();
+            }
+
+            return Health.up()
+                    .withDetail("message", "所有配置正常")
                     .withDetails(details)
                     .build();
-            }
-            
-            return Health.up()
-                .withDetail("message", "所有配置正常")
-                .withDetails(details)
-                .build();
-                
+
         } catch (Exception e) {
             log.error("健康检查异常", e);
             return Health.down()
-                .withException(e)
-                .withDetail("message", "健康检查异常，但应用仍可运行")
-                .build();
+                    .withException(e)
+                    .withDetail("message", "健康检查异常，但应用仍可运行")
+                    .build();
         }
     }
-    
+
     /**
      * 检查单个阶段配置
      */
     private Map<String, Object> checkStageConfig(StageConfigurable config) {
         Map<String, Object> result = new HashMap<>();
-        
+
         if (config == null) {
             result.put("status", "WARNING");
             result.put("message", "配置缺失，已使用默认配置");
             return result;
         }
-        
+
         try {
             result.put("status", "OK");
             result.put("enabled", config.isEnabled());
             result.put("displayName", config.getStageName());
-            
+
             if (!config.isEnabled()) {
                 result.put("message", "已禁用");
                 return result;
             }
-            
+
             // 执行配置验证
             ValidationResult validation = config.validate();
-            
+
             if (!validation.getWarnings().isEmpty()) {
                 result.put("status", "WARNING");
                 result.put("warnings", validation.getWarnings());
             }
-            
+
             if (!validation.isValid()) {
                 result.put("status", "ERROR");
                 result.put("errors", validation.getErrors());
             }
-            
+
         } catch (Exception e) {
             log.error("检查配置失败: {}", config.getClass().getSimpleName(), e);
             result.put("status", "ERROR");
             result.put("message", "配置检查失败: " + e.getMessage());
         }
-        
+
         return result;
     }
 }
@@ -1064,41 +1064,41 @@ import org.slf4j.LoggerFactory;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.ApplicationListener;
 import org.springframework.stereotype.Component;
-import xyz.firestige.deploy.config.stage.StageConfigurable;
-import xyz.firestige.deploy.config.stage.ValidationResult;
+import xyz.firestige.deploy.infrastructure.execution.stage.config.stage.StageConfigurable;
+import xyz.firestige.deploy.infrastructure.execution.stage.config.stage.ValidationResult;
 
 import java.util.Map;
 
 /**
  * Executor Stages 配置报告
- * 
+ *
  * <p>完全解耦的实现：
  * <ul>
  *   <li>自动发现所有阶段配置</li>
  *   <li>无需硬编码配置类列表</li>
  *   <li>新增配置类自动包含在报告中</li>
  * </ul>
- * 
+ *
  * @since T-017
  */
 @Component
-public class ExecutorStagesConfigurationReporter 
+public class ExecutorStagesConfigurationReporter
         implements ApplicationListener<ApplicationReadyEvent> {
-    
+
     private static final Logger log = LoggerFactory.getLogger(
-        ExecutorStagesConfigurationReporter.class);
-    
+            ExecutorStagesConfigurationReporter.class);
+
     private final ExecutorStagesProperties properties;
-    
+
     public ExecutorStagesConfigurationReporter(ExecutorStagesProperties properties) {
         this.properties = properties;
     }
-    
+
     @Override
     public void onApplicationEvent(ApplicationReadyEvent event) {
         printConfigurationReport();
     }
-    
+
     /**
      * 打印配置报告
      */
@@ -1106,30 +1106,30 @@ public class ExecutorStagesConfigurationReporter
         log.info("╔════════════════════════════════════════╗");
         log.info("║  Executor Stages 配置报告              ║");
         log.info("╚════════════════════════════════════════╝");
-        
+
         // 自动遍历所有阶段配置
         Map<String, StageConfigurable> allStages = properties.getAllStages();
-        
+
         if (allStages.isEmpty()) {
             log.warn("⚠ 未发现任何阶段配置");
             return;
         }
-        
+
         allStages.forEach(this::reportStageConfig);
-        
+
         // 统计信息
         long enabledCount = allStages.values().stream()
-            .filter(StageConfigurable::isEnabled)
-            .count();
-        
+                .filter(StageConfigurable::isEnabled)
+                .count();
+
         log.info("────────────────────────────────────────");
-        log.info("总计: {} 个阶段, {} 个已启用, {} 个已禁用", 
-            allStages.size(), 
-            enabledCount,
-            allStages.size() - enabledCount);
+        log.info("总计: {} 个阶段, {} 个已启用, {} 个已禁用",
+                allStages.size(),
+                enabledCount,
+                allStages.size() - enabledCount);
         log.info("════════════════════════════════════════");
     }
-    
+
     /**
      * 报告单个阶段配置
      */
@@ -1138,33 +1138,33 @@ public class ExecutorStagesConfigurationReporter
             log.warn("⚠ {}: 配置缺失（已使用默认配置）", stageName);
             return;
         }
-        
+
         try {
             String status = config.isEnabled() ? "✓ 已启用" : "✗ 已禁用";
             String displayName = config.getStageName();
             String className = config.getClass().getSimpleName();
-            
+
             log.info("  {} ({})", displayName, stageName);
             log.info("    状态: {}", status);
             log.info("    类型: {}", className);
-            
+
             // 如果有验证警告，也打印出来
             if (config.isEnabled()) {
                 ValidationResult validation = config.validate();
-                
+
                 if (!validation.getWarnings().isEmpty()) {
                     log.info("    警告:");
-                    validation.getWarnings().forEach(warning -> 
-                        log.warn("      - {}", warning));
+                    validation.getWarnings().forEach(warning ->
+                            log.warn("      - {}", warning));
                 }
-                
+
                 if (!validation.isValid()) {
                     log.info("    错误:");
-                    validation.getErrors().forEach(error -> 
-                        log.error("      - {}", error));
+                    validation.getErrors().forEach(error ->
+                            log.error("      - {}", error));
                 }
             }
-            
+
         } catch (Exception e) {
             log.error("⚠ {}: 配置读取失败: {}", stageName, e.getMessage());
         }
@@ -1202,7 +1202,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.TestPropertySource;
-import xyz.firestige.deploy.config.stage.StageConfigurable;
+import xyz.firestige.deploy.infrastructure.execution.stage.config.stage.StageConfigurable;
 
 import java.util.Map;
 
@@ -1213,48 +1213,48 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 @SpringBootTest
 @TestPropertySource(properties = {
-    "executor.stages.blue-green-gateway.enabled=true",
-    "executor.stages.portal.enabled=false",
-    "executor.stages.asbc-gateway.enabled=true"
+        "executor.stages.blue-green-gateway.enabled=true",
+        "executor.stages.portal.enabled=false",
+        "executor.stages.asbc-gateway.enabled=true"
 })
 class ExecutorStagesPropertiesTest {
-    
+
     @Autowired
     private ExecutorStagesProperties properties;
-    
+
     @Test
     void shouldAutoDiscoverAllStages() {
         Map<String, StageConfigurable> allStages = properties.getAllStages();
-        
+
         assertThat(allStages).isNotEmpty();
         assertThat(allStages).containsKeys(
-            "blue-green-gateway",
-            "portal",
-            "asbc-gateway"
+                "blue-green-gateway",
+                "portal",
+                "asbc-gateway"
         );
     }
-    
+
     @Test
     void shouldFilterEnabledStages() {
         Map<String, StageConfigurable> enabledStages = properties.getEnabledStages();
-        
+
         assertThat(enabledStages).hasSize(2);
         assertThat(enabledStages).containsKeys(
-            "blue-green-gateway",
-            "asbc-gateway"
+                "blue-green-gateway",
+                "asbc-gateway"
         );
         assertThat(enabledStages).doesNotContainKey("portal");
     }
-    
+
     @Test
     void shouldLoadConfiguration() {
         assertThat(properties.getBlueGreenGateway()).isNotNull();
         assertThat(properties.getBlueGreenGateway().isEnabled()).isTrue();
-        
+
         assertThat(properties.getPortal()).isNotNull();
         assertThat(properties.getPortal().isEnabled()).isFalse();
     }
-    
+
     @Test
     void shouldValidateConfigurations() {
         // 验证逻辑在 afterPropertiesSet() 中执行
@@ -1315,8 +1315,8 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import xyz.firestige.deploy.config.stage.StageConfigurable;
-import xyz.firestige.deploy.config.stage.ValidationResult;
+import xyz.firestige.deploy.infrastructure.execution.stage.config.stage.StageConfigurable;
+import xyz.firestige.deploy.infrastructure.execution.stage.config.stage.ValidationResult;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -1325,43 +1325,43 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 @SpringBootTest
 class ExecutorStagesExtensibilityTest {
-    
+
     /**
      * 模拟新增配置类
      */
     public static class NewServiceStageConfig implements StageConfigurable {
         private Boolean enabled = false;
-        
+
         @Override
         public boolean isEnabled() {
             return enabled != null && enabled;
         }
-        
+
         @Override
         public String getStageName() {
             return "新服务";
         }
-        
+
         public static NewServiceStageConfig defaultConfig() {
             return new NewServiceStageConfig();
         }
     }
-    
+
     @Test
     void shouldSupportNewConfigurationClass() {
         // 验证新配置类符合接口约定
         NewServiceStageConfig config = new NewServiceStageConfig();
-        
+
         assertThat(config.isEnabled()).isFalse();
         assertThat(config.getStageName()).isEqualTo("新服务");
         assertThat(config.validate()).isNotNull();
         assertThat(config.validate().isValid()).isTrue();
     }
-    
+
     @Test
     void shouldCreateDefaultConfig() {
         NewServiceStageConfig config = NewServiceStageConfig.defaultConfig();
-        
+
         assertThat(config).isNotNull();
         assertThat(config.isEnabled()).isFalse();
     }

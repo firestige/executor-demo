@@ -4,6 +4,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Component;
+import xyz.firestige.deploy.domain.plan.PlanStatus;
 import xyz.firestige.deploy.domain.plan.event.*;
 import xyz.firestige.deploy.infrastructure.persistence.projection.PlanStateProjection;
 import xyz.firestige.deploy.infrastructure.persistence.projection.PlanStateProjectionStore;
@@ -60,7 +61,7 @@ public class PlanStateProjectionUpdater {
         if (existing == null) {
             PlanStateProjection projection = PlanStateProjection.builder()
                     .planId(planId)
-                    .status(xyz.firestige.deploy.domain.plan.PlanStatus.valueOf(status))
+                    .status(PlanStatus.valueOf(status))
                     .taskIds(List.of()) // 任务列表后续可由其他监听器补充
                     .maxConcurrency(0) // 未知并发度，后续可更新
                     .build();
@@ -74,7 +75,7 @@ public class PlanStateProjectionUpdater {
     private void updateStatus(PlanId planId, String status) {
         PlanStateProjection projection = store.load(planId);
         if (projection != null) {
-            projection.setStatus(xyz.firestige.deploy.domain.plan.PlanStatus.valueOf(status));
+            projection.setStatus(PlanStatus.valueOf(status));
             store.save(projection);
             logger.debug("[PlanProjection] 状态更新: planId={}, status={}", planId.getValue(), status);
         }

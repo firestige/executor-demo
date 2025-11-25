@@ -588,7 +588,7 @@ public class SharedStageResources {
 
 **新增文件**：`ServiceDiscoveryConfiguration.java`
 
-**位置**：`xyz.firestige.deploy.infrastructure.config.ServiceDiscoveryConfiguration`
+**位置**：`xyz.firestige.deploy.config.ServiceDiscoveryConfiguration`
 
 ```java
 package xyz.firestige.deploy.infrastructure.config;
