@@ -1,6 +1,23 @@
-# DEPRECATED: migrated to application.yml executor.infrastructure.* (T-027 Phase2)
-# DO NOT add new configuration here; will be removed after Phase3.
-# -----------------------------
+# ============================================================
+# DEPRECATED: This file is obsolete (T-027 Phase4)
+# ============================================================
+# Migrated to: application.yml executor.infrastructure.*
+# New config uses Spring Boot standard placeholders: ${VAR:default}
+#
+# DO NOT add new configuration here!
+# This file will be REMOVED in v2.0
+#
+# Migration guide:
+#   Old: infrastructure.redis.hashKeyPrefix
+#   New: executor.infrastructure.redis.hash-key-prefix
+#   Old: infrastructure.healthCheck
+#   New: executor.infrastructure.verify
+#
+# Access config via SharedStageResources convenience methods:
+#   resources.getRedisHashKeyPrefix()
+#   resources.getVerifyMaxAttempts()
+# ============================================================
+#
 # Deployment Stage Configuration for RF-19
 # RF-19 使用代码编排（DynamicStageFactory），不依赖 YAML 配置 stages
 # 此文件仅保留基础设施配置
