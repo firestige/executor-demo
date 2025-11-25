@@ -30,7 +30,6 @@ import xyz.firestige.deploy.facade.converter.TenantConfigConverter;
 import xyz.firestige.deploy.infrastructure.execution.DefaultTaskWorkerFactory;
 import xyz.firestige.deploy.infrastructure.execution.TaskWorkerFactory;
 import xyz.firestige.deploy.infrastructure.execution.stage.StageFactory;
-import xyz.firestige.deploy.infrastructure.execution.stage.SimpleStageFactory;
 import xyz.firestige.deploy.infrastructure.persistence.checkpoint.InMemoryCheckpointRepository;
 import xyz.firestige.deploy.infrastructure.persistence.plan.InMemoryPlanRepository;
 import xyz.firestige.deploy.infrastructure.persistence.task.InMemoryTaskRepository;
@@ -182,11 +181,6 @@ public class ExecutorConfiguration {
 
     @Bean
     public BusinessValidator businessValidator() { return new BusinessValidator(); }
-
-    @Bean
-    public StageFactory stageFactory() { return new SimpleStageFactory(); }
-
-    // DeploymentConfigLoader removed - migrated to @ConfigurationProperties (T-027)
 
     @Bean
     public DeploymentPlanCreator deploymentPlanCreator(
