@@ -165,7 +165,7 @@ public class VerifyStageBuilderImpl implements VerifyStageBuilder {
         AckTask task = buildTask();
 
         // 执行
-        AckExecutor executor = new AckExecutor(writeStage.getRedisTemplate());
+        AckExecutor executor = new AckExecutor(writeStage.getRedisClient());
         return executor.execute(task);
     }
 
@@ -174,7 +174,7 @@ public class VerifyStageBuilderImpl implements VerifyStageBuilder {
         validate();
 
         AckTask task = buildTask();
-        AckExecutor executor = new AckExecutor(writeStage.getRedisTemplate());
+        AckExecutor executor = new AckExecutor(writeStage.getRedisClient());
 
         return CompletableFuture.supplyAsync(() -> executor.execute(task));
     }
@@ -207,7 +207,7 @@ public class VerifyStageBuilderImpl implements VerifyStageBuilder {
             retryStrategy,
             timeout,
             writeStage.getZsetScore(),
-            writeStage.getRedisTemplate()
+            writeStage.getRedisClient()
         );
     }
 

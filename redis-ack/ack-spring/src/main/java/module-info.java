@@ -1,13 +1,14 @@
 /**
  * Redis ACK Spring Boot 集成模块
  * <p>
- * 提供 Spring Boot 自动配置、属性绑定、健康检查、Micrometer 指标集成、HttpClient 实现。
+ * 提供 Spring Boot 自动配置、属性绑定、健康检查、Micrometer 指标集成、HttpClient 和 RedisClient 实现。
  */
 module xyz.firestige.redis.ack.spring {
     // 导出自动配置包
     exports xyz.firestige.redis.ack.spring.autoconfigure;
     exports xyz.firestige.redis.ack.spring.metrics;
     exports xyz.firestige.redis.ack.spring.http;
+    exports xyz.firestige.redis.ack.spring.redis;
     exports xyz.firestige.redis.ack.spring.config;
 
     // 依赖模块

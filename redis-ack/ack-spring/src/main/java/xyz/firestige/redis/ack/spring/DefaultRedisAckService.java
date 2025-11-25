@@ -1,12 +1,12 @@
 package xyz.firestige.redis.ack.spring;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import org.springframework.data.redis.core.RedisTemplate;
 import xyz.firestige.redis.ack.api.AckMetricsRecorder;
 import xyz.firestige.redis.ack.api.AckResult;
 import xyz.firestige.redis.ack.api.HttpClient;
 import xyz.firestige.redis.ack.api.PubSubStageBuilder;
 import xyz.firestige.redis.ack.api.RedisAckService;
+import xyz.firestige.redis.ack.api.RedisClient;
 import xyz.firestige.redis.ack.api.VerifyStageBuilder;
 import xyz.firestige.redis.ack.api.WriteStageBuilder;
 import xyz.firestige.redis.ack.core.PubSubStageBuilderImpl;
@@ -24,31 +24,31 @@ import java.util.concurrent.ExecutorService;
  */
 public class DefaultRedisAckService implements RedisAckService {
 
-    private final RedisTemplate<String, String> redisTemplate;
+    private final RedisClient redisClient;
     private final HttpClient httpClient;
     private final ObjectMapper objectMapper;
     private final AckMetricsRecorder metricsRecorder;
     private final ExecutorService executorService;
 
-    public DefaultRedisAckService(RedisTemplate<String, String> redisTemplate,
+    public DefaultRedisAckService(RedisClient redisClient,
                                   HttpClient httpClient,
                                   ObjectMapper objectMapper) {
-        this(redisTemplate, httpClient, objectMapper, AckMetricsRecorder.noop(), null);
+        this(redisClient, httpClient, objectMapper, AckMetricsRecorder.noop(), null);
     }
 
-    public DefaultRedisAckService(RedisTemplate<String, String> redisTemplate,
+    public DefaultRedisAckService(RedisClient redisClient,
                                   HttpClient httpClient,
                                   ObjectMapper objectMapper,
                                   AckMetricsRecorder metricsRecorder) {
-        this(redisTemplate, httpClient, objectMapper, metricsRecorder, null);
+        this(redisClient, httpClient, objectMapper, metricsRecorder, null);
     }
 
-    public DefaultRedisAckService(RedisTemplate<String, String> redisTemplate,
+    public DefaultRedisAckService(RedisClient redisClient,
                                   HttpClient httpClient,
                                   ObjectMapper objectMapper,
                                   AckMetricsRecorder metricsRecorder,
                                   ExecutorService executorService) {
-        this.redisTemplate = redisTemplate;
+        this.redisClient = redisClient;
         this.httpClient = httpClient;
         this.objectMapper = objectMapper;
         this.metricsRecorder = metricsRecorder != null ? metricsRecorder : AckMetricsRecorder.noop();
@@ -57,7 +57,7 @@ public class DefaultRedisAckService implements RedisAckService {
 
     @Override
     public WriteStageBuilder write() {
-        return new InstrumentedWriteStageBuilder(redisTemplate, httpClient, objectMapper, metricsRecorder, executorService);
+        return new InstrumentedWriteStageBuilder(redisClient, httpClient, objectMapper, metricsRecorder, executorService);
     }
 
     /**
@@ -66,12 +66,12 @@ public class DefaultRedisAckService implements RedisAckService {
     static class InstrumentedWriteStageBuilder extends WriteStageBuilderImpl {
         private final AckMetricsRecorder metricsRecorder;
 
-        InstrumentedWriteStageBuilder(RedisTemplate<String, String> redisTemplate,
+        InstrumentedWriteStageBuilder(RedisClient redisClient,
                                       HttpClient httpClient,
                                       ObjectMapper objectMapper,
                                       AckMetricsRecorder metricsRecorder,
                                       ExecutorService executorService) {
-            super(redisTemplate, httpClient, objectMapper, metricsRecorder, executorService);
+            super(redisClient, httpClient, objectMapper, metricsRecorder, executorService);
             this.metricsRecorder = metricsRecorder;
         }
 

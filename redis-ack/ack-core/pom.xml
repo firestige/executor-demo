@@ -32,11 +32,6 @@
             <artifactId>jackson-databind</artifactId>
         </dependency>
 
-        <!-- Spring Data Redis -->
-        <dependency>
-            <groupId>org.springframework.data</groupId>
-            <artifactId>spring-data-redis</artifactId>
-        </dependency>
 
         <!-- SLF4J API for logging -->
         <dependency>

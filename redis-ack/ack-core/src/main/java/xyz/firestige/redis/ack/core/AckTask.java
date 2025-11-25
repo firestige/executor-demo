@@ -2,6 +2,7 @@ package xyz.firestige.redis.ack.core;
 
 import xyz.firestige.redis.ack.api.AckEndpoint;
 import xyz.firestige.redis.ack.api.FootprintExtractor;
+import xyz.firestige.redis.ack.api.RedisClient;
 import xyz.firestige.redis.ack.api.RedisOperation;
 import xyz.firestige.redis.ack.api.RetryStrategy;
 
@@ -39,7 +40,7 @@ public class AckTask {
     private final Duration timeout;
 
     private final Double zsetScore; // ZADD 分数
-    private final org.springframework.data.redis.core.RedisTemplate<String,String> redisTemplate; // 直接使用以便扩展操作
+    private final RedisClient redisClient; // Redis 客户端抽象
 
     public AckTask(String taskId,
                    String key, String field, Object value, Duration ttl, RedisOperation operation,
@@ -48,7 +49,7 @@ public class AckTask {
                    AckEndpoint endpoint, Function<String, String> responseExtractor,
                    RetryStrategy retryStrategy, Duration timeout,
                    Double zsetScore,
-                   org.springframework.data.redis.core.RedisTemplate<String,String> redisTemplate) {
+                   RedisClient redisClient) {
         this.taskId = taskId;
         this.key = key;
         this.field = field;
@@ -63,7 +64,7 @@ public class AckTask {
         this.retryStrategy = retryStrategy;
         this.timeout = timeout;
         this.zsetScore = zsetScore;
-        this.redisTemplate = redisTemplate;
+        this.redisClient = redisClient;
     }
 
     // Getters
@@ -82,5 +83,5 @@ public class AckTask {
     public RetryStrategy getRetryStrategy() { return retryStrategy; }
     public Duration getTimeout() { return timeout; }
     Double getZsetScore() { return zsetScore; }
-    org.springframework.data.redis.core.RedisTemplate<String,String> getRedisTemplate() { return redisTemplate; }
+    RedisClient getRedisClient() { return redisClient; }
 }

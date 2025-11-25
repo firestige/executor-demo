@@ -12,15 +12,17 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.boot.web.client.RestTemplateBuilder;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
-import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.web.client.RestTemplate;
 import xyz.firestige.redis.ack.api.AckMetricsRecorder;
 import xyz.firestige.redis.ack.api.HttpClient;
 import xyz.firestige.redis.ack.api.RedisAckService;
+import xyz.firestige.redis.ack.api.RedisClient;
 import xyz.firestige.redis.ack.spring.DefaultRedisAckService;
 import xyz.firestige.redis.ack.spring.config.AckExecutorConfig;
 import xyz.firestige.redis.ack.spring.http.RestTemplateHttpClient;
 import xyz.firestige.redis.ack.spring.metrics.MicrometerAckMetricsRecorder;
+import xyz.firestige.redis.ack.spring.redis.SpringRedisClient;
 
 import java.util.concurrent.Executor;
 
@@ -31,11 +33,20 @@ import java.util.concurrent.Executor;
  * @since 1.0
  */
 @AutoConfiguration
-@ConditionalOnClass({RedisTemplate.class, RedisAckService.class})
+@ConditionalOnClass({StringRedisTemplate.class, RedisAckService.class})
 @ConditionalOnProperty(prefix = "redis.ack", name = "enabled", havingValue = "true", matchIfMissing = true)
 @EnableConfigurationProperties(RedisAckProperties.class)
 @Import(AckExecutorConfig.class)
 public class RedisAckAutoConfiguration {
+
+    /**
+     * RedisClient Bean（基于 Spring StringRedisTemplate）
+     */
+    @Bean(name = "ackRedisClient")
+    @ConditionalOnMissingBean(name = "ackRedisClient")
+    public RedisClient ackRedisClient(StringRedisTemplate redisTemplate) {
+        return new SpringRedisClient(redisTemplate);
+    }
 
     /**
      * HttpClient Bean（基于 RestTemplate）
@@ -52,7 +63,7 @@ public class RedisAckAutoConfiguration {
     @Bean
     @ConditionalOnMissingBean
     public RedisAckService redisAckService(
-            RedisTemplate<String, String> redisTemplate,
+            @Qualifier("ackRedisClient") RedisClient ackRedisClient,
             @Qualifier("ackHttpClient") HttpClient ackHttpClient,
             ObjectMapper objectMapper,
             ObjectProvider<MeterRegistry> meterRegistryProvider,
@@ -63,7 +74,7 @@ public class RedisAckAutoConfiguration {
             : AckMetricsRecorder.noop();
 
         return new DefaultRedisAckService(
-            redisTemplate,
+            ackRedisClient,
             ackHttpClient,
             objectMapper,
             metricsRecorder,

@@ -3,16 +3,15 @@ package xyz.firestige.redis.ack.core;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.data.redis.core.RedisTemplate;
 import xyz.firestige.redis.ack.api.AckContext;
 import xyz.firestige.redis.ack.api.AckResult;
+import xyz.firestige.redis.ack.api.RedisClient;
 import xyz.firestige.redis.ack.api.RedisOperation;
 import xyz.firestige.redis.ack.core.exception.AckExecutionException;
 import xyz.firestige.redis.ack.exception.AckTimeoutException;
 
 import java.time.Duration;
 import java.time.Instant;
-import java.util.concurrent.TimeUnit;
 
 /**
  * ACK 执行器
@@ -27,10 +26,10 @@ public class AckExecutor {
     private static final Logger log = LoggerFactory.getLogger(AckExecutor.class);
     private static final ObjectMapper objectMapper = new ObjectMapper();
 
-    private final RedisTemplate<String, String> redisTemplate;
+    private final RedisClient redisClient;
 
-    public AckExecutor(RedisTemplate<String, String> redisTemplate) {
-        this.redisTemplate = redisTemplate;
+    public AckExecutor(RedisClient redisClient) {
+        this.redisClient = redisClient;
     }
 
     /**
@@ -98,23 +97,23 @@ public class AckExecutor {
             // 根据操作类型写入
             RedisOperation operation = task.getOperation();
             if (operation == RedisOperation.HSET) {
-                redisTemplate.opsForHash().put(task.getKey(), task.getField(), valueStr);
+                redisClient.hset(task.getKey(), task.getField(), valueStr);
                 log.debug("[ACK] HSET {} {} {}", task.getKey(), task.getField(), valueStr.substring(0, Math.min(50, valueStr.length())));
             } else if (operation == RedisOperation.SET) {
-                redisTemplate.opsForValue().set(task.getKey(), valueStr);
+                redisClient.set(task.getKey(), valueStr);
                 log.debug("[ACK] SET {} {}", task.getKey(), valueStr.substring(0, Math.min(50, valueStr.length())));
             } else if (operation == RedisOperation.LPUSH) {
-                task.getRedisTemplate().opsForList().leftPush(task.getKey(), valueStr);
+                redisClient.lpush(task.getKey(), valueStr);
                 log.debug("[ACK] LPUSH {} {}", task.getKey(), valueStr.substring(0, Math.min(50, valueStr.length())));
             } else if (operation == RedisOperation.SADD) {
-                task.getRedisTemplate().opsForSet().add(task.getKey(), valueStr);
+                redisClient.sadd(task.getKey(), valueStr);
                 log.debug("[ACK] SADD {} {}", task.getKey(), valueStr.substring(0, Math.min(50, valueStr.length())));
             } else if (operation == RedisOperation.ZADD) {
                 Double score = task.getZsetScore();
                 if (score == null) {
                     throw new AckExecutionException("ZADD requires score");
                 }
-                task.getRedisTemplate().opsForZSet().add(task.getKey(), valueStr, score);
+                redisClient.zadd(task.getKey(), valueStr, score);
                 log.debug("[ACK] ZADD {} {} score={}", task.getKey(), valueStr.substring(0, Math.min(50, valueStr.length())), score);
             } else {
                 throw new UnsupportedOperationException("Operation not yet supported: " + operation);
@@ -122,7 +121,7 @@ public class AckExecutor {
 
             // 设置 TTL（如果有）
             if (task.getTtl() != null) {
-                redisTemplate.expire(task.getKey(), task.getTtl().toMillis(), TimeUnit.MILLISECONDS);
+                redisClient.expire(task.getKey(), task.getTtl());
                 log.debug("[ACK] Set TTL: {} ms", task.getTtl().toMillis());
             }
 
@@ -139,7 +138,7 @@ public class AckExecutor {
     private void publishNotification(AckTask task, AckContext context) {
         try {
             String message = task.getMessageBuilder().apply(task.getValue());
-            redisTemplate.convertAndSend(task.getTopic(), message);
+            redisClient.publish(task.getTopic(), message);
             log.debug("[ACK] Published to topic {}: {}", task.getTopic(), message);
 
         } catch (Exception e) {
