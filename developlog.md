@@ -7,6 +7,72 @@
 
 ## 2025-11-26
 
+### [T-027 Deploy Starter 化 Phase 1-3] ✅ 完成
+
+**Phase 1: 基础设施（4h）**
+- 新增 `InfrastructureProperties`（executor.infrastructure.*）
+  - RedisProperties、NacosProperties、VerifyProperties（重命名自 HealthCheck）、AuthProperties
+  - 使用 @ConfigurationProperties 绑定，@Validated 验证
+- 新增 `InfrastructureAutoConfiguration`
+  - 条件装配 NacosServiceDiscovery（enabled=true 时）
+  - 提供 RestTemplate Bean
+  - 装配 ServiceDiscoveryHelper（使用适配器兼容旧结构）
+- 新增 `InfrastructureConfigAdapter`（过渡期适配器）
+- 更新 SPI：注册 InfrastructureAutoConfiguration
+- 增强 `SharedStageResources`
+  - 可选注入 InfrastructureProperties（双重配置源）
+  - 添加便捷方法占位（getRedisHashKeyPrefix）
+
+**Phase 2: 配置迁移（2h）**
+- 更新 `application.yml`
+  - 新增 executor.infrastructure.* 完整配置块
+  - 占位符语法：{$VAR:default} → ${VAR:default}
+  - 命名规范：camelCase → kebab-case
+  - 语义修正：healthCheck → verify
+- 新增环境 Profile 配置
+  - application-dev.yml（本地开发，Nacos disabled）
+  - application-prod.yml（生产环境，Nacos enabled + 覆盖参数）
+- 标记 `deploy-stages.yml` 为 DEPRECATED
+  - 添加弃用头注释
+  - 保留文件供过渡期兼容（Phase 4 移除）
+
+**Phase 3: Assembler 优化（3h）**
+- 扩展 `SharedStageResources` 完整防腐层便捷方法
+  - getRedisHashKeyPrefix()
+  - getRedisPubsubTopic()
+  - getVerifyDefaultPath()
+  - getVerifyIntervalSeconds()
+  - getVerifyMaxAttempts()
+- 微调 Assembler 调用链（业务语义零变更）
+  - BlueGreenStageAssembler：6 处替换
+  - ObServiceStageAssembler：5 处替换
+  - 替换模式：`resources.getConfigLoader().getInfrastructure().getXxx()` → `resources.getXxx()`
+
+**核心成果**：
+- ✅ 配置隔离验证通过（防腐层保护业务不受配置源变更影响）
+- ✅ healthCheck 语义修正为 verify（准确反映 RedisAck Verify 端点用途）
+- ✅ 约定优于配置（零配置可启动，使用全部默认值）
+- ✅ Profile 环境隔离（dev/prod 配置分离）
+- ✅ 业务代码简化（链式调用 → 语义化方法）
+
+**修改范围**：
+- 新增：InfrastructureProperties、InfrastructureAutoConfiguration、InfrastructureConfigAdapter、application-{dev,prod}.yml
+- 修改：SharedStageResources、BlueGreenStageAssembler、ObServiceStageAssembler、application.yml、deploy-stages.yml、SPI imports
+- 保留：DeploymentConfigLoader（标记过渡，Phase 4/5 清理）
+
+**验证结果**：
+- 编译通过（无错误，仅警告）
+- 旧代码兼容（防腐层双重配置源）
+- 业务逻辑不变（仅调用链简化）
+
+**待实施**：
+- Phase 4: 废弃旧配置（标记 @Deprecated，移除 deploy-stages.yml）
+- Phase 5: Configuration Metadata（IDE 智能提示）
+
+---
+
+## 2025-11-26
+
 ### [Deploy Spring Boot Starter 化设计] 📋 方案评审中
 
 **背景分析**：
