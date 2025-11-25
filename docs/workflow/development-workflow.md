@@ -203,6 +203,11 @@ docs: update architecture overview with execution engine design
 test(execution): add integration tests for stage executor
 ```
 
+**Commit Message 长度规范**:
+- **标题（第一行）**: 最多 **240 个字符**（约 80 个中文字符）
+- **超长时**: 拆分为多个 commit 或使用 Body 详细说明
+- **Body**: 每行最多 72 字符，用于详细描述
+
 **提交 Body**（可选）:
 ```bash
 git commit -m "feat(execution): add checkpoint support for task retry
