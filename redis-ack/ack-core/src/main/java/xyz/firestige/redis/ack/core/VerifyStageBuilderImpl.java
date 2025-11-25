@@ -9,8 +9,11 @@ import xyz.firestige.redis.ack.retry.ExponentialBackoffRetryStrategy;
 import xyz.firestige.redis.ack.retry.FixedDelayRetryStrategy;
 
 import java.time.Duration;
+import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
+import java.util.concurrent.ExecutorService;
 import java.util.function.BiFunction;
 import java.util.function.Function;
 
@@ -39,6 +42,49 @@ public class VerifyStageBuilderImpl implements VerifyStageBuilder {
     @Override
     public VerifyStageBuilder httpGet(String url) {
         this.endpoint = new HttpGetEndpoint(url, writeStage.getRestTemplate());
+        return this;
+    }
+
+    @Override
+    public VerifyStageBuilder httpGetMultiple(List<String> urls) {
+        ExecutorService executorService = writeStage.getExecutorService();
+        if (executorService == null) {
+            throw new IllegalStateException("ExecutorService is required for httpGetMultiple. Please configure ack-verify executor.");
+        }
+
+        // 创建匿名 AckEndpoint 实现，内部并发调用多个 HttpGetEndpoint
+        this.endpoint = (context) -> {
+            // 为每个 URL 创建一个 HttpGetEndpoint
+            List<CompletableFuture<String>> futures = urls.stream()
+                .map(url -> CompletableFuture.supplyAsync(() -> {
+                    try {
+                        HttpGetEndpoint endpoint = new HttpGetEndpoint(url, writeStage.getRestTemplate());
+                        return endpoint.query(context);
+                    } catch (Exception e) {
+                        throw new CompletionException("Failed to query URL: " + url, e);
+                    }
+                }, executorService))
+                .collect(java.util.stream.Collectors.toList());
+
+            // 等待所有请求完成
+            CompletableFuture<Void> allOf = CompletableFuture.allOf(
+                futures.toArray(new CompletableFuture[0])
+            );
+
+            try {
+                allOf.join();
+
+                // 返回第一个成功的响应（用于 footprint 提取）
+                // 如果任一请求失败，join() 会抛出 CompletionException
+                return futures.get(0).join();
+
+            } catch (CompletionException e) {
+                throw new xyz.firestige.redis.ack.exception.AckEndpointException(
+                    "Multi-URL verification failed", e.getCause()
+                );
+            }
+        };
+
         return this;
     }
 

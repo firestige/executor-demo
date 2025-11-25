@@ -366,7 +366,7 @@ RenewalTask task = RenewalTask.builder()
     .keys(List.of("key1", "key2"))
     .ttlStrategy(new FixedTtlStrategy(Duration.ofMinutes(5)))
     .intervalStrategy(new FixedIntervalStrategy(Duration.ofMinutes(2)))
-    .stopCondition(new TimeBasedStopCondition(endTime))
+    .stopStrategy(new TimeBasedStopCondition(endTime))
     .build();
 ```
 
@@ -402,7 +402,7 @@ String taskId = renewalService.renewForever(keys, ttl, interval);
     key = "task:{tenantId}:{taskId}",
     ttl = "5m",
     interval = "2m",
-    stopCondition = "timeBasedStop",
+    stopStrategy = "timeBasedStop",
     stopAt = "#{task.estimatedEndTime}"
 )
 public void executeTask() {
@@ -421,7 +421,7 @@ RenewalTask task = RenewalTask.builder()
     .keySelector(new StaticKeySelector(List.of("key1", "key2")))
     .ttlStrategy(new FixedTtlStrategy(Duration.ofMinutes(5)))
     .intervalStrategy(new FixedIntervalStrategy(Duration.ofMinutes(2)))
-    .stopCondition(new NeverStopCondition())
+    .stopStrategy(new NeverStopCondition())
     .build();
 ```
 
@@ -437,7 +437,7 @@ RenewalTask task = RenewalTask.builder()
         Duration.ofMinutes(10), // 最大间隔
         2.0 // 退避因子
     ))
-    .stopCondition(new KeyNotExistsStopCondition())
+    .stopStrategy(new KeyNotExistsStopCondition())
     .build();
 ```
 
@@ -453,7 +453,7 @@ RenewalTask task = RenewalTask.builder()
         return Duration.ofMinutes(30);
     }))
     .intervalStrategy(new AdaptiveIntervalStrategy(0.5)) // TTL 的 50%
-    .stopCondition(CompositeStopCondition.anyOf(
+    .stopStrategy(CompositeStopCondition.anyOf(
         new TimeBasedStopCondition(estimatedEndTime),
         new ExternalSignalStopCondition(() -> deploymentCompleted),
         new CountBasedStopCondition(100)
@@ -906,7 +906,7 @@ RenewalTask task = RenewalTask.builder()
     .keySelector(new PatternKeySelector("task:*"))           // 预置
     .ttlStrategy(new FixedTtlStrategy(Duration.ofMinutes(5))) // 预置
     .intervalStrategy(new AdaptiveIntervalStrategy(0.5))      // 预置
-    .stopCondition(new TimeBasedStopCondition(endTime))       // 预置
+    .stopStrategy(new TimeBasedStopCondition(endTime))       // 预置
     
     // 中低频功能：使用默认或自定义
     .failureHandler(new RetryFailureHandler(3))              // 自定义

@@ -14,6 +14,7 @@ import xyz.firestige.redis.ack.core.VerifyStageBuilderImpl;
 import xyz.firestige.redis.ack.core.WriteStageBuilderImpl;
 
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutorService;
 
 /**
  * Redis ACK 服务默认实现
@@ -27,26 +28,36 @@ public class DefaultRedisAckService implements RedisAckService {
     private final RestTemplate restTemplate;
     private final ObjectMapper objectMapper;
     private final AckMetricsRecorder metricsRecorder;
+    private final ExecutorService executorService;
 
     public DefaultRedisAckService(RedisTemplate<String, String> redisTemplate,
                                   RestTemplate restTemplate,
                                   ObjectMapper objectMapper) {
-        this(redisTemplate, restTemplate, objectMapper, AckMetricsRecorder.noop());
+        this(redisTemplate, restTemplate, objectMapper, AckMetricsRecorder.noop(), null);
     }
 
     public DefaultRedisAckService(RedisTemplate<String, String> redisTemplate,
                                   RestTemplate restTemplate,
                                   ObjectMapper objectMapper,
                                   AckMetricsRecorder metricsRecorder) {
+        this(redisTemplate, restTemplate, objectMapper, metricsRecorder, null);
+    }
+
+    public DefaultRedisAckService(RedisTemplate<String, String> redisTemplate,
+                                  RestTemplate restTemplate,
+                                  ObjectMapper objectMapper,
+                                  AckMetricsRecorder metricsRecorder,
+                                  ExecutorService executorService) {
         this.redisTemplate = redisTemplate;
         this.restTemplate = restTemplate;
         this.objectMapper = objectMapper;
         this.metricsRecorder = metricsRecorder != null ? metricsRecorder : AckMetricsRecorder.noop();
+        this.executorService = executorService;
     }
 
     @Override
     public WriteStageBuilder write() {
-        return new InstrumentedWriteStageBuilder(redisTemplate, restTemplate, objectMapper, metricsRecorder);
+        return new InstrumentedWriteStageBuilder(redisTemplate, restTemplate, objectMapper, metricsRecorder, executorService);
     }
 
     /**
@@ -56,8 +67,9 @@ public class DefaultRedisAckService implements RedisAckService {
         InstrumentedWriteStageBuilder(RedisTemplate<String, String> redisTemplate,
                                       RestTemplate restTemplate,
                                       ObjectMapper objectMapper,
-                                      AckMetricsRecorder metricsRecorder) {
-            super(redisTemplate, restTemplate, objectMapper, metricsRecorder);
+                                      AckMetricsRecorder metricsRecorder,
+                                      ExecutorService executorService) {
+            super(redisTemplate, restTemplate, objectMapper, metricsRecorder, executorService);
         }
 
         @Override

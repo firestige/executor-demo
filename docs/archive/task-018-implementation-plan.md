@@ -336,7 +336,7 @@
       .keySelector(...)
       .ttlStrategy(...)
       .intervalStrategy(...)
-      .stopCondition(...)
+      .stopStrategy(...)
       .build();
   ```
 

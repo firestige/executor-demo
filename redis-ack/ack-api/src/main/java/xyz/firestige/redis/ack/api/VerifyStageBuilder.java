@@ -1,6 +1,7 @@
 package xyz.firestige.redis.ack.api;
 
 import java.time.Duration;
+import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.BiFunction;
 import java.util.function.Function;
@@ -24,6 +25,21 @@ public interface VerifyStageBuilder {
      * @return this
      */
     VerifyStageBuilder httpGet(String url);
+
+    /**
+     * 使用多个 HTTP GET 端点并发验证（所有成功才返回成功）
+     *
+     * <p>特性：
+     * <ul>
+     *   <li>并发请求所有 URL</li>
+     *   <li>所有 URL 的 footprint 必须与预期一致</li>
+     *   <li>任一 URL 失败或不匹配都算失败</li>
+     * </ul>
+     *
+     * @param urls 端点 URL 列表
+     * @return this
+     */
+    VerifyStageBuilder httpGetMultiple(List<String> urls);
 
     /**
      * 使用 HTTP POST 查询端点

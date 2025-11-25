@@ -12,6 +12,7 @@ import xyz.firestige.redis.ack.extractor.FunctionFootprintExtractor;
 import xyz.firestige.redis.ack.extractor.JsonFieldExtractor;
 
 import java.time.Duration;
+import java.util.concurrent.ExecutorService;
 import java.util.function.Function;
 
 /**
@@ -26,6 +27,7 @@ public class WriteStageBuilderImpl implements WriteStageBuilder {
     private final RestTemplate restTemplate;
     private final ObjectMapper objectMapper;
     private final AckMetricsRecorder metricsRecorder;
+    private final ExecutorService executorService; // 用于并发验证
 
     // Write 配置
     private String key;
@@ -41,17 +43,26 @@ public class WriteStageBuilderImpl implements WriteStageBuilder {
     public WriteStageBuilderImpl(RedisTemplate<String, String> redisTemplate,
                                  RestTemplate restTemplate,
                                  ObjectMapper objectMapper) {
-        this(redisTemplate, restTemplate, objectMapper, AckMetricsRecorder.noop());
+        this(redisTemplate, restTemplate, objectMapper, AckMetricsRecorder.noop(), null);
     }
 
     public WriteStageBuilderImpl(RedisTemplate<String, String> redisTemplate,
                                  RestTemplate restTemplate,
                                  ObjectMapper objectMapper,
                                  AckMetricsRecorder metricsRecorder) {
+        this(redisTemplate, restTemplate, objectMapper, metricsRecorder, null);
+    }
+
+    public WriteStageBuilderImpl(RedisTemplate<String, String> redisTemplate,
+                                 RestTemplate restTemplate,
+                                 ObjectMapper objectMapper,
+                                 AckMetricsRecorder metricsRecorder,
+                                 ExecutorService executorService) {
         this.redisTemplate = redisTemplate;
         this.restTemplate = restTemplate;
         this.objectMapper = objectMapper;
         this.metricsRecorder = metricsRecorder;
+        this.executorService = executorService;
     }
 
     @Override
@@ -142,6 +153,7 @@ public class WriteStageBuilderImpl implements WriteStageBuilder {
     RedisTemplate<String, String> getRedisTemplate() { return redisTemplate; }
     RestTemplate getRestTemplate() { return restTemplate; }
     ObjectMapper getObjectMapper() { return objectMapper; }
+    ExecutorService getExecutorService() { return executorService; }
     public WriteStageBuilder zsetScore(double score) { this.zsetScore = score; return this; }
     Double getZsetScore() { return zsetScore; }
     AckMetricsRecorder getMetricsRecorder() { return metricsRecorder; }

@@ -6,6 +6,7 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestTemplate;
 import xyz.firestige.deploy.infrastructure.config.DeploymentConfigLoader;
+import xyz.firestige.redis.ack.api.RedisAckService;
 import xyz.firestige.service.AgentService;
 
 import java.util.Objects;
@@ -31,6 +32,7 @@ public class SharedStageResources {
     private final DeploymentConfigLoader configLoader;
     private final ObjectMapper objectMapper;
     private final AgentService agentService;  // 可选，OBService 使用
+    private final RedisAckService redisAckService;
 
     @Autowired
     public SharedStageResources(
@@ -38,13 +40,15 @@ public class SharedStageResources {
             StringRedisTemplate redisTemplate,
             DeploymentConfigLoader configLoader,
             ObjectMapper objectMapper,
-            @Autowired(required = false) AgentService agentService) {
+            @Autowired(required = false) AgentService agentService,
+            RedisAckService redisAckService) {
 
         // 启动校验必需依赖
         Objects.requireNonNull(restTemplate, "RestTemplate cannot be null");
         Objects.requireNonNull(redisTemplate, "StringRedisTemplate cannot be null");
         Objects.requireNonNull(configLoader, "DeploymentConfigLoader cannot be null");
         Objects.requireNonNull(objectMapper, "ObjectMapper cannot be null");
+        Objects.requireNonNull(redisAckService, "RedisAckService cannot be null");
         // agentService 可选（OBService 有降级逻辑）
 
         this.restTemplate = restTemplate;
@@ -52,6 +56,7 @@ public class SharedStageResources {
         this.configLoader = configLoader;
         this.objectMapper = objectMapper;
         this.agentService = agentService;
+        this.redisAckService = redisAckService;
     }
 
     // 只提供 getter，无任何业务方法
@@ -78,6 +83,14 @@ public class SharedStageResources {
      */
     public AgentService getAgentService() {
         return agentService;
+    }
+
+    /**
+     * 获取 RedisAckService
+     * @return RedisAckService 实例
+     */
+    public RedisAckService getRedisAckService() {
+        return redisAckService;
     }
 }
 

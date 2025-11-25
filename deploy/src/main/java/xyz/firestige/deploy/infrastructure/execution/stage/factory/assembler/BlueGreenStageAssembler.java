@@ -6,17 +6,16 @@ import org.slf4j.LoggerFactory;
 import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 import xyz.firestige.deploy.application.dto.TenantConfig;
+import xyz.firestige.deploy.domain.shared.exception.FailureInfo;
 import xyz.firestige.deploy.infrastructure.execution.stage.ConfigurableServiceStage;
 import xyz.firestige.deploy.infrastructure.execution.stage.TaskStage;
 import xyz.firestige.deploy.infrastructure.execution.stage.factory.SharedStageResources;
 import xyz.firestige.deploy.infrastructure.execution.stage.factory.StageAssembler;
 import xyz.firestige.deploy.infrastructure.execution.stage.preparer.DataPreparer;
-import xyz.firestige.deploy.infrastructure.execution.stage.redis.ConfigWriteResult;
-import xyz.firestige.deploy.infrastructure.execution.stage.steps.ConfigWriteStep;
-import xyz.firestige.deploy.infrastructure.execution.stage.steps.MessageBroadcastStep;
-import xyz.firestige.deploy.infrastructure.execution.stage.steps.PollingStep;
+import xyz.firestige.deploy.infrastructure.execution.stage.steps.RedisAckStep;
 import xyz.firestige.deploy.infrastructure.execution.stage.validator.ResultValidator;
 import xyz.firestige.deploy.infrastructure.execution.stage.validator.ValidationResult;
+import xyz.firestige.redis.ack.api.AckResult;
 
 import java.util.*;
 
@@ -45,81 +44,52 @@ public class BlueGreenStageAssembler implements StageAssembler {
     public TaskStage buildStage(TenantConfig cfg, SharedStageResources resources) {
         List<ConfigurableServiceStage.StepConfig> stepConfigs = new ArrayList<>();
 
-        // Step 1: Redis Config Write
+        // 单一 Step：RedisAck 一体化流程（Write + Pub/Sub + Verify）
         stepConfigs.add(ConfigurableServiceStage.StepConfig.builder()
-            .stepName("bg-config-write")
-            .dataPreparer(createBGConfigWriteDataPreparer(cfg, resources))
-            .step(new ConfigWriteStep(resources.getRedisTemplate()))
-            .resultValidator(createBGConfigWriteValidator())
-            .build());
-
-        // Step 2: Redis Pub/Sub Broadcast
-        stepConfigs.add(ConfigurableServiceStage.StepConfig.builder()
-            .stepName("bg-message-broadcast")
-            .dataPreparer(createBGMessageBroadcastDataPreparer(cfg, resources))
-            .step(new MessageBroadcastStep(resources.getRedisTemplate()))
-            .resultValidator(createBGMessageBroadcastValidator())
-            .build());
-
-        // Step 3: Health Check Polling
-        stepConfigs.add(ConfigurableServiceStage.StepConfig.builder()
-            .stepName("bg-health-check")
-            .dataPreparer(createBGHealthCheckDataPreparer(cfg, resources))
-            .step(new PollingStep("bg-health-check"))
-            .resultValidator(createBGHealthCheckValidator())
+            .stepName("bg-redis-ack")
+            .dataPreparer(createRedisAckDataPreparer(cfg, resources))
+            .step(new RedisAckStep(resources.getRedisAckService()))
+            .resultValidator(createRedisAckValidator())
             .build());
 
         return new ConfigurableServiceStage(stageName(), stepConfigs);
     }
 
-    // ---- ConfigWrite ----
+    // ---- RedisAck DataPreparer & Validator ----
 
-    private DataPreparer createBGConfigWriteDataPreparer(TenantConfig config, SharedStageResources resources) {
+    /**
+     * RedisAck 数据准备器
+     * 整合了原有的 ConfigWrite、MessageBroadcast、HealthCheck 三个步骤的数据准备
+     */
+    private DataPreparer createRedisAckDataPreparer(TenantConfig config, SharedStageResources resources) {
         return (ctx) -> {
+            // 1. Redis Write 配置
             String redisKeyPrefix = resources.getConfigLoader().getInfrastructure().getRedis().getHashKeyPrefix();
-            String key = redisKeyPrefix + config.getTenantId().getValue();
-            String field = "icc-bg-gateway";
+            String redisKey = redisKeyPrefix + config.getTenantId().getValue();
+            String redisField = "icc-bg-gateway";
 
+            // 2. 构建完整的 Redis Value（包含业务数据）
             Map<String, Object> redisValue = new HashMap<>();
             redisValue.put("tenantId", config.getTenantId().getValue());
             redisValue.put("sourceUnit", extractSourceUnit(config));
             redisValue.put("targetUnit", extractTargetUnit(config));
             redisValue.put("routes", convertRouteRulesToMap(config));
 
-            String value;
-            try {
-                value = resources.getObjectMapper().writeValueAsString(redisValue);
-            } catch (JsonProcessingException e) {
-                throw new RuntimeException("Failed to serialize Redis value", e);
-            }
+            // 3. 构建 metadata 对象（包含 version 作为 footprint）
+            Map<String, Object> metadata = new HashMap<>();
+            metadata.put("version", config.getPlanVersion());
+            redisValue.put("metadata", metadata);
 
-            ctx.addVariable("key", key);
-            ctx.addVariable("field", field);
-            ctx.addVariable("value", value);
+            // 4. Footprint（从 PlanVersion）
+            String footprint = String.valueOf(config.getPlanVersion());
 
-            log.debug("BG ConfigWrite 数据准备完成: key={}, field={}", key, field);
-        };
-    }
-
-    private ResultValidator createBGConfigWriteValidator() {
-        return (ctx) -> {
-            ConfigWriteResult result = ctx.getAdditionalData("configWriteResult", ConfigWriteResult.class);
-            if (result != null && result.isSuccess()) {
-                return ValidationResult.success("配置写入成功");
-            }
-            return ValidationResult.failure("配置写入失败");
-        };
-    }
-
-    // ---- MessageBroadcast ----
-
-    private DataPreparer createBGMessageBroadcastDataPreparer(TenantConfig config, SharedStageResources resources) {
-        return (ctx) -> {
+            // 5. Pub/Sub 配置
             String topic = resources.getConfigLoader().getInfrastructure().getRedis().getPubsubTopic();
 
             Map<String, Object> messageBody = new HashMap<>();
             messageBody.put("tenantId", config.getTenantId().getValue());
             messageBody.put("appName", "icc-bg-gateway");
+            messageBody.put("version", config.getPlanVersion());
             messageBody.put("timestamp", System.currentTimeMillis());
 
             String message;
@@ -129,66 +99,83 @@ public class BlueGreenStageAssembler implements StageAssembler {
                 throw new RuntimeException("Failed to serialize message", e);
             }
 
-            ctx.addVariable("topic", topic);
-            ctx.addVariable("message", message);
-
-            log.debug("BG MessageBroadcast 数据准备完成: topic={}", topic);
-        };
-    }
-
-    private ResultValidator createBGMessageBroadcastValidator() {
-        return (ctx) -> ValidationResult.success("消息广播成功");
-    }
-
-    // ---- HealthCheck ----
-
-    private DataPreparer createBGHealthCheckDataPreparer(TenantConfig config, SharedStageResources resources) {
-        return (ctx) -> {
-            int intervalMs = resources.getConfigLoader().getInfrastructure().getHealthCheck().getIntervalSeconds() * 1000;
-            int maxAttempts = resources.getConfigLoader().getInfrastructure().getHealthCheck().getMaxAttempts();
-            String healthCheckPath = extractHealthCheckPath(config, resources);
-
+            // 6. Verify 配置
             List<String> endpoints = resolveEndpoints("blueGreenGatewayService", "blue-green-gateway", resources);
-            List<String> healthCheckUrls = new ArrayList<>();
-            for (String endpoint : endpoints) {
-                healthCheckUrls.add("http://" + endpoint + healthCheckPath);
-            }
+            String healthCheckPath = extractHealthCheckPath(config, resources);
+            List<String> verifyUrls = endpoints.stream()
+                .map(ep -> "http://" + ep + healthCheckPath)
+                .collect(java.util.stream.Collectors.toList());
 
-            ctx.addVariable("pollInterval", intervalMs);
-            ctx.addVariable("pollMaxAttempts", maxAttempts);
+            int maxAttempts = resources.getConfigLoader().getInfrastructure().getHealthCheck().getMaxAttempts();
+            int intervalSec = resources.getConfigLoader().getInfrastructure().getHealthCheck().getIntervalSeconds();
 
-            ctx.addVariable("pollCondition", (PollingStep.PollCondition) (pollCtx) -> {
-                for (String url : healthCheckUrls) {
-                    try {
-                        String response = resources.getRestTemplate().getForObject(url, String.class);
-                        if (response == null || !response.contains("version")) {
-                            log.debug("健康检查未通过: url={}", url);
-                            return false;
-                        }
-                    } catch (Exception e) {
-                        log.debug("健康检查异常: url={}, error={}", url, e.getMessage());
-                        return false;
-                    }
-                }
-                return true;
-            });
+            // 7. 放入 Context
+            ctx.addVariable("redisKey", redisKey);
+            ctx.addVariable("redisField", redisField);
+            ctx.addVariable("redisValue", redisValue);
+            ctx.addVariable("footprint", footprint);
+            ctx.addVariable("pubsubTopic", topic);
+            ctx.addVariable("pubsubMessage", message);
+            ctx.addVariable("verifyUrls", verifyUrls);
+            ctx.addVariable("verifyJsonPath", "$.metadata.version");
+            ctx.addVariable("retryMaxAttempts", maxAttempts);
+            ctx.addVariable("retryDelay", java.time.Duration.ofSeconds(intervalSec));
+            ctx.addVariable("timeout", java.time.Duration.ofSeconds(maxAttempts * intervalSec + 10));
 
-            log.debug("BG HealthCheck 数据准备完成: endpoints={}, interval={}ms, maxAttempts={}",
-                healthCheckUrls.size(), intervalMs, maxAttempts);
+            log.debug("BG RedisAck 数据准备完成: key={}, field={}, endpoints={}, version={}",
+                redisKey, redisField, verifyUrls.size(), footprint);
         };
     }
 
-    private ResultValidator createBGHealthCheckValidator() {
+    /**
+     * RedisAck 结果验证器
+     */
+    private ResultValidator createRedisAckValidator() {
         return (ctx) -> {
-            Boolean isHealthy = ctx.getAdditionalData("pollingResult", Boolean.class);
-            if (isHealthy != null && isHealthy) {
-                return ValidationResult.success("所有实例健康检查通过");
+            // 1. 优先检查 FailureInfo
+            FailureInfo failureInfo =
+                ctx.getAdditionalData("failureInfo", FailureInfo.class);
+            if (failureInfo != null) {
+                return ValidationResult.failure(failureInfo.getErrorMessage());
             }
-            return ValidationResult.failure("健康检查失败");
+
+            // 2. 检查 AckResult
+            AckResult result =
+                ctx.getAdditionalData("ackResult", AckResult.class);
+
+            if (result == null) {
+                return ValidationResult.failure("未获取到 ACK 结果");
+            }
+
+            if (result.isSuccess()) {
+                return ValidationResult.success(
+                    String.format("配置推送并验证成功（尝试 %d 次，耗时 %s）",
+                        result.getAttempts(),
+                        result.getElapsed())
+                );
+            }
+
+            if (result.isTimeout()) {
+                return ValidationResult.failure(
+                    String.format("验证超时（尝试 %d 次，耗时 %s）",
+                        result.getAttempts(),
+                        result.getElapsed())
+                );
+            }
+
+            if (result.isFootprintMismatch()) {
+                return ValidationResult.failure(
+                    String.format("版本不匹配（期望：%s，实际：%s）",
+                        result.getExpectedFootprint(),
+                        result.getActualFootprint())
+                );
+            }
+
+            return ValidationResult.failure("ACK 失败：" + result.getReason());
         };
     }
 
-    // ---- 辅助方法 ----
+    // ---- 原有的辅助方法保留（用于数据准备）----
 
     private String extractSourceUnit(TenantConfig config) {
         if (config.getPreviousConfig() != null && config.getPreviousConfig().getDeployUnit() != null) {

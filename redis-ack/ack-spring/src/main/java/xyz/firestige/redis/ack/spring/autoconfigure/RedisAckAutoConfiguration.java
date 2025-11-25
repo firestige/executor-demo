@@ -3,6 +3,7 @@ package xyz.firestige.redis.ack.spring.autoconfigure;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.micrometer.core.instrument.MeterRegistry;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
@@ -10,10 +11,14 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.boot.web.client.RestTemplateBuilder;
 import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Import;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.web.client.RestTemplate;
 import xyz.firestige.redis.ack.api.RedisAckService;
 import xyz.firestige.redis.ack.spring.DefaultRedisAckService;
+import xyz.firestige.redis.ack.spring.config.AckExecutorConfig;
+
+import java.util.concurrent.Executor;
 
 /**
  * Redis ACK 服务自动配置
@@ -25,6 +30,7 @@ import xyz.firestige.redis.ack.spring.DefaultRedisAckService;
 @ConditionalOnClass({RedisTemplate.class, RedisAckService.class})
 @ConditionalOnProperty(prefix = "redis.ack", name = "enabled", havingValue = "true", matchIfMissing = true)
 @EnableConfigurationProperties(RedisAckProperties.class)
+@Import(AckExecutorConfig.class)
 public class RedisAckAutoConfiguration {
 
     /**
@@ -36,9 +42,16 @@ public class RedisAckAutoConfiguration {
             RedisTemplate<String, String> redisTemplate,
             RestTemplate ackRestTemplate,
             ObjectMapper objectMapper,
-            ObjectProvider<MeterRegistry> meterRegistryProvider) {
+            ObjectProvider<MeterRegistry> meterRegistryProvider,
+            @Qualifier("ackVerifyExecutor") Executor ackVerifyExecutor) {
         MeterRegistry registry = meterRegistryProvider.getIfAvailable();
-        return new DefaultRedisAckService(redisTemplate, ackRestTemplate, objectMapper, registry);
+        return new DefaultRedisAckService(
+            redisTemplate,
+            ackRestTemplate,
+            objectMapper,
+            registry,
+            (java.util.concurrent.ExecutorService) ackVerifyExecutor
+        );
     }
 
     /**
