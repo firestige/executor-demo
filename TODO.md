@@ -11,6 +11,7 @@
 | T-026 | Redis ACK 服务 Phase 5 文档补充 | - | P3 | README.md、CHANGELOG.md、扩展指南、性能基准（T-019 遗留） |
 | T-023 | 重建测试体系：ack/renew 单元测试；deploy 单元+集成(应用层)+e2e(Facade) | - | P1 | 设计新的测试包结构：deploy:test/unit, test/integration, test/e2e；ack/renew:test/unit |
 | T-029 | 分布式租户串行策略决策（TenantLockManager vs TenantConflictManager） | - | P2 | 参考报告：`docs/report/executor-stages-properties-analysis.md`、`docs/report/task-017-cleanup-completion-report.md`、`docs/report/executor-stages-cleanup-summary.md`；根据需求选择接入分布式锁或保留本地策略，并更新接口一致性（release 持有者校验）。 |
+| T-030 | 修复：Nacos 服务发现客户端初始化时只能绑定一个命名空间 — 修改初始化函数以支持多命名空间或延迟绑定（兼容旧接口）。 | Copilot | P1 | 紧急修复：在不破坏现有调用的前提下允许传入多个命名空间或提供按需绑定接口；后续重构：从配置支持多命名空间、提供客户端工厂/管理器、完善单元测试与文档（建议草案放在 `docs/temp/`）。 |
 
 ---
 
