@@ -131,9 +131,9 @@ public class DeploymentTaskFacade {
     /**
      * 根据计划 ID 暂停任务
      */
-    public void pauseTaskByPlan(PlanId planId) {
+    public void pauseTaskByPlan(Long planId) {
         logger.info("[Facade] 暂停计划: {}", planId);
-        PlanOperationResult result = planLifecycleService.pausePlan(planId);
+        PlanOperationResult result = planLifecycleService.pausePlan(PlanId.of(planId));
         handlePlanOperationResult(result, "暂停计划");
         logger.info("[Facade] 计划暂停成功: {}", planId);
     }
@@ -141,9 +141,9 @@ public class DeploymentTaskFacade {
     /**
      * 根据租户 ID 恢复任务
      */
-    public void resumeTaskByTenant(TenantId tenantId) {
+    public void resumeTaskByTenant(String tenantId) {
         logger.info("[Facade] 恢复租户任务: {}", tenantId);
-        TaskOperationResult result = taskOperationService.resumeTaskByTenant(tenantId);
+        TaskOperationResult result = taskOperationService.resumeTaskByTenant(TenantId.of(tenantId));
         handleTaskOperationResult(result, "恢复任务");
         logger.info("[Facade] 租户任务恢复成功: {}", tenantId);
     }
@@ -151,9 +151,9 @@ public class DeploymentTaskFacade {
     /**
      * 根据计划 ID 恢复任务
      */
-    public void resumeTaskByPlan(PlanId planId) {
+    public void resumeTaskByPlan(Long planId) {
         logger.info("[Facade] 恢复计划: {}", planId);
-        PlanOperationResult result = planLifecycleService.resumePlan(planId);
+        PlanOperationResult result = planLifecycleService.resumePlan(PlanId.of(planId));
         handlePlanOperationResult(result, "恢复计划");
         logger.info("[Facade] 计划恢复成功: {}", planId);
     }
@@ -161,9 +161,12 @@ public class DeploymentTaskFacade {
     /**
      * 根据租户 ID 回滚任务
      */
-    public void rollbackTaskByTenant(TenantId tenantId) {
-        logger.info("[DeploymentTaskFacade] 回滚租户任务: {}", tenantId);
-        TaskOperationResult result = taskOperationService.rollbackTaskByTenant(tenantId);  // T-015: 异步执行，监听领域事件
+    public void rollbackTaskByTenant(String tenantId, Long version) {
+        logger.info("[DeploymentTaskFacade] 回滚租户任务: {}, version: {}", tenantId, version);
+        TaskOperationResult result = taskOperationService.rollbackTaskByTenant(
+            TenantId.of(tenantId),
+            String.valueOf(version)  // T-028: 转换为 String (planVersion)
+        );
         handleTaskOperationResult(result, "回滚任务");
         logger.info("[Facade] 租户任务回滚成功: {}", tenantId);
     }
@@ -171,9 +174,9 @@ public class DeploymentTaskFacade {
     /**
      * 根据租户 ID 重试任务
      */
-    public void retryTaskByTenant(TenantId tenantId, boolean fromCheckpoint) {
+    public void retryTaskByTenant(String tenantId, boolean fromCheckpoint) {
         logger.info("[DeploymentTaskFacade] 重试租户任务: {}, fromCheckpoint: {}", tenantId, fromCheckpoint);
-        TaskOperationResult result = taskOperationService.retryTaskByTenant(tenantId, fromCheckpoint);  // T-015: 异步执行，监听领域事件
+        TaskOperationResult result = taskOperationService.retryTaskByTenant(TenantId.of(tenantId), fromCheckpoint);  // T-015: 异步执行，监听领域事件
         handleTaskOperationResult(result, "重试任务");
         logger.info("[Facade] 租户任务重试成功: {}", tenantId);
     }
@@ -181,9 +184,9 @@ public class DeploymentTaskFacade {
     /**
      * 查询任务状态
      */
-    public TaskStatusInfo queryTaskStatus(TaskId taskId) {
+    public TaskStatusInfo queryTaskStatus(String taskId) {
         logger.debug("[Facade] 查询任务状态: {}", taskId);
-        TaskStatusInfo result = taskOperationService.queryTaskStatus(taskId);
+        TaskStatusInfo result = taskOperationService.queryTaskStatus(TaskId.of(taskId));
         if (result.getStatus() == null) {
             throw new TaskNotFoundException("任务不存在: " + taskId);
         }
@@ -193,9 +196,9 @@ public class DeploymentTaskFacade {
     /**
      * 根据租户 ID 查询任务状态
      */
-    public TaskStatusInfo queryTaskStatusByTenant(TenantId tenantId) {
+    public TaskStatusInfo queryTaskStatusByTenant(String tenantId) {
         logger.debug("[Facade] 查询租户任务状态: {}", tenantId);
-        TaskStatusInfo result = taskOperationService.queryTaskStatusByTenant(tenantId);
+        TaskStatusInfo result = taskOperationService.queryTaskStatusByTenant(TenantId.of(tenantId));
         if (result.getStatus() == null) {
             throw new TaskNotFoundException("租户任务不存在: " + tenantId);
         }
@@ -205,9 +208,9 @@ public class DeploymentTaskFacade {
     /**
      * 根据租户 ID 取消任务
      */
-    public void cancelTaskByTenant(TenantId tenantId) {
+    public void cancelTaskByTenant(String tenantId) {
         logger.info("[Facade] 取消租户任务: {}", tenantId);
-        TaskOperationResult result = taskOperationService.cancelTaskByTenant(tenantId);
+        TaskOperationResult result = taskOperationService.cancelTaskByTenant(TenantId.of(tenantId));
         handleTaskOperationResult(result, "取消任务");
         logger.info("[Facade] 租户任务取消成功: {}", tenantId);
     }
@@ -215,9 +218,9 @@ public class DeploymentTaskFacade {
     /**
      * 查询计划状态（最小兜底 API）
      */
-    public PlanStatusInfo queryPlanStatus(PlanId planId) {
+    public PlanStatusInfo queryPlanStatus(Long planId) {
         logger.debug("[Facade] 查询计划状态: {}", planId);
-        var projection = taskQueryService.queryPlanStatus(planId);
+        var projection = taskQueryService.queryPlanStatus(PlanId.of(planId));
         if (projection == null) {
             throw new PlanNotFoundException("计划不存在: " + planId);
         }
@@ -227,8 +230,8 @@ public class DeploymentTaskFacade {
     /**
      * 检查租户是否存在 Checkpoint（最小兜底 API）
      */
-    public boolean hasCheckpoint(TenantId tenantId) {
-        return taskQueryService.hasCheckpoint(tenantId);
+    public boolean hasCheckpoint(String tenantId) {
+        return taskQueryService.hasCheckpoint(TenantId.of(tenantId));
     }
 
     // ========== 私有辅助方法 ==========

@@ -168,12 +168,14 @@ public class ExecutorConfiguration {
             TaskRepository taskRepository,
             TaskRuntimeRepository taskRuntimeRepository,
             StateTransitionService stateTransitionService,
-            DomainEventPublisher domainEventPublisher) {
+            DomainEventPublisher domainEventPublisher,
+            StageFactory stageFactory) {  // T-028: 新增依赖用于回滚时重新装配 Stages
         return new TaskDomainService(
                 taskRepository,
                 taskRuntimeRepository,
                 stateTransitionService,
-                domainEventPublisher
+                domainEventPublisher,
+                stageFactory
         );
     }
 

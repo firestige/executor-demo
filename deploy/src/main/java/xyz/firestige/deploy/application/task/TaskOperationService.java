@@ -98,17 +98,19 @@ public class TaskOperationService {
      * 根据租户 ID 回滚任务（异步执行）
      * <p>
      * T-015: 移除 executorCreator 参数，内部创建 TaskExecutor
+     * T-028: 使用传入的 version 作为回滚目标版本（planVersion）
      * 通过领域事件通知回滚结果（TaskRollingBackEvent / TaskRolledBackEvent / TaskRollbackFailedEvent）
      *
      * @param tenantId 租户 ID
+     * @param version 回滚目标版本（planVersion）
      * @return 操作结果（立即返回，实际回滚异步执行）
      */
     @Transactional
-    public TaskOperationResult rollbackTaskByTenant(TenantId tenantId) {
-        logger.info("[TaskOperationService] 回滚租户任务（异步）: {}", tenantId);
+    public TaskOperationResult rollbackTaskByTenant(TenantId tenantId, String version) {
+        logger.info("[TaskOperationService] 回滚租户任务（异步）: {}, version: {}", tenantId, version);
 
-        // Step 1: 调用领域服务准备回滚
-        TaskWorkerCreationContext context = taskDomainService.prepareRollbackByTenant(tenantId);
+        // Step 1: 调用领域服务准备回滚（传递 planVersion）
+        TaskWorkerCreationContext context = taskDomainService.prepareRollbackByTenant(tenantId, version);
         if (context == null) {
             return TaskOperationResult.failure(
                 null,

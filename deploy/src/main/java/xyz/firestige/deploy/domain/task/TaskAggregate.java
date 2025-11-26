@@ -1,5 +1,6 @@
 package xyz.firestige.deploy.domain.task;
 
+import xyz.firestige.deploy.application.dto.TenantConfig;
 import xyz.firestige.deploy.domain.shared.exception.ErrorType;
 import xyz.firestige.deploy.domain.shared.exception.FailureInfo;
 import xyz.firestige.deploy.domain.shared.vo.DeployVersion;
@@ -63,6 +64,9 @@ public class TaskAggregate {
     private TenantDeployConfigSnapshot prevConfigSnapshot; // 上一次可用配置快照
     private Long lastKnownGoodVersion; // 上一次成功切换完成的版本号
     private TaskDuration duration;
+
+    // T-028: 保存完整的上一版配置（用于回滚重新装配 Stage）
+    private TenantConfig prevConfig;
 
     // 运行时标志
     private boolean pauseRequested;
@@ -708,8 +712,12 @@ public class TaskAggregate {
     public RetryPolicy getRetryPolicy() { return retryPolicy; }
     public TimeRange getTimeRange() { return timeRange; }
     public TaskDuration getDuration() { return duration; }
+
+    public TenantConfig getPrevConfig() {
+        return prevConfig;
+    }
+
+    public void setPrevConfig(TenantConfig prevConfig) {
+        this.prevConfig = prevConfig;
+    }
 }
-
-
-
-

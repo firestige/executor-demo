@@ -3,6 +3,7 @@
 ## 进行中 (In Progress)
 | ID | 任务 | 负责人 | 优先级 | 开始日期 | 预计完成 | 临时方案 |
 |----|------|--------|--------|----------|----------|----------|
+| T-028 | 回滚机制完善 | Copilot | P1 | 2025-11-26 | 2025-11-29 | ✅ 设计已核实。[设计](docs/temp/rollback-task-level-design.md) \| [对比](docs/temp/rollback-architecture-comparison.md) \| [总结](docs/temp/T-028-verification-summary.md) |
 
 ## 待办 (Backlog)
 | ID | 任务 | 负责人 | 优先级 | 备注 |
