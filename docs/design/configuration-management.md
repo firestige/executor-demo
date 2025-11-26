@@ -1,7 +1,15 @@
 # 配置管理体系设计（T-017）
 
+> **⚠️ 已废弃 (2025-11-26)**: 本文档描述的 `ExecutorStagesProperties` 体系已被删除（方案 A）。  
+> **删除原因**: 该体系设计完成后未与实际 Stage 编排集成，处于游离状态。  
+> **当前方案**: 使用 `InfrastructureProperties` + `ExecutorProperties` + `StageAssembler` 体系。  
+> **详细分析**: 参见 [executor-stages-properties-analysis.md](../temp/executor-stages-properties-analysis.md)
+
+---
+
 > **完成时间**: 2025-11-24  
-> **状态**: 已完成
+> **废弃时间**: 2025-11-26  
+> **状态**: ❌ 已废弃
 
 ---
 

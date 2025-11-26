@@ -22,20 +22,20 @@ executor:
       server-addr: ${NACOS_SERVER_ADDR:127.0.0.1:8848}
       health-check-enabled: ${NACOS_HEALTH_CHECK_ENABLED:false}
       services:
-        blueGreenGatewayService: ${NACOS_BG_SERVICE_NAME:blue-green-gateway-service}
-        portalService: ${NACOS_PORTAL_SERVICE_NAME:portal-service}
-        asbcService: ${NACOS_ASBC_SERVICE_NAME:asbc-gateway-service}
-        obService: ${NACOS_OB_SERVICE_NAME:ob-service}
+        blueGreenGatewayService: ${NACOS_BG_SERVICE_NAME:icc-bg-gateway}
+        portalService: ${NACOS_PORTAL_SERVICE_NAME:icc-agent-portal}
+        asbcService: ${NACOS_ASBC_SERVICE_NAME:icc-asbc-portal}
+        obService: ${NACOS_OB_SERVICE_NAME:ob-campaign}
     fallback-instances:
-      blue-green-gateway:
+      icc-bg-gateway:
         - ${BG_GW_IP1:192.168.1.10:8080}
         - ${BG_GW_IP2:192.168.1.11:8080}
-      portal:
+      icc-agent-portal:
         - ${PORTAL_IP1:192.168.1.20:8080}
-      asbc:
+      icc-asbc-portal:
         - ${ASBC_IP1:192.168.1.100:8080}
         - ${ASBC_IP2:192.168.1.101:8080}
-      ob-service:
+      ob-campaign:
         - ${OB_SVC_IP1:192.168.1.30:8080}
     auth:
       asbc:
@@ -61,7 +61,7 @@ executor:
     store-type: redis  # redis 或 memory，默认 memory
     namespace: executor
     projection-ttl: 7d  # 投影数据 TTL
-    lock-ttl: 2h30m  # 租户锁 TTL (2.5小时)
+    lock-ttl: PT2H30M  # 租户锁 TTL (2.5小时)
 
 debug: true
 logging:

@@ -7,6 +7,52 @@
 
 ## 2025-11-26
 
+### [T-017 后续清理] ✅ ExecutorStagesProperties 体系删除（方案 A）
+
+**背景**：
+- T-017 (2025-11-24) 设计了 `ExecutorStagesProperties` 细粒度配置体系
+- RF-19-06 (2025-11-19) 引入 `StageAssembler` 体系，使用代码编排
+- T-027 (2025-11-26) 创建 `InfrastructureProperties`，进一步巩固粗粒度配置
+- **结果**：两套配置体系并存但未整合，ExecutorStagesProperties 处于游离状态
+
+**问题分析**：
+- ❌ **无业务逻辑消费**: Stage 编排使用 `StageAssembler` 体系，不读取 `ExecutorStagesProperties`
+- ❌ **仅用于元数据**: 只在启动报告和健康检查中使用
+- ❌ **架构歧义**: 配置来源分裂（InfrastructureProperties vs ExecutorStagesProperties）
+
+**执行方案 A（删除）**：
+- ❌ 删除 10 个类文件（约 800+ 行代码）:
+  1. `ExecutorStagesAutoConfiguration.java`
+  2. `ExecutorStagesProperties.java`
+  3. `BlueGreenGatewayStageConfig.java`
+  4. `PortalStageConfig.java`
+  5. `ASBCGatewayStageConfig.java`
+  6. `ExecutorStagesConfigurationReporter.java`
+  7. `ExecutorStagesHealthIndicator.java`
+  8. `StageConfigurable.java`
+  9. `StageConfigUtils.java`
+  10. `stage/config/stage/ValidationResult.java` (stage 包下的)
+  11. `StepConfig.java` (stage/config 包下的)
+- 🔄 移除 SPI 注册（AutoConfiguration.imports）
+- 📝 更新文档（configuration-management.md 标记废弃）
+- ✅ 编译验证：BUILD SUCCESS
+
+**影响评估**：
+- ✅ **零业务逻辑影响**: 无 Stage 编排代码依赖
+- ✅ **失去功能**: 启动配置报告、健康检查（可通过其他方式实现）
+- ✅ **代码库简化**: 删除未使用代码，消除架构歧义
+
+**保留的配置体系**：
+- ✅ `InfrastructureProperties` (executor.infrastructure.*)
+- ✅ `ExecutorProperties` (executor.*)
+- ✅ `StageAssembler` 体系（代码编排）
+
+**文档更新**：
+- `docs/design/configuration-management.md` → 标记为已废弃
+- `docs/temp/executor-stages-properties-analysis.md` → 完整分析报告
+
+---
+
 ### [T-027 Deploy Starter 化 Phase 1-5] ✅ 全面完成
 
 **Phase 5: Configuration Metadata（3h）** ✅

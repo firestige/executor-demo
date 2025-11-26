@@ -1,0 +1,143 @@
+@startuml rollback-flow-comparison
+
+!define PRIMARY_COLOR #2E86AB
+!define SUCCESS_COLOR #06A77D
+!define ERROR_COLOR #D72638
+!define WARNING_COLOR #F49D37
+
+title Rollback 机制流程对比
+
+' 当前实现（有问题）
+package "当前实现（有问题）" as current {
+
+  actor User as U1
+  participant "TaskExecutor" as TE1
+  participant "ConfigurableServiceStage" as CS1
+  participant "TaskAggregate" as TA1
+  database "Redis/Gateway" as EXT1
+
+  U1 -> TE1: rollback()
+  activate TE1 #ERROR_COLOR
+
+  TE1 -> TE1: 状态检查
+  TE1 -> TE1: startRollback()
+
+  loop 逆序遍历 Stages
+    TE1 -> CS1: rollback(ctx)
+    activate CS1 #WARNING_COLOR
+    CS1 -> CS1: ❌ 仅打印日志\n"回滚占位（待实现）"
+    CS1 --> TE1: 返回（实际无操作）
+    deactivate CS1
+  end
+
+  TE1 -> TA1: 获取 prevConfigSnapshot
+  activate TA1 #ERROR_COLOR
+  TA1 --> TE1: ❌ null（未设置）
+  deactivate TA1
+
+  TE1 -> TE1: ❌ 无法重发配置
+
+  TE1 -> TE1: completeRollback()
+  TE1 --> U1: ✅ ROLLED_BACK\n❌ 但实际未回滚任何配置
+  deactivate TE1
+
+  note right of EXT1 #ERROR_COLOR
+    ❌ Redis 中仍是新版本
+    ❌ Gateway 仍是新配置
+    ❌ 系统未真正回滚
+  end note
+}
+
+' 修复后实现（推荐方案）
+package "修复后实现（推荐方案）" as fixed {
+
+  actor User as U2
+  participant "TaskExecutor" as TE2
+  participant "ConfigurableServiceStage" as CS2
+  participant "TaskAggregate" as TA2
+  participant "DataPreparer" as DP
+  participant "ConfigWriteStep" as CWS
+  participant "HttpRequestStep" as HRS
+  participant "PollingStep" as PS
+  database "Redis/Gateway" as EXT2
+
+  U2 -> TE2: rollback()
+  activate TE2 #SUCCESS_COLOR
+
+  TE2 -> TE2: 状态检查
+  TE2 -> TE2: startRollback()
+
+  loop 逆序遍历 Stages
+    TE2 -> CS2: rollback(ctx)
+    activate CS2 #SUCCESS_COLOR
+
+    CS2 -> TA2: ✅ 获取 prevConfigSnapshot
+    activate TA2 #SUCCESS_COLOR
+    TA2 --> CS2: ✅ previousConfig\n(version=19, unit=green)
+    deactivate TA2
+
+    CS2 -> CS2: buildRollbackContext()\n使用旧配置数据
+
+    loop 执行 Steps（复用正向逻辑）
+
+      CS2 -> DP: prepare(rollbackCtx)
+      activate DP
+      DP -> DP: 准备回滚数据\nversion=19
+      DP --> CS2
+      deactivate DP
+
+      CS2 -> CWS: execute(rollbackCtx)
+      activate CWS
+      CWS -> EXT2: ✅ HSET tenant:xxx\nversion=19
+      EXT2 --> CWS: OK
+      CWS --> CS2
+      deactivate CWS
+
+      CS2 -> HRS: execute(rollbackCtx)
+      activate HRS
+      HRS -> EXT2: ✅ POST /gateway/config\nbody: {version:19}
+      EXT2 --> HRS: 200 OK
+      HRS --> CS2
+      deactivate HRS
+
+      CS2 -> PS: execute(rollbackCtx)
+      activate PS
+      PS -> EXT2: ✅ GET /health
+      EXT2 --> PS: {version:19}
+      PS -> PS: ✅ 版本匹配\n健康检查通过
+      PS --> CS2
+      deactivate PS
+
+    end
+
+    CS2 --> TE2: ✅ 回滚成功
+    deactivate CS2
+  end
+
+  TE2 -> TE2: completeRollback()
+  TE2 --> U2: ✅ ROLLED_BACK\n✅ 配置已恢复
+  deactivate TE2
+
+  note right of EXT2 #SUCCESS_COLOR
+    ✅ Redis: version=19
+    ✅ Gateway: version=19
+    ✅ 健康检查通过
+    ✅ 系统真正回滚
+  end note
+}
+
+legend right
+  |= 符号 |= 含义 |
+  | <back:#06A77D>  </back> | 正常流程 |
+  | <back:#D72638>  </back> | 有问题的实现 |
+  | <back:#F49D37>  </back> | 占位实现 |
+
+  **关键改进点**：
+  1. TaskAggregate 正确设置 prevConfigSnapshot
+  2. Stage.rollback() 复用 execute() 逻辑
+  3. 数据源替换为 previousConfig
+  4. 健康检查自动执行（检查旧版本）
+endlegend
+
+@enduml
+
