@@ -26,24 +26,39 @@ public class ServiceDiscoveryConfiguration {
     /**
      * Nacos 服务发现 Bean（仅在启用时创建）
      */
-    @Bean
+    @Bean(destroyMethod = "shutdown")
     @ConditionalOnProperty(prefix = "executor.infrastructure.nacos", name = "enabled", havingValue = "true")
-    public NacosServiceDiscovery nacosServiceDiscovery(InfrastructureProperties infrastructureProperties) {
-        InfrastructureProperties.NacosProperties nacosConfig = infrastructureProperties.getNacos();
+    public NacosServiceDiscovery serviceDiscovery(InfrastructureProperties infrastructureProperties,
+                                                        org.springframework.core.env.Environment env) {
+        InfrastructureProperties.NacosProperties nacos = infrastructureProperties.getNacos();
 
-        if (nacosConfig == null || nacosConfig.getServerAddr() == null) {
+        if (nacos == null || nacos.getServerAddr() == null) {
             throw new IllegalStateException("Nacos enabled but serverAddr not configured");
         }
 
-        try {
-            NacosServiceDiscovery discovery = new NacosServiceDiscovery(nacosConfig.getServerAddr());
-            log.info("Nacos 服务发现已启用: serverAddr={}", nacosConfig.getServerAddr());
-            return discovery;
+        // ✅ 使用 Builder 模式创建实例
+        NacosServiceDiscovery.Builder builder = NacosServiceDiscovery.builder(nacos.getServerAddr())
+                .defaultNamespace(nacos.getDefaultNamespace())
+                .clientIdleTimeoutMinutes(nacos.getClientIdleTimeoutMinutes())
+                .evictionIntervalMinutes(nacos.getEvictionIntervalMinutes());
 
-        } catch (NacosException e) {
-            log.error("Nacos 初始化失败，将使用 fallback 配置", e);
-            throw new IllegalStateException("Failed to initialize Nacos", e);
+        // 可选：设置用户名
+        if (nacos.getUsername() != null && !nacos.getUsername().isEmpty()) {
+            builder.username(nacos.getUsername());
         }
+
+        // 可选：密码从环境变量读取
+        String password = env.getProperty("executor.infrastructure.nacos.password");
+        if (password != null && !password.isEmpty()) {
+            builder.password(password);
+        }
+
+        log.info("Nacos 服务发现已启用: serverAddr={}, defaultNamespace={}, username={}, idleTimeout={}min",
+                nacos.getServerAddr(), nacos.getDefaultNamespace(),
+                nacos.getUsername() != null ? "***" : "null",
+                nacos.getClientIdleTimeoutMinutes());
+
+        return builder.build();
     }
 
     /**

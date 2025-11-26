@@ -28,18 +28,37 @@ public class InfrastructureAutoConfiguration {
         return new RestTemplate();
     }
 
-    @Bean
+    @Bean(destroyMethod = "shutdown")  // ✅ 确保 Spring 容器关闭时调用 shutdown()
     @ConditionalOnProperty(prefix = "executor.infrastructure.nacos", name = "enabled", havingValue = "true")
     @ConditionalOnMissingBean
-    public NacosServiceDiscovery nacosServiceDiscovery(InfrastructureProperties props) {
-        String serverAddr = props.getNacos().getServerAddr();
-        try {
-            log.info("[Infrastructure] Initializing NacosServiceDiscovery serverAddr={}", serverAddr);
-            return new NacosServiceDiscovery(serverAddr);
-        } catch (com.alibaba.nacos.api.exception.NacosException e) {
-            log.error("[Infrastructure] Nacos init failed, will use fallback: {}", e.getMessage());
-            throw new IllegalStateException("Failed to initialize Nacos", e);
+    public NacosServiceDiscovery serviceDiscovery(InfrastructureProperties props,
+                                                        org.springframework.core.env.Environment env) {
+        InfrastructureProperties.NacosProperties nacos = props.getNacos();
+
+        // ✅ 使用 Builder 模式创建实例（清晰易读）
+        NacosServiceDiscovery.Builder builder = NacosServiceDiscovery.builder(nacos.getServerAddr())
+                .defaultNamespace(nacos.getDefaultNamespace())
+                .clientIdleTimeoutMinutes(nacos.getClientIdleTimeoutMinutes())
+                .evictionIntervalMinutes(nacos.getEvictionIntervalMinutes());
+
+        // 可选：设置用户名
+        if (nacos.getUsername() != null && !nacos.getUsername().isEmpty()) {
+            builder.username(nacos.getUsername());
         }
+
+        // 可选：密码从环境变量读取
+        String password = env.getProperty("executor.infrastructure.nacos.password");
+        if (password != null && !password.isEmpty()) {
+            builder.password(password);
+        }
+
+        log.info("[Infrastructure] Initializing NacosServiceDiscovery: serverAddr={}, defaultNamespace={}, username={}, " +
+                        "idleTimeout={}min, evictionInterval={}min",
+                nacos.getServerAddr(), nacos.getDefaultNamespace(),
+                nacos.getUsername() != null ? "***" : "null",
+                nacos.getClientIdleTimeoutMinutes(), nacos.getEvictionIntervalMinutes());
+
+        return builder.build();
     }
 
     @Bean

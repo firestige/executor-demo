@@ -53,6 +53,14 @@ public class InfrastructureProperties {
         /** Nacos 服务器地址 host:port */
         @NotBlank
         private String serverAddr = "127.0.0.1:8848";
+        /** 默认命名空间（用于 null 参数时的回退） */
+        private String defaultNamespace = "public";
+        /** Nacos 用户名（可选，用于鉴权） */
+        private String username;
+        /** 客户端空闲超时时间（分钟），超过此时间未使用则驱逐，默认 5 分钟 */
+        private long clientIdleTimeoutMinutes = 5;
+        /** 驱逐检查间隔（分钟），默认 1 分钟 */
+        private long evictionIntervalMinutes = 1;
         /** 是否启用 Nacos 实例健康检查 */
         private boolean healthCheckEnabled = false;
         /** 服务标识到 Nacos 服务名映射 */
@@ -66,6 +74,18 @@ public class InfrastructureProperties {
         public void setEnabled(boolean enabled) { this.enabled = enabled; }
         public String getServerAddr() { return serverAddr; }
         public void setServerAddr(String serverAddr) { this.serverAddr = serverAddr; }
+        public String getDefaultNamespace() { return defaultNamespace; }
+        public void setDefaultNamespace(String defaultNamespace) { this.defaultNamespace = defaultNamespace; }
+        public String getUsername() { return username; }
+        public void setUsername(String username) { this.username = username; }
+        public long getClientIdleTimeoutMinutes() { return clientIdleTimeoutMinutes; }
+        public void setClientIdleTimeoutMinutes(long clientIdleTimeoutMinutes) {
+            this.clientIdleTimeoutMinutes = clientIdleTimeoutMinutes;
+        }
+        public long getEvictionIntervalMinutes() { return evictionIntervalMinutes; }
+        public void setEvictionIntervalMinutes(long evictionIntervalMinutes) {
+            this.evictionIntervalMinutes = evictionIntervalMinutes;
+        }
         public boolean isHealthCheckEnabled() { return healthCheckEnabled; }
         public void setHealthCheckEnabled(boolean healthCheckEnabled) { this.healthCheckEnabled = healthCheckEnabled; }
         public Map<String, String> getServices() { return services; }
