@@ -4,6 +4,7 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 import xyz.firestige.redis.ack.api.RedisClient;
 
 import java.time.Duration;
+import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -36,6 +37,11 @@ public class SpringRedisClient implements RedisClient {
     }
 
     @Override
+    public void hmset(String key, Map<String, String> fields) {
+        redisTemplate.opsForHash().putAll(key, fields);
+    }
+
+    @Override
     public void expire(String key, Duration ttl) {
         redisTemplate.expire(key, ttl.toMillis(), TimeUnit.MILLISECONDS);
     }
@@ -60,4 +66,3 @@ public class SpringRedisClient implements RedisClient {
         redisTemplate.convertAndSend(channel, message);
     }
 }
-

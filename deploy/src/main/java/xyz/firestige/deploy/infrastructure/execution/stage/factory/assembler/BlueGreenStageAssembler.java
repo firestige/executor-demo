@@ -79,10 +79,9 @@ public class BlueGreenStageAssembler implements StageAssembler {
             // 3. 构建 metadata 对象（包含 version 作为 footprint）
             Map<String, Object> metadata = new HashMap<>();
             metadata.put("version", config.getPlanVersion());
-            redisValue.put("metadata", metadata);
 
-            // 4. Footprint（从 PlanVersion）
-            String footprint = String.valueOf(config.getPlanVersion());
+            // 4. versionTagPath（从 PlanVersion）
+            String versionTagPath = "$.version";
 
             // 5. Pub/Sub 配置
             String topic = resources.getRedisPubsubTopic();
@@ -103,7 +102,7 @@ public class BlueGreenStageAssembler implements StageAssembler {
             // 6. Verify 配置 - 使用 ServiceDiscoveryHelper
             String namespace = config.getNacosNameSpace();  // 从 TenantConfig 获取 namespace
             List<String> endpoints = resolveEndpoints(
-                "blueGreenGatewayService",
+                "BG_GATEWAY",
                 namespace,
                 SelectionStrategy.ALL,  // BG 需要全部实例并发验证
                 true,  // 启用健康检查
@@ -121,17 +120,18 @@ public class BlueGreenStageAssembler implements StageAssembler {
             ctx.addVariable("redisKey", redisKey);
             ctx.addVariable("redisField", redisField);
             ctx.addVariable("redisValue", redisValue);
-            ctx.addVariable("footprint", footprint);
+            ctx.addVariable("metadata", metadata);
+            ctx.addVariable("versionTagPath", versionTagPath);
             ctx.addVariable("pubsubTopic", topic);
             ctx.addVariable("pubsubMessage", message);
             ctx.addVariable("verifyUrls", verifyUrls);
-            ctx.addVariable("verifyJsonPath", "$.metadata.version");
+            ctx.addVariable("verifyJsonPath", versionTagPath);
             ctx.addVariable("retryMaxAttempts", maxAttempts);
             ctx.addVariable("retryDelay", java.time.Duration.ofSeconds(intervalSec));
             ctx.addVariable("timeout", java.time.Duration.ofSeconds(maxAttempts * intervalSec + 10));
 
             log.debug("BG RedisAck 数据准备完成: key={}, field={}, endpoints={}, version={}",
-                redisKey, redisField, verifyUrls.size(), footprint);
+                redisKey, redisField, verifyUrls.size(), config.getPlanVersion());
         };
     }
 

@@ -2,6 +2,7 @@ package xyz.firestige.redis.ack.extractor;
 
 import xyz.firestige.redis.ack.api.FootprintExtractor;
 import xyz.firestige.redis.ack.exception.FootprintExtractionException;
+import xyz.firestige.redis.ack.exception.VersionTagExtractionException;
 
 import java.util.function.Function;
 
@@ -12,26 +13,24 @@ import java.util.function.Function;
  *
  * @author AI
  * @since 1.0
+ * @deprecated 使用 {@link FunctionVersionTagExtractor} 替代。
+ *             此类将在 3.0 版本移除。
  */
+@Deprecated
 public class FunctionFootprintExtractor implements FootprintExtractor {
 
-    private final Function<Object, String> extractorFunction;
+    private final FunctionVersionTagExtractor delegate;
 
     public FunctionFootprintExtractor(Function<Object, String> extractorFunction) {
-        this.extractorFunction = extractorFunction;
+        this.delegate = new FunctionVersionTagExtractor(extractorFunction);
     }
 
     @Override
     public String extract(Object value) throws FootprintExtractionException {
         try {
-            String result = extractorFunction.apply(value);
-            if (result == null) {
-                throw new FootprintExtractionException("Extractor function returned null");
-            }
-            return result;
-        } catch (Exception e) {
-            throw new FootprintExtractionException("Function extraction failed", e);
+            return delegate.extractTag(value);
+        } catch (VersionTagExtractionException e) {
+            throw new FootprintExtractionException(e.getMessage(), e);
         }
     }
 }
-

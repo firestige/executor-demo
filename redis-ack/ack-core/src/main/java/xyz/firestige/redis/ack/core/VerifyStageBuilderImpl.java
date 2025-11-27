@@ -207,7 +207,13 @@ public class VerifyStageBuilderImpl implements VerifyStageBuilder {
             retryStrategy,
             timeout,
             writeStage.getZsetScore(),
-            writeStage.getRedisClient()
+            writeStage.getRedisClient(),
+            // 多字段模式参数（Phase 2）
+            writeStage.getFields(),
+            writeStage.isMultiFieldMode(),
+            writeStage.getVersionTagSourceField(),
+            writeStage.getFieldLevelExtractor(),
+            writeStage.getFieldsLevelExtractor()
         );
     }
 

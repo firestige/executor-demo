@@ -6,7 +6,14 @@ import java.util.function.Function;
 /**
  * Write 阶段构建器
  * <p>
- * 负责配置 Redis 写入操作和 Footprint 提取
+ * 负责配置 Redis 写入操作和 VersionTag 提取
+ *
+ * <p><b>版本 2.0 新增</b>:
+ * <ul>
+ *   <li>支持 Hash 多字段模式（{@link #hashKey(String)}）</li>
+ *   <li>新增 VersionTag API（替代 Footprint）</li>
+ *   <li>保留旧 API 向后兼容</li>
+ * </ul>
  *
  * @author AI
  * @since 1.0
@@ -24,13 +31,37 @@ public interface WriteStageBuilder {
     WriteStageBuilder key(String key);
 
     /**
-     * 设置 Redis Hash Key + Field (Hash 类型)
+     * 设置 Redis Hash Key + Field (Hash 单字段模式)
+     *
+     * <p>对于单字段写入场景，使用此方法。如需写入多个 field，
+     * 请使用 {@link #hashKey(String)} 进入多字段模式。
      *
      * @param key Redis Hash Key
      * @param field Hash Field
      * @return this
      */
     WriteStageBuilder hashKey(String key, String field);
+
+    /**
+     * 使用 Hash 多字段模式
+     *
+     * <p>进入多字段构建模式，支持一次性原子写入多个 fields。
+     *
+     * <p>使用示例:
+     * <pre>{@code
+     * .hashKey("deployment:tenant:123")
+     *     .field("config", configJson)
+     *     .field("metadata", metadataJson)
+     *     .versionTagFromField("metadata", "$.version")
+     * .andPublish()
+     *     ...
+     * }</pre>
+     *
+     * @param key Redis Hash Key
+     * @return HashFieldsBuilder 多字段构建器
+     * @since 2.0
+     */
+    HashFieldsBuilder hashKey(String key);
 
     /**
      * 设置要写入的值
@@ -64,14 +95,64 @@ public interface WriteStageBuilder {
      */
     WriteStageBuilder zsetScore(double score);
 
-    // ========== Footprint 配置 ==========
+    // ========== VersionTag 配置（新 API）==========
+
+    /**
+     * 从 value 中提取指定字段作为 versionTag (JSON 对象)
+     *
+     * <p>示例: 从 {"metadata": {"version": "v2.1.0"}} 提取 "version"
+     * <pre>{@code
+     * .versionTag("version")
+     * }</pre>
+     *
+     * @param fieldName JSON 字段名，例如 "version"
+     * @return this
+     * @since 2.0
+     */
+    WriteStageBuilder versionTag(String fieldName);
+
+    /**
+     * 使用自定义提取器提取 versionTag
+     *
+     * @param extractor 提取器
+     * @return this
+     * @since 2.0
+     */
+    WriteStageBuilder versionTag(VersionTagExtractor extractor);
+
+    /**
+     * 使用自定义函数计算 versionTag
+     *
+     * @param calculator 计算函数
+     * @return this
+     * @since 2.0
+     */
+    WriteStageBuilder versionTag(Function<Object, String> calculator);
+
+    /**
+     * 从 value 中的嵌套 JSON 路径提取 versionTag
+     *
+     * <p>支持深层嵌套提取:
+     * <pre>{@code
+     * .versionTagFromPath("$.metadata.version")
+     * }</pre>
+     *
+     * @param jsonPath JSON 路径，例如 "$.metadata.version"
+     * @return this
+     * @since 2.0
+     */
+    WriteStageBuilder versionTagFromPath(String jsonPath);
+
+    // ========== Footprint 配置（旧 API，已废弃）==========
 
     /**
      * 从 value 中提取指定字段作为 footprint (JSON 对象)
      *
      * @param fieldName JSON 字段名，例如 "version"
      * @return this
+     * @deprecated 使用 {@link #versionTag(String)} 替代
      */
+    @Deprecated
     WriteStageBuilder footprint(String fieldName);
 
     /**
@@ -79,7 +160,9 @@ public interface WriteStageBuilder {
      *
      * @param extractor 提取器
      * @return this
+     * @deprecated 使用 {@link #versionTag(VersionTagExtractor)} 替代
      */
+    @Deprecated
     WriteStageBuilder footprint(FootprintExtractor extractor);
 
     /**
@@ -87,7 +170,9 @@ public interface WriteStageBuilder {
      *
      * @param calculator 计算函数
      * @return this
+     * @deprecated 使用 {@link #versionTag(Function)} 替代
      */
+    @Deprecated
     WriteStageBuilder footprint(Function<Object, String> calculator);
 
     // ========== 流程控制 ==========

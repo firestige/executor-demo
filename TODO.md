@@ -4,6 +4,7 @@
 | ID | 任务 | 负责人 | 优先级 | 开始日期 | 预计完成 | 临时方案 |
 |----|------|--------|--------|----------|----------|----------|
 | T-028 | 回滚机制完善 | Copilot | P1 | 2025-11-26 | 2025-11-29 | ✅ 设计已核实。[设计](docs/temp/rollback-task-level-design.md) \| [对比](docs/temp/rollback-architecture-comparison.md) \| [总结](docs/temp/T-028-verification-summary.md) |
+| T-030 | Redis ACK VersionTag 重构（方案 B：多字段支持） | Copilot | P1 | 2025-11-27 | 2025-12-03 | 🚧 实施中。[分析](docs/report/redis-ack-footprint-analysis.md) \| [计划](docs/temp/T-030-redis-ack-versiontag-plan.md) |
 
 ## 待办 (Backlog)
 | ID | 任务 | 负责人 | 优先级 | 备注 |

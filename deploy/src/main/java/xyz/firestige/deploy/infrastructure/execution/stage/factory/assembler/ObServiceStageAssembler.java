@@ -147,10 +147,9 @@ public class ObServiceStageAssembler implements StageAssembler {
             // 添加 metadata（包含 version 作为 footprint）
             Map<String, Object> metadata = new HashMap<>();
             metadata.put("version", config.getPlanVersion());
-            redisValue.put("metadata", metadata);
 
-            // 3. Footprint（从 PlanVersion）
-            String footprint = String.valueOf(config.getPlanVersion());
+            // 3. versionTagPath（从 PlanVersion）
+            String versionTagPath = "$.version";
 
             // 4. Pub/Sub 配置
             String topic = resources.getRedisPubsubTopic();
@@ -189,17 +188,18 @@ public class ObServiceStageAssembler implements StageAssembler {
             ctx.addVariable("redisKey", redisKey);
             ctx.addVariable("redisField", redisField);
             ctx.addVariable("redisValue", redisValue);
-            ctx.addVariable("footprint", footprint);
+            ctx.addVariable("metadata", metadata);
+            ctx.addVariable("versionTagPath", versionTagPath);
             ctx.addVariable("pubsubTopic", topic);
             ctx.addVariable("pubsubMessage", message);
             ctx.addVariable("verifyUrls", verifyUrls);
-            ctx.addVariable("verifyJsonPath", "$.metadata.version");
+            ctx.addVariable("verifyJsonPath", versionTagPath);
             ctx.addVariable("retryMaxAttempts", maxAttempts);
             ctx.addVariable("retryDelay", Duration.ofSeconds(intervalSec));
             ctx.addVariable("timeout", Duration.ofSeconds(maxAttempts * intervalSec + 10));
 
             log.debug("OB RedisAck 数据准备完成: key={}, field={}, endpoints={}, version={}",
-                redisKey, redisField, verifyUrls.size(), footprint);
+                redisKey, redisField, verifyUrls.size(), config.getPlanVersion());
         };
     }
 

@@ -84,39 +84,19 @@ public class AckExecutor {
     }
 
     /**
-     * 写入 Redis
+     * 写入 Redis（支持多字段模式）
      */
     private String writeToRedis(AckTask task, AckContext context) {
         try {
-            // 提取 footprint
-            String footprint = task.getFootprintExtractor().extract(task.getValue());
+            String versionTag;
 
-            // 序列化 value
-            String valueStr = serializeValue(task.getValue());
-
-            // 根据操作类型写入
-            RedisOperation operation = task.getOperation();
-            if (operation == RedisOperation.HSET) {
-                redisClient.hset(task.getKey(), task.getField(), valueStr);
-                log.debug("[ACK] HSET {} {} {}", task.getKey(), task.getField(), valueStr.substring(0, Math.min(50, valueStr.length())));
-            } else if (operation == RedisOperation.SET) {
-                redisClient.set(task.getKey(), valueStr);
-                log.debug("[ACK] SET {} {}", task.getKey(), valueStr.substring(0, Math.min(50, valueStr.length())));
-            } else if (operation == RedisOperation.LPUSH) {
-                redisClient.lpush(task.getKey(), valueStr);
-                log.debug("[ACK] LPUSH {} {}", task.getKey(), valueStr.substring(0, Math.min(50, valueStr.length())));
-            } else if (operation == RedisOperation.SADD) {
-                redisClient.sadd(task.getKey(), valueStr);
-                log.debug("[ACK] SADD {} {}", task.getKey(), valueStr.substring(0, Math.min(50, valueStr.length())));
-            } else if (operation == RedisOperation.ZADD) {
-                Double score = task.getZsetScore();
-                if (score == null) {
-                    throw new AckExecutionException("ZADD requires score");
-                }
-                redisClient.zadd(task.getKey(), valueStr, score);
-                log.debug("[ACK] ZADD {} {} score={}", task.getKey(), valueStr.substring(0, Math.min(50, valueStr.length())), score);
+            // Phase 2: 判断是否多字段模式
+            if (task.isMultiFieldMode()) {
+                // 多字段模式：使用 HMSET
+                versionTag = writeMultiField(task);
             } else {
-                throw new UnsupportedOperationException("Operation not yet supported: " + operation);
+                // 单字段模式：原有逻辑
+                versionTag = writeSingleField(task);
             }
 
             // 设置 TTL（如果有）
@@ -125,11 +105,94 @@ public class AckExecutor {
                 log.debug("[ACK] Set TTL: {} ms", task.getTtl().toMillis());
             }
 
-            return footprint;
+            return versionTag;
 
         } catch (Exception e) {
             throw new AckExecutionException("Failed to write to Redis", e);
         }
+    }
+
+    /**
+     * 单字段模式写入（原有逻辑）
+     */
+    private String writeSingleField(AckTask task) throws Exception {
+        // 提取 versionTag
+        String versionTag = task.getFootprintExtractor().extract(task.getValue());
+
+        // 序列化 value
+        String valueStr = serializeValue(task.getValue());
+
+        // 根据操作类型写入
+        RedisOperation operation = task.getOperation();
+        if (operation == RedisOperation.HSET) {
+            redisClient.hset(task.getKey(), task.getField(), valueStr);
+            log.debug("[ACK] HSET {} {} {}", task.getKey(), task.getField(),
+                valueStr.substring(0, Math.min(50, valueStr.length())));
+        } else if (operation == RedisOperation.SET) {
+            redisClient.set(task.getKey(), valueStr);
+            log.debug("[ACK] SET {} {}", task.getKey(),
+                valueStr.substring(0, Math.min(50, valueStr.length())));
+        } else if (operation == RedisOperation.LPUSH) {
+            redisClient.lpush(task.getKey(), valueStr);
+            log.debug("[ACK] LPUSH {} {}", task.getKey(),
+                valueStr.substring(0, Math.min(50, valueStr.length())));
+        } else if (operation == RedisOperation.SADD) {
+            redisClient.sadd(task.getKey(), valueStr);
+            log.debug("[ACK] SADD {} {}", task.getKey(),
+                valueStr.substring(0, Math.min(50, valueStr.length())));
+        } else if (operation == RedisOperation.ZADD) {
+            Double score = task.getZsetScore();
+            if (score == null) {
+                throw new AckExecutionException("ZADD requires score");
+            }
+            redisClient.zadd(task.getKey(), valueStr, score);
+            log.debug("[ACK] ZADD {} {} score={}", task.getKey(),
+                valueStr.substring(0, Math.min(50, valueStr.length())), score);
+        } else {
+            throw new UnsupportedOperationException("Operation not yet supported: " + operation);
+        }
+
+        return versionTag;
+    }
+
+    /**
+     * 多字段模式写入（Phase 2 新增）
+     * <p>
+     * 使用 HMSET 原子写入多个 fields
+     */
+    private String writeMultiField(AckTask task) throws Exception {
+        // 1. 提取 versionTag
+        String versionTag;
+        if (task.getVersionTagSourceField() != null && task.getFieldLevelExtractor() != null) {
+            // 从指定 field 的值中提取
+            Object fieldValue = task.getFields().get(task.getVersionTagSourceField());
+            if (fieldValue == null) {
+                throw new AckExecutionException("Field not found: " + task.getVersionTagSourceField());
+            }
+            versionTag = task.getFieldLevelExtractor().extractTag(fieldValue);
+            log.debug("[ACK] Extracted versionTag from field '{}': {}",
+                task.getVersionTagSourceField(), versionTag);
+        } else if (task.getFieldsLevelExtractor() != null) {
+            // 从所有 fields 计算组合签名
+            versionTag = task.getFieldsLevelExtractor().apply(task.getFields());
+            log.debug("[ACK] Computed versionTag from all fields: {}", versionTag);
+        } else {
+            // 兜底：使用 FootprintExtractor（虽然多字段模式下应该不会到这里）
+            versionTag = task.getFootprintExtractor().extract(task.getFields());
+        }
+
+        // 2. 序列化所有 fields
+        java.util.Map<String, String> serializedFields = new java.util.LinkedHashMap<>();
+        for (java.util.Map.Entry<String, Object> entry : task.getFields().entrySet()) {
+            serializedFields.put(entry.getKey(), serializeValue(entry.getValue()));
+        }
+
+        // 3. 原子批量写入（HMSET）
+        redisClient.hmset(task.getKey(), serializedFields);
+        log.debug("[ACK] HMSET {} with {} fields (versionTag: {})",
+            task.getKey(), serializedFields.size(), versionTag);
+
+        return versionTag;
     }
 
     /**

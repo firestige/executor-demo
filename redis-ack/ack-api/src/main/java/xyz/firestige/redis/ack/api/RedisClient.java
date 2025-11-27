@@ -1,11 +1,17 @@
 package xyz.firestige.redis.ack.api;
 
 import java.time.Duration;
+import java.util.Map;
 
 /**
  * Redis 客户端抽象接口
  *
  * <p>定义 Redis ACK 所需的最小操作集，支持多种 Redis 客户端实现。
+ *
+ * <p><b>版本 2.0 更新</b>:
+ * <ul>
+ *   <li>新增 {@link #hmset(String, Map)} 支持多字段原子写入</li>
+ * </ul>
  *
  * <h3>设计目标</h3>
  * <ul>
@@ -51,6 +57,31 @@ public interface RedisClient {
      * @param value 值
      */
     void hset(String key, String field, String value);
+
+    /**
+     * HMSET 操作 - 批量设置多个 Hash 字段（原子操作）
+     *
+     * <p>使用场景：
+     * <ul>
+     *   <li>一次性写入多个配置字段</li>
+     *   <li>确保多字段写入的原子性</li>
+     *   <li>减少网络往返次数</li>
+     * </ul>
+     *
+     * <p>示例:
+     * <pre>{@code
+     * Map<String, String> fields = new LinkedHashMap<>();
+     * fields.put("config", configJson);
+     * fields.put("metadata", metadataJson);
+     * fields.put("status", "ACTIVE");
+     * redisClient.hmset("deployment:tenant:123", fields);
+     * }</pre>
+     *
+     * @param key Redis Hash Key
+     * @param fields 字段-值映射（保持插入顺序）
+     * @since 2.0
+     */
+    void hmset(String key, Map<String, String> fields);
 
     /**
      * EXPIRE 操作 - 为 Key 设置过期时间
