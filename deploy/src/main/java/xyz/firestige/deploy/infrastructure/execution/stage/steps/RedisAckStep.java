@@ -71,7 +71,6 @@ public class RedisAckStep implements StageStep {
             String redisKey = getRequired(ctx, "redisKey", String.class);
             String redisField = getRequired(ctx, "redisField", String.class);
             Map<String, Object> redisValue = getRequired(ctx, "redisValue", Map.class);
-            Map<String, Object> metadata = getRequired(ctx, "metadata", Map.class);
             String versionTagPath = getRequired(ctx, "versionTagPath", String.class);
             String pubsubTopic = getRequired(ctx, "pubsubTopic", String.class);
             String pubsubMessage = getRequired(ctx, "pubsubMessage", String.class);
@@ -86,10 +85,9 @@ public class RedisAckStep implements StageStep {
 
             // 2. 调用 RedisAckService
             AckResult result = redisAckService.write()
-                    .hashKey(redisKey)
-                    .field(redisField, redisValue)
-                    .field("metadata", metadata)
-                    .versionTagFromField("metadata", versionTagPath)// 直接使用 PlanVersion
+                    .hashKey(redisKey, redisField)
+                    .value(redisValue)
+                    .versionTagFromPath(versionTagPath)
 
                 .andPublish()
                     .topic(pubsubTopic)

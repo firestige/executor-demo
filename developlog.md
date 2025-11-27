@@ -5,6 +5,113 @@
 
 ---
 
+## 2025-11-28
+
+### [T-030] ✅ Nacos 多命名空间支持 & Redis ACK VersionTag 重构完成
+
+**任务概述**：
+- **Part 1**：Nacos 服务发现多命名空间支持（Nacos namespace fix）
+- **Part 2**：Redis ACK VersionTag 重构（footprint → versionTag，多字段支持）
+
+**完成成果**：
+
+#### Part 1: Nacos 多命名空间支持
+**问题修复**：
+1. ✅ **Namespace 绑定问题**：NamingService 创建时未指定 namespace，固定在 `public` 命名空间
+2. ✅ **API 参数误用**：`getHealthyInstances(serviceName, namespace)` 中 namespace 被误当作 groupName 传入
+3. ✅ **资源泄漏风险**：缺少多客户端生命周期管理
+
+**技术方案**：
+- 🏗️ **多客户端管理器模式**：`NacosServiceDiscovery` 改造为管理多个 NamingService 实例
+- 🔄 **惰性加载 + LRU 驱逐**：按需创建 namespace 客户端，空闲 5 分钟后自动驱逐
+- 🔒 **引用计数机制**：防止使用中的客户端被驱逐
+- 🏗️ **Builder 模式构造**：使用 `NacosServiceDiscovery.builder(serverAddr)...build()` 创建
+
+**API 变更**：
+```java
+// 旧设计（错误）
+public NacosServiceDiscovery(String serverAddr) { /* 固定 public namespace */ }
+List<String> getHealthyInstances(String service, String namespace) { /* namespace 被当作 group */ }
+
+// 新设计（正确）
+NacosServiceDiscovery discovery = NacosServiceDiscovery.builder("192.168.1.100:8848")
+    .username("nacos_user")
+    .password(System.getenv("NACOS_PASSWORD"))
+    .defaultNamespace("public")
+    .clientIdleTimeoutMinutes(5)
+    .build();
+
+// 默认分组查询
+List<String> instances = discovery.getHealthyInstances("service-name", "blue-env");
+
+// 自定义分组查询
+List<String> instances = discovery.getHealthyInstances("service-name", "blue-env", "CUSTOM_GROUP");
+```
+
+**配置扩展**（InfrastructureProperties）：
+```yaml
+executor:
+  infrastructure:
+    nacos:
+      default-namespace: "public"
+      username: "nacos_user"
+      password: ${NACOS_PASSWORD:}  # 环境变量
+      client-idle-timeout-minutes: 5
+      eviction-interval-minutes: 1
+```
+
+#### Part 2: Redis ACK VersionTag 重构
+**术语重命名**：
+- `Footprint` → `VersionTag`（语义更明确）
+- `FootprintExtractor` → `VersionTagExtractor`
+- 旧接口标记 `@Deprecated` 并桥接到新接口，完美向后兼容
+
+**多字段支持（核心功能）**：
+```java
+// 单字段模式（向后兼容）
+redisAckService.write()
+    .hashKey("deployment:tenant:123", "config")
+    .versionTag("v2.1.0")
+    .executeAndWait();
+
+// 多字段模式（新功能）
+redisAckService.write()
+    .hashKey("deployment:tenant:123")
+        .field("config", configJson)
+        .field("metadata", metadataJson)
+        .field("status", "ACTIVE")
+        .versionTagFromField("metadata", "$.version")  // 从 metadata 字段提取
+    .andPublish()
+        .topic("updates")
+        .message("配置已更新")
+    .andVerify()
+        .httpGet("http://service/actuator/config")
+        .extractJson("$.metadata.version")
+        .retryFixedDelay(10, Duration.ofSeconds(3))
+    .executeAndWait();
+```
+
+**技术亮点**：
+- ✅ **原子写入**：使用 `HMSET` 原子写入多个字段
+- ✅ **字段级提取**：从指定 field 的值中提取 versionTag
+- ✅ **组合签名**：支持从多个 fields 计算组合签名
+- ✅ **JsonPath 支持**：深层嵌套字段提取（如 `$.metadata.version`）
+
+**实施统计**：
+- **Phase 1 (API 层)**：8 个文件（3 新增 + 5 修改），~450 行代码
+- **Phase 2 (核心实现)**：完整实现 HashFieldsBuilderImpl、AckExecutor 多字段逻辑、提取器重命名
+- **编译验证**：✅ BUILD SUCCESS，零错误
+
+**影响文档**：
+- 📝 更新：`docs/design/nacos-service-discovery.md`（合入多命名空间设计）
+- 📝 更新：`docs/design/redis-ack-service.md`（合入 VersionTag 和多字段支持）
+- 📝 归档：`docs/temp/T-030-*.md` 系列文档（7 个临时文档）
+
+**遗留任务**：
+- 🆕 **T-031**：JsonFieldExtractor 增强 - 支持 JsonPath 深层提取（如 `$.field1.field2`）
+
+---
+
 ## 2025-11-26
 
 ### [T-017 后续清理] ✅ ExecutorStagesProperties 体系删除（方案 A）

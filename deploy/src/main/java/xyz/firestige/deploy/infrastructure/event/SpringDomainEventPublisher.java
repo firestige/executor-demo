@@ -20,7 +20,6 @@ import java.util.List;
  * - 无需外部中间件
  *
  */
-@Component
 public class SpringDomainEventPublisher implements DomainEventPublisher {
 
     private final ApplicationEventPublisher applicationEventPublisher;

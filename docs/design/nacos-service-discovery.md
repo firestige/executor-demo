@@ -59,14 +59,50 @@ void clearCache(String serviceKey, String namespace)
 #### NacosServiceDiscovery
 
 **职责**：
-- 封装 Nacos NamingService
+- 管理多个 NamingService 实例（按 namespace 隔离）
+- 惰性加载 + LRU 驱逐机制
+- 引用计数防止使用中的客户端被驱逐
 - 处理连接、异常、健康检查
+
+**架构特性**：
+```
+NacosServiceDiscovery (多客户端管理器)
+├── Map<String, ClientEntry> clientsByNamespace (按需创建)
+│   ├── "blue-env"  → ClientEntry { NamingService, lastAccessTime, refCount }
+│   ├── "green-env" → ClientEntry { NamingService, lastAccessTime, refCount }
+│   └── "public"    → ClientEntry { NamingService, lastAccessTime, refCount }
+└── ScheduledExecutor: 定期驱逐空闲客户端（默认 5 分钟未使用）
+```
 
 **关键方法**：
 ```java
+// 构造器（使用 Builder 模式）
+static Builder builder(String serverAddr)
+
+// 查询方法（默认分组）
 List<String> getHealthyInstances(String serviceName, String namespace)
+
+// 查询方法（自定义分组）
+List<String> getHealthyInstances(String serviceName, String namespace, String groupName)
+
+// 生命周期管理
 boolean isAvailable()
-void shutdown()
+void shutdown()  // 关闭所有客户端 + 停止驱逐调度器
+
+// 监控方法
+Set<String> getManagedNamespaces()
+Map<String, ClientStats> getClientStats()
+```
+
+**Builder 配置**：
+```java
+NacosServiceDiscovery discovery = NacosServiceDiscovery.builder("192.168.1.100:8848")
+    .username("nacos_user")
+    .password(System.getenv("NACOS_PASSWORD"))  // 从环境变量读取
+    .defaultNamespace("public")
+    .clientIdleTimeoutMinutes(5)      // 空闲 5 分钟后驱逐
+    .evictionIntervalMinutes(1)       // 每分钟检查一次
+    .build();
 ```
 
 #### SelectionStrategy
@@ -142,31 +178,60 @@ class CacheEntry {
 serviceDiscoveryHelper.markInstanceFailed(serviceKey, namespace, failedInstance);
 ```
 
-**自动过滤**：
+### application.yml (推荐配置方式)
 ```java
 // 下次查询自动过滤失败实例
-List<String> validInstances = cacheEntry.getValidInstances();
-// 如果全部失败，触发强制刷新
-```
-
----
-
-## 降级策略
-
-### 优先级顺序
-
-1. **优先**：Nacos 服务发现（`nacos.enabled=true`）
-2. **降级**：`fallbackInstances` 配置
-3. **失败**：抛出 `ServiceDiscoveryException`
-
-### 降级触发条件
-
-- Nacos 服务器不可达
-- Nacos 服务名未注册
-- Nacos 返回空实例列表
-- Nacos 客户端初始化失败
-
+executor:
+  infrastructure:
+    nacos:
+      enabled: false                          # 是否启用 Nacos
+      server-addr: "127.0.0.1:8848"          # Nacos 服务器地址
+      default-namespace: "public"             # 默认命名空间
+      username: "nacos_user"                  # Nacos 用户名（可选）
+      password: ${NACOS_PASSWORD:}            # 从环境变量读取密码（推荐）
+      client-idle-timeout-minutes: 5          # 客户端空闲超时（分钟）
+      eviction-interval-minutes: 1            # 驱逐检查间隔（分钟）
+      services:
+        blueGreenGatewayService: "icc-bg-gateway"
+        obService: "ob-campaign"
+        portalService: "icc-portal"
+        asbcService: "asbc-config"
+    
+    fallback-instances:
+      blue-green-gateway:
+        - "192.168.1.10:8080"
+        - "192.168.1.11:8080"
+      ob-service:
+        - "192.168.1.20:9090"
+      portal:
+        - "192.168.1.30:7070"
+      asbc-config:
+        - "192.168.1.40:6060"
 ### 日志示例
+
+### 环境变量（密码安全传入）
+
+```bash
+# Linux/Mac
+export NACOS_PASSWORD='your_secure_password'
+java -jar app.jar
+
+# Windows
+set NACOS_PASSWORD=your_secure_password
+java -jar app.jar
+
+# Docker
+docker run -e NACOS_PASSWORD='your_secure_password' your-image
+
+# Kubernetes (使用 Secret)
+apiVersion: v1
+kind: Secret
+metadata:
+  name: nacos-credentials
+type: Opaque
+data:
+  password: <base64-encoded-password>
+```
 
 ```
 INFO  - 从 Nacos 获取实例: service=blueGreenGatewayService, namespace=dev, count=2
@@ -256,12 +321,49 @@ List<String> instances = helper.selectInstances(
 ### 性能指标
 
 - **首次查询**：Nacos 查询 + 缓存（约 50-100ms）
+## 多命名空间支持（T-030）
+
+### 问题背景
+
+**原有设计缺陷**（已修复）：
+1. ❌ **Namespace 绑定问题**：NamingService 创建时未指定 namespace，固定在 `public` 命名空间
+2. ❌ **API 参数误用**：`getHealthyInstances(serviceName, namespace)` 中 namespace 被误当作 groupName 传入
+3. ❌ **资源泄漏风险**：缺少多客户端生命周期管理
+
+### 解决方案
+
+**多客户端管理器模式**：
+- ✅ 每个 namespace 独立创建 NamingService 实例
+- ✅ 惰性加载：首次访问时才创建客户端
+- ✅ LRU + TTL 驱逐：空闲超过 5 分钟自动关闭并释放资源
+- ✅ 引用计数：防止使用中的客户端被驱逐
+- ✅ 统一生命周期：`shutdown()` 关闭所有客户端和调度器
+
+**API 正确使用**：
+```java
+// 正确：namespace 在客户端初始化时绑定
+Properties props = new Properties();
+props.put("serverAddr", serverAddr);
+props.put("namespace", namespace);  // ✅ 正确绑定
+NamingService client = NamingFactory.createNamingService(props);
+
+// 正确：查询时使用 groupName 参数
+List<Instance> instances = client.selectInstances(serviceName, groupName, true);
+```
+
+### 性能优化
+
+- **连接复用**：同一 namespace 的多次查询复用同一 NamingService
+- **自动驱逐**：长时间未使用的客户端自动释放，节省内存和连接
+- **并发安全**：Double-Check Locking + 引用计数保证线程安全
+
 - **缓存命中**：内存查询（<1ms）
-- **Failback 标记**：O(1) 操作
-- **强制刷新**：Nacos 查询（约 50-100ms）
-
----
-
+| 日期 | 版本 | 变更内容 | 任务ID |
+|------|------|---------|--------|
+| 2025-11-25 | 1.0 | 初始版本，实现 Phase 1-3 | T-025 |
+| 2025-11-28 | 2.0 | 多命名空间支持、Builder 模式、LRU 驱逐机制 | T-030 |
+3. **重试机制**：依赖 Nacos 客户端内置重试
+4. **密码存储**：建议使用环境变量或外部密钥管理（如 Vault、K8s Secret）
 ## 扩展点
 
 ### 1. 支持其他注册中心

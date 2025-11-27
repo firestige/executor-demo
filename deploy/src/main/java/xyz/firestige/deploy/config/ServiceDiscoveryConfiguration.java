@@ -1,10 +1,10 @@
 package xyz.firestige.deploy.config;
 
-import com.alibaba.nacos.api.exception.NacosException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.client.RestTemplate;
@@ -19,6 +19,7 @@ import xyz.firestige.deploy.infrastructure.discovery.ServiceDiscoveryHelper;
  * @updated T-027 迁移至 InfrastructureProperties
  */
 @Configuration
+@EnableConfigurationProperties(InfrastructureProperties.class)
 public class ServiceDiscoveryConfiguration {
 
     private static final Logger log = LoggerFactory.getLogger(ServiceDiscoveryConfiguration.class);

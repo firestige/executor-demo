@@ -8,6 +8,7 @@ import org.springframework.context.annotation.Configuration;
 import jakarta.validation.Validation;
 import jakarta.validation.Validator;
 import jakarta.validation.ValidatorFactory;
+import xyz.firestige.deploy.config.properties.ExecutorProperties;
 import xyz.firestige.deploy.config.properties.InfrastructureProperties;
 import xyz.firestige.deploy.application.conflict.TenantConflictCoordinator;
 import xyz.firestige.deploy.application.facade.PlanExecutionFacade;
@@ -21,6 +22,7 @@ import xyz.firestige.deploy.application.validation.BusinessValidator;
 import xyz.firestige.deploy.domain.plan.PlanDomainService;
 import xyz.firestige.deploy.domain.plan.PlanRepository;
 import xyz.firestige.deploy.domain.shared.event.DomainEventPublisher;
+import xyz.firestige.deploy.domain.task.CheckpointRepository;
 import xyz.firestige.deploy.domain.task.StateTransitionService;
 import xyz.firestige.deploy.domain.task.TaskDomainService;
 import xyz.firestige.deploy.domain.task.TaskRepository;
@@ -64,26 +66,14 @@ public class ExecutorConfiguration {
 
     // ========== 基础设施 Bean ==========
 
-    @Bean
-    public Validator validator() {
-        ValidatorFactory factory = Validation.buildDefaultValidatorFactory();
-        return factory.getValidator();
-    }
+
 
     @Bean
     public StateTransitionService StateTransitionService() {
         return new TaskStateManager();
     }
 
-    @Bean
-    public ValidationChain validationChain() {
-        ValidationChain chain = new ValidationChain(false);
-        chain.addValidator(new TenantIdValidator());
-        chain.addValidator(new NetworkEndpointValidator());
-        chain.addValidator(new ConflictValidator());
-        chain.addValidator(new BusinessRuleValidator());
-        return chain;
-    }
+
 
     // ExecutorProperties is now auto-configured via @EnableConfigurationProperties
     // No manual bean creation needed
@@ -96,8 +86,8 @@ public class ExecutorConfiguration {
     }
 
     @Bean
-    public CheckpointService checkpointService() {
-        return new CheckpointService(new InMemoryCheckpointRepository());
+    public CheckpointService checkpointService(CheckpointRepository repository) {
+        return new CheckpointService(repository);
     }
 
     /**
@@ -181,8 +171,7 @@ public class ExecutorConfiguration {
 
     // ========== Application Service Bean (DDD 重构新增) ==========
 
-    @Bean
-    public BusinessValidator businessValidator() { return new BusinessValidator(); }
+
 
     @Bean
     public DeploymentPlanCreator deploymentPlanCreator(
@@ -295,10 +284,5 @@ public class ExecutorConfiguration {
                 planProjectionStore,
                 tenantTaskIndexStore
         );
-    }
-
-    @Bean
-    public DomainEventPublisher domainEventPublisher(ApplicationEventPublisher publisher) {
-        return new SpringDomainEventPublisher(publisher);
     }
 }

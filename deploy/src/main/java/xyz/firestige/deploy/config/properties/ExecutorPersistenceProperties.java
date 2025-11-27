@@ -1,4 +1,4 @@
-package xyz.firestige.deploy.autoconfigure;
+package xyz.firestige.deploy.config.properties;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
 

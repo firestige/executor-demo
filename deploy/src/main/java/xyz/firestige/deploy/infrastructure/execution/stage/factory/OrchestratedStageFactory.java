@@ -7,7 +7,7 @@ import org.springframework.context.annotation.Primary;
 import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 import xyz.firestige.deploy.application.dto.TenantConfig;
-import xyz.firestige.deploy.config.ExecutorProperties;
+import xyz.firestige.deploy.config.properties.ExecutorProperties;
 import xyz.firestige.deploy.infrastructure.execution.stage.StageFactory;
 import xyz.firestige.deploy.infrastructure.execution.stage.TaskStage;
 

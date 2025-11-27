@@ -10,7 +10,7 @@ import java.util.function.Function;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import xyz.firestige.deploy.config.ExecutorProperties;
+import xyz.firestige.deploy.config.properties.ExecutorProperties;
 import xyz.firestige.deploy.domain.shared.vo.PlanId;
 import xyz.firestige.deploy.domain.shared.vo.TaskId;
 import xyz.firestige.deploy.domain.shared.vo.TenantId;

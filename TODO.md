@@ -4,7 +4,6 @@
 | ID | 任务 | 负责人 | 优先级 | 开始日期 | 预计完成 | 临时方案 |
 |----|------|--------|--------|----------|----------|----------|
 | T-028 | 回滚机制完善 | Copilot | P1 | 2025-11-26 | 2025-11-29 | ✅ 设计已核实。[设计](docs/temp/rollback-task-level-design.md) \| [对比](docs/temp/rollback-architecture-comparison.md) \| [总结](docs/temp/T-028-verification-summary.md) |
-| T-030 | Redis ACK VersionTag 重构（方案 B：多字段支持） | Copilot | P1 | 2025-11-27 | 2025-12-03 | 🚧 实施中。[分析](docs/report/redis-ack-footprint-analysis.md) \| [计划](docs/temp/T-030-redis-ack-versiontag-plan.md) |
 
 ## 待办 (Backlog)
 | ID | 任务 | 负责人 | 优先级 | 备注 |
@@ -13,7 +12,7 @@
 | T-023 | 重建测试体系：ack/renew 单元测试；deploy 单元+集成(应用层)+e2e(Facade) | - | P1 | 设计新的测试包结构：deploy:test/unit, test/integration, test/e2e；ack/renew:test/unit |
 | T-029 | 分布式租户串行策略决策（TenantLockManager vs TenantConflictManager） | - | P2 | 参考报告：`docs/report/executor-stages-properties-analysis.md`、`docs/report/task-017-cleanup-completion-report.md`、`docs/report/executor-stages-cleanup-summary.md`；根据需求选择接入分布式锁或保留本地策略，并更新接口一致性（release 持有者校验）。 |
 | T-030 | 修复：Nacos 服务发现客户端初始化时只能绑定一个命名空间 — 修改初始化函数以支持多命名空间或延迟绑定（兼容旧接口）。 | Copilot | P1 | 紧急修复：在不破坏现有调用的前提下允许传入多个命名空间或提供按需绑定接口；后续重构：从配置支持多命名空间、提供客户端工厂/管理器、完善单元测试与文档（建议草案放在 `docs/temp/`）。 |
-
+| T-031 | JsonFieldExtractor 增强：支持 JsonPath 语法（如 $.field1.field2）用于解析嵌套 JSON 字段 | - | P2 | 当前 JsonFieldExtractor 仅支持一层字段提取，需要支持深层嵌套字段提取和多字段场景。建议使用 JsonPath 库（如 com.jayway.jsonpath）实现。 |
 ---
 
 ## 使用说明

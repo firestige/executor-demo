@@ -4,7 +4,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import xyz.firestige.deploy.application.dto.TenantConfig;
 import xyz.firestige.deploy.application.validation.BusinessValidator;
-import xyz.firestige.deploy.config.ExecutorProperties;
+import xyz.firestige.deploy.config.properties.ExecutorProperties;
 import xyz.firestige.deploy.domain.plan.PlanAggregate;
 import xyz.firestige.deploy.domain.plan.PlanDomainService;
 import xyz.firestige.deploy.domain.plan.PlanInfo;

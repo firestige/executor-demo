@@ -3,7 +3,7 @@ package xyz.firestige.deploy.facade.converter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
-import xyz.firestige.deploy.config.ExecutorProperties;
+import xyz.firestige.deploy.config.properties.ExecutorProperties;
 import xyz.firestige.deploy.domain.shared.vo.RouteRule;
 import xyz.firestige.dto.deploy.TenantDeployConfig;
 import xyz.firestige.deploy.application.dto.DeployUnitIdentifier;

@@ -3,13 +3,14 @@ package xyz.firestige.deploy.infrastructure.persistence.checkpoint;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.fasterxml.jackson.databind.SerializationFeature;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import xyz.firestige.deploy.domain.shared.vo.TaskId;
 import xyz.firestige.deploy.domain.task.CheckpointRepository;
 import xyz.firestige.deploy.domain.task.TaskCheckpoint;
-import xyz.firestige.deploy.infrastructure.redis.RedisClient;
 
 import java.time.Duration;
 import java.util.Map;
+import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -17,8 +18,11 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public class RedisCheckpointRepository implements CheckpointRepository {
 
-    private final RedisClient client;
-    private final String namespace;
+    private static final String DEFAULT_NAMESPACE = "executor:checkpoint:";
+    private static final String DEFAULT_NAME = "repo";
+
+    private final StringRedisTemplate redisTemplate;
+    private final String key;
     private final Duration ttl;
     private final ObjectMapper mapper = new ObjectMapper()
             .registerModule(new JavaTimeModule())
@@ -27,20 +31,35 @@ public class RedisCheckpointRepository implements CheckpointRepository {
     // local read-through cache (optional small optimization)
     private final Map<TaskId, TaskCheckpoint> cache = new ConcurrentHashMap<>();
 
-    public RedisCheckpointRepository(RedisClient client, String namespace, Duration ttl) {
-        this.client = client;
-        this.namespace = (namespace == null || namespace.isBlank()) ? "executor:ckpt:" : namespace.endsWith(":") ? namespace : namespace + ":";
+    public RedisCheckpointRepository(StringRedisTemplate redisTemplate) {
+        this(redisTemplate, DEFAULT_NAMESPACE + ":" + DEFAULT_NAME);
+    }
+
+    public RedisCheckpointRepository(StringRedisTemplate redisTemplate, String key) {
+        this(redisTemplate, DEFAULT_NAMESPACE, key);
+    }
+
+    public RedisCheckpointRepository(StringRedisTemplate redisTemplate, String namespace, String name) {
+        this(redisTemplate, namespace, name, Duration.ofDays(1));
+    }
+
+    public RedisCheckpointRepository(StringRedisTemplate redisTemplate, String namespace, String name, Duration ttl) {
+        this.redisTemplate = redisTemplate;
+        this.key = Objects.requireNonNullElse(namespace, DEFAULT_NAMESPACE) + ":" + Objects.requireNonNullElse(name, DEFAULT_NAME);
         this.ttl = ttl;
     }
 
-    private String k(TaskId taskId) { return namespace + taskId.getValue(); }
+    private String key() {
+        return this.key;
+    }
 
     @Override
     public void put(TaskId taskId, TaskCheckpoint checkpoint) {
         if (taskId == null || checkpoint == null) return;
         try {
-            byte[] json = mapper.writeValueAsBytes(checkpoint);
-            client.set(k(taskId), json, ttl);
+            String jsonStr = mapper.writeValueAsString(checkpoint);
+            redisTemplate.opsForHash().put(key(), taskId.getValue(), jsonStr);
+            redisTemplate.expire(key, ttl);
             cache.put(taskId, checkpoint);
         } catch (Exception e) {
             throw new RuntimeException("Failed to serialize checkpoint", e);
@@ -49,11 +68,17 @@ public class RedisCheckpointRepository implements CheckpointRepository {
 
     @Override
     public TaskCheckpoint get(TaskId taskId) {
-        if (taskId == null) return null;
+        if (taskId == null) {
+            return null;
+        }
         TaskCheckpoint cached = cache.get(taskId);
-        if (cached != null) return cached;
-        byte[] data = client.get(k(taskId));
-        if (data == null || data.length == 0) return null;
+        if (cached != null) {
+            return cached;
+        }
+        String data = redisTemplate.<String, String>opsForHash().get(key(), taskId.getValue());
+        if (data == null || data.isEmpty()) {
+            return null;
+        }
         try {
             TaskCheckpoint cp = mapper.readValue(data, TaskCheckpoint.class);
             cache.put(taskId, cp);
@@ -65,8 +90,10 @@ public class RedisCheckpointRepository implements CheckpointRepository {
 
     @Override
     public void remove(TaskId taskId) {
-        if (taskId == null) return;
-        client.del(k(taskId));
+        if (taskId == null) {
+            return;
+        }
+        redisTemplate.opsForHash().delete(key(), taskId.getValue());
         cache.remove(taskId);
     }
 }

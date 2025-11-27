@@ -13,7 +13,7 @@
 ### 1. 新增配置类
 
 #### ExecutorProperties
-- **路径**: `xyz.firestige.deploy.config.ExecutorProperties`
+- **路径**: `xyz.firestige.deploy.config.properties.ExecutorProperties`
 - **前缀**: `executor`
 - **新增字段**:
   - `defaultServiceNames`: 默认服务切换顺序（从 `deploy-stages.yml` 迁移）
