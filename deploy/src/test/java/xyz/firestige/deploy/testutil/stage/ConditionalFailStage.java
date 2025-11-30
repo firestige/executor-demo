@@ -59,7 +59,7 @@ public class ConditionalFailStage implements TaskStage {
                 name,
                 ctx -> {
                     String currentVersion = ctx.getAdditionalData("deployVersion", String.class);
-                    return currentVersion != null && failVersion.equals(currentVersion);
+                    return failVersion.equals(currentVersion);
                 },
                 ErrorType.BUSINESS_ERROR,
                 "Failed on version: " + failVersion
@@ -90,12 +90,17 @@ public class ConditionalFailStage implements TaskStage {
 
     @Override
     public StageResult execute(TaskRuntimeContext ctx) {
+        StageResult res;
         if (shouldFailPredicate.test(ctx)) {
             FailureInfo failureInfo = FailureInfo.of(errorType, errorMessage, name);
-            return StageResult.failure(name, failureInfo);
+            res = StageResult.failure(name, failureInfo);
+        } else {
+            res = StageResult.success(name);
         }
 
-        return StageResult.success(name);
+        res.setDuration(Duration.ZERO);
+
+        return res;
     }
 
     @Override

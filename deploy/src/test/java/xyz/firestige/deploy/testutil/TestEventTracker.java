@@ -9,6 +9,7 @@ import xyz.firestige.deploy.domain.task.event.TaskCompletedEvent;
 import xyz.firestige.deploy.domain.task.event.TaskFailedEvent;
 import xyz.firestige.deploy.domain.task.event.TaskPausedEvent;
 import xyz.firestige.deploy.domain.task.event.TaskResumedEvent;
+import xyz.firestige.deploy.domain.task.event.TaskRolledBackEvent;
 import xyz.firestige.deploy.domain.task.event.TaskStageCompletedEvent;
 import xyz.firestige.deploy.domain.task.event.TaskStageFailedEvent;
 import xyz.firestige.deploy.domain.task.event.TaskStageStartedEvent;
@@ -99,6 +100,11 @@ public class TestEventTracker {
         ));
     }
 
+    @EventListener
+    public void onTaskRolledBack(TaskRolledBackEvent event) {
+        events.add(TrackedEvent.of(event));
+    }
+
     // 查询方法
     public List<TrackedEvent> getEvents() {
         return new ArrayList<>(events);
@@ -176,6 +182,14 @@ public class TestEventTracker {
                     EventType.TASK_RESUMED,
                     event.getTaskId(),
                     event.getStatus());
+        }
+
+        public static TrackedEvent of(TaskRolledBackEvent event) {
+            return new TrackedEvent(
+                    EventType.TASK_COMPLETED,
+                    event.getTaskId(),
+                    TaskStatus.COMPLETED
+            );
         }
 
         public TrackedEvent(EventType type,
