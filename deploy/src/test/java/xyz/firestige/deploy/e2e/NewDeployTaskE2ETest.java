@@ -4,25 +4,39 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.context.annotation.ComponentScan;
 import org.springframework.context.annotation.FilterType;
 import org.springframework.stereotype.Component;
 import xyz.firestige.deploy.TestApplication;
 import xyz.firestige.deploy.application.dto.TenantConfig;
+import xyz.firestige.deploy.application.lifecycle.PlanLifecycleService;
+import xyz.firestige.deploy.application.orchestration.listener.PlanStartedListener;
 import xyz.firestige.deploy.application.task.TaskOperationService;
 import xyz.firestige.deploy.config.InfrastructureConfiguration;
 import xyz.firestige.deploy.domain.plan.PlanAggregate;
+import xyz.firestige.deploy.domain.plan.PlanCreationResult;
+import xyz.firestige.deploy.domain.plan.PlanStatus;
 import xyz.firestige.deploy.domain.shared.vo.PlanId;
 import xyz.firestige.deploy.domain.shared.vo.TaskId;
 import xyz.firestige.deploy.domain.shared.vo.TenantId;
 import xyz.firestige.deploy.domain.task.TaskAggregate;
 import xyz.firestige.deploy.domain.task.TaskStatus;
+import xyz.firestige.deploy.infrastructure.execution.stage.StageFactory;
+import xyz.firestige.deploy.infrastructure.execution.stage.TaskStage;
 import xyz.firestige.deploy.infrastructure.execution.stage.factory.OrchestratedStageFactory;
+import xyz.firestige.deploy.testutil.factory.PlanAggregateTestBuilder;
 import xyz.firestige.deploy.testutil.factory.ValueObjectTestFactory;
+import xyz.firestige.deploy.testutil.stage.AlwaysSuccessStage;
+import xyz.firestige.redis.ack.api.RedisAckService;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.when;
 
 /**
  * 新建切换任务 E2E 测试
@@ -39,62 +53,62 @@ import static org.junit.jupiter.api.Assertions.*;
 @SpringBootTest(classes = InfrastructureConfiguration.class)
 class NewDeployTaskE2ETest extends BaseE2ETest {
 
+    // 阻断 Redis Ack 服务，避免干扰测试
+    @MockBean
+    private RedisAckService redisAckService;
+
+    // mock 使其加载特定的 Stage，避免使用默认的 OrchestratedStageFactory
+    @MockBean
+    private StageFactory stageFactory;
+
+    // 阻断 PlanStartedListener，避免干扰测试
+    @MockBean
+    private PlanStartedListener planStartedListener;
+
+    @Autowired
+    private PlanLifecycleService planLifecycleService;
+
     @Autowired
     private TaskOperationService taskOperationService;
 
     @Test
-    @DisplayName("应该成功创建并执行新的切换任务")
-    void shouldCreateAndExecuteNewDeployTask() throws Exception {
+    @DisplayName("应该成功创建新的切换任务")
+    void shouldCreateNewDeployTask() throws Exception {
         // ========== 1. 准备测试数据 ==========
-        TenantId tenantId = ValueObjectTestFactory.tenantId("tenant-e2e-001");
-        PlanId planId = ValueObjectTestFactory.planId("plan-e2e-001");
-        TaskId taskId = ValueObjectTestFactory.taskId("task-e2e-001");
+        TenantConfig config = ValueObjectTestFactory.withPreviousConfig();
+        PlanId planId = config.getPlanId();
 
-        // 创建TenantConfig
-        TenantConfig config = ValueObjectTestFactory.minimalConfig(tenantId);
-        
+        // 构建用于测试的 Stage 列表
+        List<TaskStage> taskStages = List.of(
+                new AlwaysSuccessStage("stage-1"),
+                new AlwaysSuccessStage("stage-2")
+        );
+
+        when(stageFactory.buildStages(config)).thenReturn(taskStages);
+
         // ========== 2. 创建Plan和Task ==========
-        PlanAggregate plan = new PlanAggregate(planId);
-        plan.addTask(taskId);
-        plan.markAsReady();
-        planRepository.save(plan);
+        PlanCreationResult result = planLifecycleService.createDeploymentPlan(List.of(config));
 
-        TaskAggregate task = new TaskAggregate(taskId, planId, tenantId);
-        task.setDeployVersion(ValueObjectTestFactory.randomVersion());
-        task.markAsPending();
-        taskRepository.save(task);
+        // ========== 3. 验证创建结果 ==========
+        assertTrue(result.isSuccess());
+        PlanAggregate agg = planRepository.findById(planId).orElse(null);
+        assertNotNull(agg);
+        assertEquals(PlanStatus.RUNNING, agg.getStatus());
 
-        // ========== 3. 验证初始状态 ==========
-        TaskAggregate savedTask = taskRepository.findById(taskId).orElseThrow();
-        assertEquals(TaskStatus.PENDING, savedTask.getStatus());
-
-        // ========== 4. 执行任务（模拟执行器启动）==========
-        // 注意：这里需要实际的执行器启动逻辑
-        // 如果TaskOperationService有startTask方法，调用它
-        // taskOperationService.startTask(taskId);
-
-        // ========== 5. 等待执行完成（模拟异步执行）==========
-        // 在实际E2E测试中，这里应该等待异步任务完成
-        // 可以通过轮询状态或使用CountDownLatch等待
-        TimeUnit.SECONDS.sleep(2);
-
-        // ========== 6. 验证最终状态 ==========
-        TaskAggregate finalTask = taskRepository.findById(taskId).orElseThrow();
-        
-        // 验证状态（实际执行后应该是COMPLETED或RUNNING）
-        assertNotNull(finalTask.getStatus());
-        assertTrue(finalTask.getStartedAt() != null, "任务应该已启动");
-        
-        // 如果执行完成，验证COMPLETED状态
-        // assertEquals(TaskStatus.COMPLETED, finalTask.getStatus());
+        List<TaskId> taskIds = agg.getTaskIds();
+        assertEquals(1, taskIds.size());
+        TaskId taskId = taskIds.get(0);
+        TaskAggregate task = taskRepository.findById(taskId).orElse(null);
+        assertNotNull(task);
+        assertEquals(TaskStatus.PENDING, task.getStatus());
     }
 
     @Test
     @DisplayName("应该正确记录Stage执行进度")
     void shouldRecordStageProgress() throws Exception {
         // ========== 1. 准备测试数据 ==========
-        TenantId tenantId = ValueObjectTestFactory.tenantId("tenant-e2e-002");
-        PlanId planId = ValueObjectTestFactory.planId("plan-e2e-002");
+        TenantId tenantId = ValueObjectTestFactory.randomTenantId();
+        PlanId planId = ValueObjectTestFactory.randomPlanId();
         TaskId taskId = ValueObjectTestFactory.taskId("task-e2e-002");
 
         // ========== 2. 创建Task ==========
@@ -118,8 +132,8 @@ class NewDeployTaskE2ETest extends BaseE2ETest {
     @DisplayName("应该在所有Stage完成后标记任务为COMPLETED")
     void shouldMarkTaskCompletedAfterAllStages() {
         // ========== 1. 准备测试数据 ==========
-        TenantId tenantId = ValueObjectTestFactory.tenantId("tenant-e2e-003");
-        PlanId planId = ValueObjectTestFactory.planId("plan-e2e-003");
+        TenantId tenantId = ValueObjectTestFactory.randomTenantId();
+        PlanId planId = ValueObjectTestFactory.randomPlanId();
         TaskId taskId = ValueObjectTestFactory.taskId("task-e2e-003");
 
         // ========== 2. 创建并启动Task ==========

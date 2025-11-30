@@ -2,6 +2,7 @@ package xyz.firestige.deploy.application.facade;
 
 import java.util.List;
 import java.util.function.BiConsumer;
+import java.util.function.BiFunction;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -9,10 +10,13 @@ import org.slf4j.LoggerFactory;
 import xyz.firestige.deploy.application.conflict.TenantConflictCoordinator;
 import xyz.firestige.deploy.application.lifecycle.PlanLifecycleService;
 import xyz.firestige.deploy.application.orchestration.TaskExecutionOrchestrator;
+import xyz.firestige.deploy.application.orchestration.TaskExecutionOrchestrator.TriFunction;
 import xyz.firestige.deploy.application.task.TaskOperationService;
 import xyz.firestige.deploy.domain.shared.vo.PlanId;
 import xyz.firestige.deploy.domain.task.TaskAggregate;
 import xyz.firestige.deploy.infrastructure.execution.TaskExecutor;
+import xyz.firestige.deploy.infrastructure.execution.TaskResult;
+import xyz.firestige.deploy.infrastructure.execution.TaskWorkerCreationContext;
 
 /**
  * 计划执行门面（RF-20: 为 Listener 专用）
@@ -162,30 +166,52 @@ public class PlanExecutionFacade {
 
     /**
      * 创建执行动作（策略模式）
+     * <p>
+     * T-032: 直接调用 execute()，无需设置标志位（正常执行）
      */
-    private BiConsumer<TaskExecutor, TaskAggregate> createExecuteAction() {
-        return (executor, task) -> executor.execute();
+    private TriFunction<TaskWorkerCreationContext, TaskExecutor, TaskAggregate, TaskResult> createExecuteAction() {
+        return (context, executor, task) -> executor.execute();
     }
 
     /**
      * 创建恢复动作（策略模式）
+     * <p>
+     * T-032: 设置重试标志位（从检查点恢复），然后调用 execute()
      */
-    private BiConsumer<TaskExecutor, TaskAggregate> createResumeAction() {
-        return (executor, task) -> executor.retry(true);
+    private TriFunction<TaskWorkerCreationContext, TaskExecutor, TaskAggregate, TaskResult> createResumeAction() {
+        return (context, executor, task) -> {
+            // ✅ T-032: 通过 context 设置重试标志位（从检查点）
+            context.getRuntimeContext().requestRetry(true);
+            return executor.execute();
+        };
     }
 
     /**
      * 创建重试动作（策略模式）
+     * <p>
+     * T-032: 设置重试标志位，然后调用 execute()
      */
-    private BiConsumer<TaskExecutor, TaskAggregate> createRetryAction(boolean fromCheckpoint) {
-        return (executor, task) -> executor.retry(fromCheckpoint);
+    private TriFunction<TaskWorkerCreationContext, TaskExecutor, TaskAggregate, TaskResult> createRetryAction(boolean fromCheckpoint) {
+        return (context, executor, task) -> {
+            // ✅ T-032: 通过 context 设置重试标志位
+            context.getRuntimeContext().requestRetry(fromCheckpoint);
+            return executor.execute();
+        };
     }
 
     /**
      * 创建回滚动作（策略模式）
+     * <p>
+     * T-032: 设置回滚标志位，然后调用 execute()
      */
-    private BiConsumer<TaskExecutor, TaskAggregate> createRollbackAction() {
-        return (executor, task) -> executor.invokeRollback();
+    private TriFunction<TaskWorkerCreationContext, TaskExecutor, TaskAggregate, TaskResult> createRollbackAction() {
+        return (context, executor, task) -> {
+            // ✅ T-032: 通过 context 设置回滚标志位
+            // 注意：这里的 version 需要从 task 或其他地方获取
+            String version = task.getPlanId().getValue();  // 临时方案：使用 planId 作为 version
+            context.getRuntimeContext().requestRollback(version);
+            return executor.execute();
+        };
     }
 
     /**

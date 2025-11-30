@@ -10,16 +10,17 @@ package xyz.firestige.deploy.domain.task;
  * - PAUSED → RUNNING: 恢复执行（原子操作，无中间状态）
  * - RUNNING → COMPLETED: 所有Stage完成
  * - RUNNING → FAILED: Stage失败
- * - FAILED → RUNNING: 重试
- * - FAILED → ROLLING_BACK: 开始回滚
- * - ROLLING_BACK → ROLLED_BACK: 回滚成功
- * - ROLLING_BACK → ROLLBACK_FAILED: 回滚失败
- * - ROLLED_BACK → RUNNING: 回滚后重试
+ * - FAILED → PENDING → RUNNING: 重试
+ * <p>
+ * 回滚设计说明（T-032 状态机简化）：
+ * - 回滚不使用专用状态，而是通过 Task.rollbackIntent 标志位标识
+ * - 回滚的状态转换：FAILED → PENDING → RUNNING → COMPLETED（与正常执行相同）
+ * - 回滚通过领域事件对外可见：TaskRollbackStarted / TaskRolledBack
+ * - 这样简化了状态机，避免状态膨胀和复杂的转换规则
  * <p>
  * 设计说明：
  * - 校验在创建时完成，不需要独立状态
  * - 恢复是原子操作，不需要 RESUMING 中间状态
- * - 回滚状态封装在 Task 内部，Plan 不感知
  */
 public enum TaskStatus {
 
@@ -53,20 +54,6 @@ public enum TaskStatus {
      */
     FAILED("执行失败"),
 
-    /**
-     * 回滚中
-     */
-    ROLLING_BACK("回滚中"),
-
-    /**
-     * 回滚失败（终态）
-     */
-    ROLLBACK_FAILED("回滚失败"),
-
-    /**
-     * 已回滚（终态）
-     */
-    ROLLED_BACK("已回滚"),
 
     /**
      * 已取消（终态）
@@ -87,17 +74,14 @@ public enum TaskStatus {
      * 是否为终态
      */
     public boolean isTerminal() {
-        return this == COMPLETED
-            || this == ROLLBACK_FAILED
-            || this == ROLLED_BACK
-            || this == CANCELLED;
+        return this == COMPLETED || this == CANCELLED;
     }
 
     /**
      * 是否为失败状态
      */
     public boolean isFailure() {
-        return this == FAILED || this == ROLLBACK_FAILED;
+        return this == FAILED;
     }
 
     /**
@@ -132,7 +116,7 @@ public enum TaskStatus {
      * 是否可以重试
      */
     public boolean canRetry() {
-        return this == FAILED || this == ROLLBACK_FAILED;
+        return this == FAILED;
     }
 }
 

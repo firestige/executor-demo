@@ -5,6 +5,202 @@
 
 ---
 
+## 2025-11-29
+
+### [T-033] ✅ 状态机简化：移除回滚专用状态，完全移除 StateManager
+
+**任务概述**：
+- 简化状态机设计，移除回滚专用状态（ROLLING_BACK/ROLLED_BACK/ROLLBACK_FAILED）
+- 使用标志位（rollbackIntent）+ 事件映射实现回滚可观测性
+- 完全移除 StateTransitionService 及策略模式（方案 A）
+- 让聚合根成为状态的唯一守门员
+
+**完成成果**：
+
+#### 1. 回滚状态简化
+✅ **添加回滚意图标志位**：
+- TaskAggregate 新增 `rollbackIntent: boolean` 字段
+- 提供管理方法：`markAsRollbackIntent()`, `clearRollbackIntent()`, `isRollbackIntent()`
+- 在 ExecutionPreparer 回滚准备时设置标志位
+
+✅ **事件发布映射**：
+- `start()` 方法：根据 rollbackIntent 发布 TaskRollbackStarted 或 TaskStarted
+- `complete()` 方法：根据 rollbackIntent 发布 TaskRolledBack 或 TaskCompleted，并清除标志
+- 外部通过领域事件感知回滚，内部状态保持简单（PENDING→RUNNING→COMPLETED）
+
+✅ **移除回滚专用状态**：
+- 从 TaskStatus 枚举删除：ROLLING_BACK, ROLLED_BACK, ROLLBACK_FAILED
+- 状态数量：10 → 7（**-30%**）
+- 删除聚合根方法：startRollback(), rollback(), completeRollback(), failRollback()
+- 删除领域服务方法：对应的 TaskDomainService 方法
+
+#### 2. 完全移除 StateManager（方案 A）
+
+✅ **删除策略模式基础设施**（**~1500 行代码**）：
+- 删除 `infrastructure/state/` 整个包
+- 删除 `StateTransitionService` 接口
+- 删除 `TaskStateManager` 实现类
+- 删除所有策略类（19 个文件）
+
+✅ **移除所有预检验**：
+- TaskDomainService：删除所有 `canTransition()` 调用，直接调用聚合根方法
+- TaskExecutor：删除所有 `canTransition()` 预检验
+- ExecutionDependencies：移除 StateTransitionService 字段和 getter
+- ExecutorConfiguration：移除 StateTransitionService Bean 定义
+- DefaultTaskWorkerFactory：移除 StateTransitionService 依赖
+
+✅ **聚合根保护状态**：
+- 所有状态转换由聚合根内部的 `IllegalStateException` 保护
+- 调用方通过 try-catch 处理状态转换失败
+
+✅ **状态检查分类**（**重要改进**）：
+- **核心不变式**（保留）：状态转换方法必须检查状态（start, complete, retry...）
+- **辅助操作**（移除）：只设置字段的方法不检查状态（restoreFromCheckpoint, recordCheckpoint...）
+- **由调用方保证时机**：ExecutionPreparer/TaskExecutor 负责在正确的时机调用辅助方法
+- **好处**：修改执行流程时，不会被旧的状态检查卡住
+
+#### 架构对比
+
+**Before (T-032)**:
+```
+TaskExecutor → StateTransitionService.canTransition() → TaskAggregate
+                        ↓                                      ↓
+                  策略模式验证                            状态检查 + 转换
+                  (19个策略类)                           (聚合根方法)
+```
+
+**After (T-033)**:
+```
+TaskExecutor → TaskDomainService → TaskAggregate
+                                          ↓
+                                  状态检查 + 转换 + 事件发布
+                                  (rollbackIntent 标志位)
+```
+
+#### 代码统计
+
+| 项目 | Before | After | 变化 |
+|------|--------|-------|------|
+| 状态枚举数量 | 10 | 7 | **-30%** |
+| 策略类文件数 | 19 | 0 | **-100%** |
+| state 包代码行数 | ~1500 | 0 | **-100%** |
+| TaskDomainService | 含预检验 | 无预检验 | **简化** |
+| 回滚专用方法 | 4 个 | 0 个 | **-100%** |
+
+#### 核心设计原则
+
+1. **聚合根是状态的守门员**：所有状态转换都由聚合根内部检查和保护
+2. **用标志位替代状态枚举**：回滚使用 `rollbackIntent` 标志，不增加专用状态
+3. **事件驱动可观测性**：外部通过领域事件（TaskRollbackStarted/TaskRolledBack）感知回滚
+4. **简化架构**：移除预检验层，状态转换失败通过异常处理
+
+#### 影响的文件
+
+**删除**：
+- `deploy/src/main/java/xyz/firestige/deploy/infrastructure/state/` （整个包，19个文件）
+- `deploy/src/main/java/xyz/firestige/deploy/domain/task/StateTransitionService.java`
+
+**修改**：
+- `TaskStatus.java`：移除 3 个回滚状态
+- `TaskAggregate.java`：添加 rollbackIntent 标志位，修改事件发布逻辑，删除回滚方法
+- `TaskDomainService.java`：移除 StateTransitionService 依赖和所有预检验
+- `ExecutionPreparer.java`：在回滚准备时设置 rollbackIntent
+- `TaskExecutor.java`：移除所有 canTransition 调用
+- `ExecutionDependencies.java`：移除 StateTransitionService
+- `ExecutorConfiguration.java`：移除 StateTransitionService Bean
+- `DefaultTaskWorkerFactory.java`：移除 StateTransitionService
+- `TaskStateProjectionUpdater.java`：更新事件映射逻辑
+
+**文档**：
+- 新增：`docs/temp/T-033-rollback-intent-flag-design.md`（完整设计文档）
+- 新增：`docs/design/state-machine-simplification.md`（状态机简化设计）
+- 新增：`docs/design/state-management-mechanism.md`（状态管理机制总结）
+
+#### 后续工作
+
+- [ ] 更新所有测试用例（移除对回滚状态的断言）
+- [ ] 验证回滚流程端到端测试
+- [ ] 更新状态机设计文档（docs/design/state-management.md）
+- [ ] 清理或归档临时设计文档
+
+**关联任务**：T-032（状态机重构）, T-028（回滚机制完善）
+
+---
+
+### [T-032] ✅ Task 状态机重构：准备器模式完成
+
+**任务概述**：
+- 修复状态机状态转换不受控问题
+- 修复检查点保存时序错误
+- 移除隐藏的状态转换
+- 采用准备器模式统一状态管理
+
+**完成成果**：
+
+#### 核心问题解决
+1. ✅ **状态转换收束**：所有状态转换统一到 ExecutionPreparer
+2. ✅ **检查点时序修复**：最后一个 Stage 不保存检查点
+3. ✅ **显式状态转换**：移除 completeStage() 的自动 complete()
+4. ✅ **统一执行入口**：只保留 execute() 方法，删除 retry() 和 rollback()
+
+#### 架构设计：准备器模式
+
+**核心类**：
+- `ExecutionPreparer`（200行）：根据 Task 状态和 Context 标志位完成准备工作
+- `ExecutionDependencies`（70行）：封装所有依赖服务
+- `TaskRuntimeContext`（增强）：添加执行信息（startIndex, executionMode）
+- `TaskExecutor`（重构，470行）：简化为 30 行的 execute() 方法
+
+**代码优化**：
+- execute() 方法：从 300+ 行减少到 30 行（**-90%**）
+- 总代码量：减少 48%（相比策略模式）
+- 删除了 retry() 和 rollback() 方法
+
+**状态转换表**：
+| 当前状态 | Context标志位 | 状态转换 | 执行模式 |
+|---------|---------------|---------|---------|
+| PENDING | - | PENDING → RUNNING | NORMAL, startIndex=0 |
+| PAUSED | - | PAUSED → RUNNING | NORMAL, startIndex=checkpoint+1 |
+| FAILED | retryRequested=true | FAILED → RUNNING | NORMAL, startIndex=0或checkpoint+1 |
+| FAILED | rollbackRequested=true | FAILED → ROLLING_BACK | ROLLBACK |
+| ROLLED_BACK | retryRequested=true | ROLLED_BACK → RUNNING | NORMAL |
+
+**使用方式**：
+```java
+// 重试（从头）
+context.requestRetry(false);
+executor.execute();
+
+// 重试（从检查点）
+context.requestRetry(true);
+executor.execute();
+
+// 回滚
+context.requestRollback(version);
+executor.execute();
+```
+
+**修改的文件**：
+- `TaskRuntimeContext.java`：添加标志位和执行信息
+- `ExecutionPreparer.java`：新建准备器
+- `ExecutionDependencies.java`：新建依赖对象
+- `TaskExecutor.java`：完全重构
+- `DefaultTaskWorkerFactory.java`：使用新架构
+- `TaskOperationService.java`：使用标志位驱动
+
+**文档产出**：
+- 设计方案：`T-032-final-solution-preparer-pattern.md`
+- 优化完成：`T-032-optimization-complete.md`
+- 完成报告：`T-032-core-refactoring-complete.md`
+
+**影响范围**：
+- ✅ 状态机管理统一
+- ✅ 检查点逻辑修复
+- ✅ 代码大幅简化
+- ⏳ 测试用例待更新
+
+---
+
 ## 2025-11-28
 
 ### [T-030] ✅ Nacos 多命名空间支持 & Redis ACK VersionTag 重构完成

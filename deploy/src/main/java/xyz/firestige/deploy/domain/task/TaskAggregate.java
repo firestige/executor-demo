@@ -54,6 +54,19 @@ public class TaskAggregate {
 
     private TaskStatus status;
     private StageProgress stageProgress;
+
+    /**
+     * 执行范围（T-034）
+     * <p>
+     * 定义本次执行的 Stage 范围 [startIndex, endIndex)
+     * - 正常执行：[0, totalStages)
+     * - 重试执行：[checkpoint+1, totalStages)
+     * - 回滚执行：[0, checkpoint+2)
+     *
+     * @since T-034 分离执行范围和执行进度
+     */
+    private ExecutionRange executionRange;
+
     private RetryPolicy retryPolicy;
 
     private TaskCheckpoint checkpoint;
@@ -71,6 +84,22 @@ public class TaskAggregate {
     // 运行时标志
     private boolean pauseRequested;
     private String cancelledBy;
+
+    /**
+     * 回滚意图标志
+     * <p>
+     * 用于标识当前任务是否处于回滚模式：
+     * - true: 任务使用旧配置重新执行（回滚）
+     * - false: 任务使用新配置正常执行
+     * <p>
+     * 设计说明：
+     * - 内部状态机不区分回滚/正常执行（都是 PENDING→RUNNING→COMPLETED）
+     * - 只在发布领域事件时根据此标志选择事件类型
+     * - 外部通过事件（TaskRollbackStarted/TaskRollbackCompleted）观测回滚
+     *
+     * @since T-032 状态机简化
+     */
+    private boolean rollbackIntent = false;
 
     // ============================================
     // RF-11: 领域事件收集
@@ -131,6 +160,10 @@ public class TaskAggregate {
     /**
      * 启动任务
      * 不变式：只有 PENDING 状态可以启动
+     * <p>
+     * 事件发布：
+     * - 回滚意图：发布 TaskRollbackStarted
+     * - 正常执行：发布 TaskStarted
      */
     public void start() {
         if (status != TaskStatus.PENDING) {
@@ -141,9 +174,23 @@ public class TaskAggregate {
         this.status = TaskStatus.RUNNING;
         this.timeRange = timeRange.start();
 
-        // ✅ 产生领域事件
-        TaskStartedEvent event = new TaskStartedEvent(TaskInfo.from(this),stageProgress.getTotalStages());
-        addDomainEvent(event);
+        // ✅ 根据回滚意图发布不同事件
+        if (rollbackIntent) {
+            // 回滚开始事件
+            TaskRollingBackEvent event = new TaskRollingBackEvent(
+                TaskInfo.from(this),
+                "回滚执行",
+                null  // stagesToRollback，回滚不需要逆序，使用 null
+            );
+            addDomainEvent(event);
+        } else {
+            // 正常启动事件
+            TaskStartedEvent event = new TaskStartedEvent(
+                TaskInfo.from(this),
+                stageProgress.getTotalStages()
+            );
+            addDomainEvent(event);
+        }
     }
 
     /**
@@ -237,24 +284,10 @@ public class TaskAggregate {
     }
 
     /**
-     * 完成当前 Stage（原有方法，保持兼容）
-     * 不变式：必须处于 RUNNING 状态
-     */
-    public void completeStage(StageResult result) {
-        validateCanCompleteStage();
-
-        this.stageResults.add(result);
-        this.stageProgress = stageProgress.next();
-
-        // 检查是否所有 Stage 完成
-        if (stageProgress.isCompleted()) {
-            complete();
-        }
-    }
-
-    /**
      * 完成当前 Stage（RF-18: 新方法，带进度信息）
      * 不变式：必须处于 RUNNING 状态
+     *
+     * @since T-032 状态机重构：移除自动 complete()，由 TaskExecutor 显式调用
      */
     public void completeStage(String stageName, Duration duration) {
         validateCanCompleteStage();
@@ -269,10 +302,8 @@ public class TaskAggregate {
         TaskStageCompletedEvent event = new TaskStageCompletedEvent(TaskInfo.from(this), stageName, result);
         addDomainEvent(event);
 
-        // 检查是否所有 Stage 完成
-        if (stageProgress.isCompleted()) {
-            complete();
-        }
+        // ✅ T-032: 移除自动转换，由 TaskExecutor 显式调用 completeTask()
+        // 不再检查 stageProgress.isCompleted() 并自动 complete()
     }
 
     /**
@@ -323,6 +354,10 @@ public class TaskAggregate {
 
     /**
      * 完成任务（RF-18: 改为 public，支持外部调用）
+     * <p>
+     * 事件发布：
+     * - 回滚意图：发布 TaskRolledBack（回滚完成）
+     * - 正常执行：发布 TaskCompleted
      */
     public void complete() {
         if (status != TaskStatus.RUNNING) {
@@ -331,7 +366,8 @@ public class TaskAggregate {
             );
         }
 
-        if (stageProgress != null && !stageProgress.isCompleted()) {
+        // T-034: 使用 isExecutionCompleted() 判断（考虑执行范围）
+        if (!isExecutionCompleted()) {
             throw new IllegalStateException(
                 String.format("还有未完成的 Stage，无法完成任务，taskId: %s", taskId.getValue())
             );
@@ -341,20 +377,38 @@ public class TaskAggregate {
         this.timeRange = timeRange.end();
         calculateDuration();
 
-        // ✅ 产生领域事件
+        // ✅ 根据回滚意图发布不同事件
         List<String> completedStages = stageResults.stream().map(StageResult::getStageName).toList();
-        TaskCompletedEvent event = new TaskCompletedEvent(TaskInfo.from(this), duration.toDuration(), completedStages);
-        addDomainEvent(event);
+
+        if (rollbackIntent) {
+            // 回滚完成事件
+            TaskRolledBackEvent event = new TaskRolledBackEvent(
+                TaskInfo.from(this),
+                completedStages
+            );
+            addDomainEvent(event);
+
+            // ✅ 回滚完成后清除标志
+            this.rollbackIntent = false;
+        } else {
+            // 正常完成事件
+            TaskCompletedEvent event = new TaskCompletedEvent(
+                TaskInfo.from(this),
+                duration.toDuration(),
+                completedStages
+            );
+            addDomainEvent(event);
+        }
     }
 
     /**
      * 重试任务
-     * 不变式：只有 FAILED 或 ROLLED_BACK 状态可以重试
+     * 不变式：只有 FAILED 状态可以重试
      */
     public void retry(boolean fromCheckpoint, Integer globalMaxRetry) {
-        if (status != TaskStatus.FAILED && status != TaskStatus.ROLLED_BACK) {
+        if (status != TaskStatus.FAILED) {
             throw new IllegalStateException(
-                String.format("只有 FAILED 或 ROLLED_BACK 状态可以重试，当前状态: %s, taskId: %s", status, taskId.getValue())
+                String.format("只有 FAILED 状态可以重试，当前状态: %s, taskId: %s", status, taskId.getValue())
             );
         }
 
@@ -384,12 +438,15 @@ public class TaskAggregate {
 
     /**
      * 重试任务（RF-18: 新方法，无参数简化版）
-     * 不变式：只有 FAILED 或 ROLLED_BACK 状态可以重试
+     * <p>
+     * T-032: 重试先转到 PENDING 状态，然后由 ExecutionPreparer 再调用 startTask()
+     * <p>
+     * 不变式：只有 FAILED 状态可以重试
      */
     public void retry() {
-        if (status != TaskStatus.FAILED && status != TaskStatus.ROLLED_BACK) {
+        if (status != TaskStatus.FAILED) {
             throw new IllegalStateException(
-                String.format("只有 FAILED 或 ROLLED_BACK 状态可以重试，当前状态: %s, taskId: %s", status, taskId.getValue())
+                String.format("只有 FAILED 状态可以重试，当前状态: %s, taskId: %s", status, taskId.getValue())
             );
         }
 
@@ -402,87 +459,11 @@ public class TaskAggregate {
             this.stageProgress = stageProgress.reset();
         }
 
-        this.status = TaskStatus.RUNNING;
+        // ✅ T-032: 先转到 PENDING 状态（待执行），而不是直接 RUNNING
+        this.status = TaskStatus.PENDING;
 
         // ✅ 产生领域事件
         TaskRetryStartedEvent event = new TaskRetryStartedEvent(TaskInfo.from(this), false);
-        addDomainEvent(event);
-    }
-
-    /**
-     * 开始回滚
-     * 不变式：必须有可用的回滚快照
-     */
-    public void startRollback(String reason) {
-        if (prevConfigSnapshot == null) {
-            throw new IllegalStateException(
-                String.format("无可用的回滚快照，taskId: %s", taskId.getValue())
-            );
-        }
-        this.status = TaskStatus.ROLLING_BACK;
-
-        // ✅ 产生领域事件
-        TaskRollingBackEvent event = new TaskRollingBackEvent(TaskInfo.from(this), reason, null);
-        addDomainEvent(event);
-    }
-
-    /**
-     * 回滚任务（RF-18: 新方法，无参数简化版）
-     * 不变式：终态任务无法回滚
-     */
-    public void rollback() {
-        if (status.isTerminal()) {
-            throw new IllegalStateException(
-                String.format("终态任务无法回滚，当前状态: %s, taskId: %s", status, taskId.getValue())
-            );
-        }
-
-        this.status = TaskStatus.ROLLING_BACK;
-
-        // ✅ 产生领域事件
-        TaskRollingBackEvent event = new TaskRollingBackEvent(TaskInfo.from(this), "系统触发回滚", null);
-        addDomainEvent(event);
-    }
-
-    /**
-     * 完成回滚
-     * 不变式：必须处于 ROLLING_BACK 状态
-     */
-    public void completeRollback() {
-        if (status != TaskStatus.ROLLING_BACK) {
-            throw new IllegalStateException(
-                String.format("非 ROLLING_BACK 状态无法完成回滚，当前状态: %s, taskId: %s", status, taskId.getValue())
-            );
-        }
-        this.status = TaskStatus.ROLLED_BACK;
-        this.timeRange = timeRange.end();
-        calculateDuration();
-
-        // ✅ 产生领域事件
-        TaskRolledBackEvent event = new TaskRolledBackEvent(TaskInfo.from(this), null);
-//        if (prevConfigSnapshot != null) {
-//            event.setPrevDeployUnitVersion(prevConfigSnapshot.getDeployUnitVersion());
-//        }
-        addDomainEvent(event);
-    }
-
-    /**
-     * 回滚失败
-     * 不变式：必须处于 ROLLING_BACK 状态
-     */
-    public void failRollback(String reason) {
-        if (status != TaskStatus.ROLLING_BACK) {
-            throw new IllegalStateException(
-                String.format("非 ROLLING_BACK 状态无法标记回滚失败，当前状态: %s, taskId: %s", status, taskId.getValue())
-            );
-        }
-        this.status = TaskStatus.ROLLBACK_FAILED;
-        this.timeRange = timeRange.end();
-        calculateDuration();
-
-        // ✅ 产生领域事件
-        TaskRollbackFailedEvent event = new TaskRollbackFailedEvent(TaskInfo.from(this), FailureInfo.of(ErrorType.BUSINESS_ERROR, reason), null);
-        event.setMessage("回滚失败: " + reason);
         addDomainEvent(event);
     }
 
@@ -586,7 +567,17 @@ public class TaskAggregate {
 
     public TaskStatus getStatus() { return status; }
 
-    public int getCurrentStageIndex() { 
+    public StageProgress getStageProgress() { return stageProgress; }
+
+    /**
+     * 获取执行范围
+     *
+     * @return ExecutionRange 实例
+     * @since T-034 分离执行范围和执行进度
+     */
+    public ExecutionRange getExecutionRange() { return executionRange; }
+
+    public int getCurrentStageIndex() {
         return stageProgress != null ? stageProgress.getCurrentStageIndex() : 0; 
     }
 
@@ -605,12 +596,11 @@ public class TaskAggregate {
         }
     }
 
-    public int getTotalStages() { 
-        return stageProgress != null ? stageProgress.getTotalStages() : 0; 
-    }
     public void setTotalStages(List<TaskStage> stages) {
         this.stageProgress = StageProgress.initial(stages);
         this.retryPolicy = RetryPolicy.initial(null);
+        // T-034: 初始化执行范围（默认为完整范围）
+        this.executionRange = ExecutionRange.full(stages.size());
     }
 
     public TaskCheckpoint getCheckpoint() { return checkpoint; }
@@ -622,7 +612,9 @@ public class TaskAggregate {
      * 1. 只有 RUNNING 状态才能记录检查点
      * 2. 一个 Task 最多保留 1 个检查点（覆盖旧的）
      * 3. 检查点记录当前已完成的 Stage 列表和索引
-     * 
+     * <p>
+     * T-033: 保存所有 Stage 名称，用于重建 StageProgress
+     *
      * @param completedStageNames 已完成的 Stage 名称列表
      * @param lastCompletedIndex 最后完成的 Stage 索引
      */
@@ -639,22 +631,23 @@ public class TaskAggregate {
             );
         }
         
+        // ✅ 获取所有 Stage 名称（用于重建 StageProgress）
+        List<String> allStageNames = stageProgress != null
+            ? stageProgress.getStageNames()
+            : Collections.emptyList();
+
         // 创建新的检查点（覆盖旧的）
-        TaskCheckpoint newCheckpoint = new TaskCheckpoint();
-        newCheckpoint.getCompletedStageNames().addAll(completedStageNames);
-        newCheckpoint.setLastCompletedStageIndex(lastCompletedIndex);
-        newCheckpoint.setTimestamp(java.time.LocalDateTime.now());
-        
-        this.checkpoint = newCheckpoint;
+        this.checkpoint = new TaskCheckpoint(lastCompletedIndex, completedStageNames, allStageNames);
     }
     
     /**
      * 恢复到检查点
      * <p>
-     * 业务规则：
-     * 1. 必须有有效的检查点
-     * 2. 只能在 retry 时调用（FAILED/ROLLED_BACK 状态）
-     * 
+     * T-033: 移除状态检查，这是辅助方法，只设置字段不改变状态
+     * 调用方（ExecutionPreparer）负责在正确的时机调用
+     * <p>
+     * 关键：从检查点重建 StageProgress（支持重启后恢复）
+     *
      * @param checkpoint 要恢复的检查点
      */
     public void restoreFromCheckpoint(TaskCheckpoint checkpoint) {
@@ -662,14 +655,12 @@ public class TaskAggregate {
             throw new IllegalArgumentException("检查点不能为空");
         }
         
-        if (status != TaskStatus.FAILED && status != TaskStatus.ROLLED_BACK) {
-            throw new IllegalStateException(
-                String.format("只有 FAILED/ROLLED_BACK 状态才能恢复检查点，当前状态: %s, taskId: %s", status, taskId.getValue())
-            );
-        }
-        
         this.checkpoint = checkpoint;
-        // 注意：不改变 status，由 retry() 方法负责状态转换
+
+        // ✅ 从检查点重建 StageProgress（委托给 StageProgress 工厂方法）
+        this.stageProgress = StageProgress.of(checkpoint);
+
+        // 注意：不改变 status，由 TaskExecutor 统一驱动状态转换
     }
     
     /**
@@ -682,6 +673,92 @@ public class TaskAggregate {
      */
     public void clearCheckpoint() {
         this.checkpoint = null;
+    }
+
+    // ============================================
+    // T-034: 执行范围准备方法
+    // ============================================
+
+    /**
+     * 准备回滚执行范围（使用内部 checkpoint）
+     * <p>
+     * 回滚时只执行已改变的 Stage：[0, checkpoint+2)
+     * <p>
+     * 例如：checkpoint.lastCompletedIndex=0，执行范围=[0,2)，即 stage-1 和 stage-2
+     *
+     * @since T-034 分离执行范围和执行进度
+     */
+    public void prepareRollbackRange() {
+        if (this.checkpoint == null) {
+            throw new IllegalStateException("无检查点，无法准备回滚");
+        }
+        this.executionRange = ExecutionRange.forRollback(checkpoint);
+        this.stageProgress = stageProgress.reset();  // 重置进度到 0
+    }
+
+    /**
+     * 准备回滚执行范围（支持外部传入 checkpoint）
+     * <p>
+     * 用于无状态重建场景
+     *
+     * @param checkpoint 检查点对象
+     * @since T-034 分离执行范围和执行进度
+     */
+    public void prepareRollbackRange(TaskCheckpoint checkpoint) {
+        if (checkpoint == null) {
+            throw new IllegalArgumentException("checkpoint 不能为空");
+        }
+        this.executionRange = ExecutionRange.forRollback(checkpoint);
+        // 从检查点重建 StageProgress，然后重置到 0
+        this.stageProgress = StageProgress.of(checkpoint).reset();
+    }
+
+    /**
+     * 准备重试执行范围
+     * <p>
+     * 重试时从检查点后开始执行：[checkpoint+1, totalStages)
+     *
+     * @param checkpoint 检查点对象
+     * @since T-034 分离执行范围和执行进度
+     */
+    public void prepareRetryRange(TaskCheckpoint checkpoint) {
+        if (checkpoint == null) {
+            throw new IllegalArgumentException("checkpoint 不能为空");
+        }
+        this.executionRange = ExecutionRange.forRetry(checkpoint);
+        // 从检查点恢复进度（currentIndex = checkpoint+1）
+        this.stageProgress = StageProgress.of(checkpoint);
+    }
+
+    /**
+     * 判断执行范围是否完成
+     * <p>
+     * 用于 complete() 方法判断是否所有需要执行的 Stage 都完成了
+     *
+     * @return true = 已完成，false = 未完成
+     * @since T-034 分离执行范围和执行进度
+     */
+    public boolean isExecutionCompleted() {
+        if (stageProgress == null || executionRange == null) {
+            return false;
+        }
+        int currentIndex = stageProgress.getCurrentStageIndex();
+        int totalStages = stageProgress.getTotalStages();
+        int effectiveEnd = executionRange.getEffectiveEndIndex(totalStages);
+        return currentIndex >= effectiveEnd;
+    }
+
+    /**
+     * 获取进度视图（用于发布事件）
+     *
+     * @return TaskProgressView 实例
+     * @since T-034 分离执行范围和执行进度
+     */
+    public TaskProgressView getProgressView() {
+        if (stageProgress == null || executionRange == null) {
+            throw new IllegalStateException("stageProgress 或 executionRange 未初始化");
+        }
+        return TaskProgressView.from(stageProgress, executionRange);
     }
 
     public List<StageResult> getStageResults() { return stageResults; }
@@ -707,8 +784,44 @@ public class TaskAggregate {
     public boolean isPauseRequested() { return pauseRequested; }
     public String getCancelledBy() { return cancelledBy; }
     
+    /**
+     * 标记任务为回滚意图
+     * <p>
+     * 在准备回滚执行时调用，表明接下来的执行是回滚操作
+     */
+    public void markAsRollbackIntent() {
+        this.rollbackIntent = true;
+    }
+
+    /**
+     * 清除回滚意图标志
+     * <p>
+     * 在回滚完成或重置时调用
+     */
+    public void clearRollbackIntent() {
+        this.rollbackIntent = false;
+    }
+
+    /**
+     * 检查是否处于回滚意图模式
+     */
+    public boolean isRollbackIntent() {
+        return rollbackIntent;
+    }
+
+    /**
+     * 获取 Stage 总数
+     * <p>
+     * 用于 CheckpointService 验证是否是最后一个 Stage
+     *
+     * @return Stage 总数
+     * @since T-032 状态机重构
+     */
+    public int getTotalStages() {
+        return stageProgress != null ? stageProgress.getTotalStages() : 0;
+    }
+
     // RF-13: 值对象访问方法
-    public StageProgress getStageProgress() { return stageProgress; }
     public RetryPolicy getRetryPolicy() { return retryPolicy; }
     public TimeRange getTimeRange() { return timeRange; }
     public TaskDuration getDuration() { return duration; }
@@ -719,5 +832,9 @@ public class TaskAggregate {
 
     public void setPrevConfig(TenantConfig prevConfig) {
         this.prevConfig = prevConfig;
+    }
+
+    public FailureInfo getFailureInfo() {
+        return null;
     }
 }

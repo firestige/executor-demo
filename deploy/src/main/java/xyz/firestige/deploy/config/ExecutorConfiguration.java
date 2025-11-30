@@ -23,7 +23,6 @@ import xyz.firestige.deploy.domain.plan.PlanDomainService;
 import xyz.firestige.deploy.domain.plan.PlanRepository;
 import xyz.firestige.deploy.domain.shared.event.DomainEventPublisher;
 import xyz.firestige.deploy.domain.task.CheckpointRepository;
-import xyz.firestige.deploy.domain.task.StateTransitionService;
 import xyz.firestige.deploy.domain.task.TaskDomainService;
 import xyz.firestige.deploy.domain.task.TaskRepository;
 import xyz.firestige.deploy.domain.task.TaskRuntimeRepository;
@@ -37,7 +36,6 @@ import xyz.firestige.deploy.infrastructure.persistence.plan.InMemoryPlanReposito
 import xyz.firestige.deploy.infrastructure.persistence.task.InMemoryTaskRepository;
 import xyz.firestige.deploy.infrastructure.persistence.task.InMemoryTaskRuntimeRepository;
 import xyz.firestige.deploy.infrastructure.scheduling.TenantConflictManager;
-import xyz.firestige.deploy.infrastructure.state.TaskStateManager;
 import xyz.firestige.deploy.infrastructure.validation.ValidationChain;
 import xyz.firestige.deploy.infrastructure.validation.validator.BusinessRuleValidator;
 import xyz.firestige.deploy.infrastructure.validation.validator.NetworkEndpointValidator;
@@ -67,14 +65,6 @@ public class ExecutorConfiguration {
     // ========== 基础设施 Bean ==========
 
 
-
-    @Bean
-    public StateTransitionService StateTransitionService() {
-        return new TaskStateManager();
-    }
-
-
-
     // ExecutorProperties is now auto-configured via @EnableConfigurationProperties
     // No manual bean creation needed
 
@@ -93,24 +83,17 @@ public class ExecutorConfiguration {
     /**
      * RF-18: TaskWorkerFactory Bean（方案C架构）
      * 
-     * <p>注入依赖：
-     * <ul>
-     *   <li>TaskDomainService - 封装 save + publish 逻辑</li>
-     *   <li>StateTransitionService - 前置检查</li>
-     *   <li>ApplicationEventPublisher - 监控事件</li>
-     * </ul>
+     * <p>T-033: 移除 StateTransitionService，状态转换由聚合根保护
      */
     @Bean
     public TaskWorkerFactory taskWorkerFactory(
             TaskDomainService taskDomainService,
-            StateTransitionService stateTransitionService,
             ApplicationEventPublisher applicationEventPublisher,
             CheckpointService checkpointService,
             TenantConflictManager conflictManager,
             ExecutorProperties executorProperties) {
         return new DefaultTaskWorkerFactory(
                 taskDomainService,
-                stateTransitionService,
                 applicationEventPublisher,
                 checkpointService,
                 conflictManager,
@@ -151,19 +134,17 @@ public class ExecutorConfiguration {
     /**
      * RF-18: TaskDomainService Bean（方案C架构）
      * 
-     * <p>注入 StateTransitionService 接口而不是 TaskStateManager 实现
+     * <p>T-033: 移除 StateTransitionService，状态转换由聚合根保护
      */
     @Bean
     public TaskDomainService taskDomainService(
             TaskRepository taskRepository,
             TaskRuntimeRepository taskRuntimeRepository,
-            StateTransitionService stateTransitionService,
             DomainEventPublisher domainEventPublisher,
             StageFactory stageFactory) {  // T-028: 新增依赖用于回滚时重新装配 Stages
         return new TaskDomainService(
                 taskRepository,
                 taskRuntimeRepository,
-                stateTransitionService,
                 domainEventPublisher,
                 stageFactory
         );

@@ -42,22 +42,19 @@ public class TaskDomainService {
 
     private static final Logger logger = LoggerFactory.getLogger(TaskDomainService.class);
 
-    // 核心依赖（RF-18: 方案C架构）
+    // 核心依赖（T-033: 移除 StateTransitionService，状态转换由聚合根保护）
     private final TaskRepository taskRepository;
     private final TaskRuntimeRepository taskRuntimeRepository;
-    private final StateTransitionService stateTransitionService;  // ✅ 状态转换服务（依赖倒置）
     private final DomainEventPublisher domainEventPublisher;
     private final StageFactory stageFactory;  // T-028: 回滚时重新装配 Stages
 
     public TaskDomainService(
             TaskRepository taskRepository,
             TaskRuntimeRepository taskRuntimeRepository,
-            StateTransitionService stateTransitionService,
             DomainEventPublisher domainEventPublisher,
             StageFactory stageFactory) {
         this.taskRepository = taskRepository;
         this.taskRuntimeRepository = taskRuntimeRepository;
-        this.stateTransitionService = stateTransitionService;
         this.domainEventPublisher = domainEventPublisher;
         this.stageFactory = stageFactory;
     }
@@ -116,7 +113,7 @@ public class TaskDomainService {
 
         List<String> names = stages.stream().map(TaskStage::getName).toList();
         // 发布 TaskCreated 事件
-        TaskCreatedEvent createdEvent = new TaskCreatedEvent(TaskInfo.from(task), names);
+        TaskCreatedEvent createdEvent = new TaskCreatedEvent(task, names);
         domainEventPublisher.publish(createdEvent);
 
         logger.debug("[TaskDomainService] Task Stages 构建完成: {}, stage数量: {}", task.getTaskId(), stages.size());
@@ -125,30 +122,26 @@ public class TaskDomainService {
     // ========== 方案C: 执行生命周期方法（封装save+publish逻辑）==========
 
     /**
-     * 启动任务（内部前置检查）
+     * 启动任务
+     * <p>
+     * T-033: 状态检查由聚合根内部保护，不需要预检验
      */
     public void startTask(TaskAggregate task, TaskRuntimeContext context) {
         logger.info("[TaskDomainService] 启动任务: {}", task.getTaskId());
         
-        if (!stateTransitionService.canTransition(task, TaskStatus.RUNNING, context)) {
-            throw new IllegalStateException("任务当前状态不允许启动: " + task.getStatus());
-        }
-        
-        task.start();
+        task.start();  // 聚合根内部会检查状态
         saveAndPublishEvents(task);
     }
 
     /**
      * 恢复任务
+     * <p>
+     * T-033: 状态检查由聚合根内部保护
      */
     public void resumeTask(TaskAggregate task, TaskRuntimeContext context) {
         logger.info("[TaskDomainService] 恢复任务: {}", task.getTaskId());
         
-        if (!stateTransitionService.canTransition(task, TaskStatus.RUNNING, context)) {
-            throw new IllegalStateException("任务当前状态不允许恢复: " + task.getStatus());
-        }
-        
-        task.resume();
+        task.resume();  // 聚合根内部会检查状态
         saveAndPublishEvents(task);
         
         // 更新 RuntimeContext
@@ -218,91 +211,50 @@ public class TaskDomainService {
 
     /**
      * 暂停任务
+     * <p>
+     * T-033: 状态检查由聚合根内部保护
      */
     public void pauseTask(TaskAggregate task, TaskRuntimeContext context) {
         logger.info("[TaskDomainService] 暂停任务: {}", task.getTaskId());
         
-        if (!stateTransitionService.canTransition(task, TaskStatus.PAUSED, context)) {
-            throw new IllegalStateException("任务当前状态不允许暂停: " + task.getStatus());
-        }
-        
-        task.applyPauseAtStageBoundary();
+        task.applyPauseAtStageBoundary();  // 聚合根内部会检查状态
         saveAndPublishEvents(task);
     }
 
     /**
      * 取消任务
+     * <p>
+     * T-033: 状态检查由聚合根内部保护
      */
     public void cancelTask(TaskAggregate task, String reason, TaskRuntimeContext context) {
         logger.info("[TaskDomainService] 取消任务: {}, reason: {}", task.getTaskId(), reason);
         
-        if (!stateTransitionService.canTransition(task, TaskStatus.CANCELLED, context)) {
-            throw new IllegalStateException("任务当前状态不允许取消: " + task.getStatus());
-        }
-        
-        task.cancel(reason);
+        task.cancel(reason);  // 聚合根内部会检查状态
         saveAndPublishEvents(task);
     }
 
     /**
      * 完成任务
+     * <p>
+     * T-033: 状态检查由聚合根内部保护
      */
     public void completeTask(TaskAggregate task, TaskRuntimeContext context) {
         logger.info("[TaskDomainService] 完成任务: {}", task.getTaskId());
         
-        if (!stateTransitionService.canTransition(task, TaskStatus.COMPLETED, context)) {
-            throw new IllegalStateException("任务当前状态不允许完成: " + task.getStatus());
-        }
-        
-        task.complete();
+        task.complete();  // 聚合根内部会检查状态
         saveAndPublishEvents(task);
     }
 
-    /**
-     * 开始回滚
-     */
-    public void startRollback(TaskAggregate task, TaskRuntimeContext context) {
-        logger.info("[TaskDomainService] 开始回滚: {}", task.getTaskId());
-        
-        if (!stateTransitionService.canTransition(task, TaskStatus.ROLLING_BACK, context)) {
-            throw new IllegalStateException("任务当前状态不允许回滚: " + task.getStatus());
-        }
-        
-        task.rollback();
-        saveAndPublishEvents(task);
-    }
-
-    /**
-     * 回滚完成
-     */
-    public void completeRollback(TaskAggregate task, TaskRuntimeContext context) {
-        logger.info("[TaskDomainService] 回滚完成: {}", task.getTaskId());
-        
-        task.completeRollback();
-        saveAndPublishEvents(task);
-    }
-
-    /**
-     * 回滚失败
-     */
-    public void failRollback(TaskAggregate task, FailureInfo failure, TaskRuntimeContext context) {
-        logger.error("[TaskDomainService] 回滚失败: {}, reason: {}", task.getTaskId(), failure.getErrorMessage());
-        
-        task.failRollback(failure.getErrorMessage());
-        saveAndPublishEvents(task);
-    }
 
     /**
      * 重试任务
+     * <p>
+     * T-033: 状态检查由聚合根内部保护
      */
     public void retryTask(TaskAggregate task, TaskRuntimeContext context) {
         logger.info("[TaskDomainService] 重试任务: {}", task.getTaskId());
         
-        if (!stateTransitionService.canTransition(task, TaskStatus.RUNNING, context)) {
-            throw new IllegalStateException("任务当前状态不允许重试: " + task.getStatus());
-        }
-        
-        task.retry();
+        task.retry();  // 聚合根内部会检查状态
         saveAndPublishEvents(task);
     }
 
@@ -439,7 +391,7 @@ public class TaskDomainService {
 
         // 2. 检查状态是否允许回滚
         TaskStatus status = task.getStatus();
-        if (status != TaskStatus.FAILED && status != TaskStatus.PAUSED && status != TaskStatus.ROLLBACK_FAILED) {
+        if (status != TaskStatus.FAILED && status != TaskStatus.PAUSED) {
             logger.warn("[TaskDomainService] Task {} 状态 {} 不允许回滚", task.getTaskId(), status);
             return null;
         }

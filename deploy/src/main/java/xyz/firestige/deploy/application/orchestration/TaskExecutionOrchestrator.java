@@ -5,6 +5,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Semaphore;
 import java.util.function.BiConsumer;
+import java.util.function.BiFunction;
 import java.util.function.Function;
 
 import org.slf4j.Logger;
@@ -18,6 +19,7 @@ import xyz.firestige.deploy.domain.task.TaskAggregate;
 import xyz.firestige.deploy.domain.task.TaskRuntimeContext;
 import xyz.firestige.deploy.domain.task.TaskRuntimeRepository;
 import xyz.firestige.deploy.infrastructure.execution.TaskExecutor;
+import xyz.firestige.deploy.infrastructure.execution.TaskResult;
 import xyz.firestige.deploy.infrastructure.execution.TaskWorkerCreationContext;
 import xyz.firestige.deploy.infrastructure.execution.TaskWorkerFactory;
 import xyz.firestige.deploy.infrastructure.execution.stage.TaskStage;
@@ -43,8 +45,7 @@ import xyz.firestige.deploy.infrastructure.execution.stage.TaskStage;
  * - 聚焦于任务执行的编排和调度
  * - 不涉及业务逻辑和事务管理
  * - 内部管理线程池和并发许可
- *
- * @since RF-20 - 服务拆分
+ * T-032: 支持三参数策略函数（Context, Executor, Task）
  */
 public class TaskExecutionOrchestrator {
 
@@ -55,6 +56,14 @@ public class TaskExecutionOrchestrator {
     private final ExecutorService executorService;
     private final Semaphore concurrencyLimit;
     private final int maxConcurrency;
+
+    /**
+     * T-032: 三参数函数接口
+     */
+    @FunctionalInterface
+    public interface TriFunction<T, U, V, R> {
+        R apply(T t, U u, V v);
+    }
 
     public TaskExecutionOrchestrator(
             TaskWorkerFactory taskWorkerFactory,
@@ -79,17 +88,19 @@ public class TaskExecutionOrchestrator {
      * 1. 提交所有 Task 到线程池
      * 2. 通过 Semaphore 控制并发数
      * 3. 执行传入的策略（executorAction）
+     * <p>
+     * T-032: 策略函数现在接收 TaskWorkerCreationContext，可以在创建 executor 前设置标志位
      *
      * @param planId Plan ID
      * @param tasks 任务列表
-     * @param executorAction 执行策略（execute/resume/retry/rollback）
+     * @param executorAction 执行策略（接收 context, executor, task）
      * @param actionName 操作名称（用于日志）
      * @param conflictCallback 冲突检查回调（返回 true 表示允许执行）
      */
     public void orchestrate(
             PlanId planId,
             List<TaskAggregate> tasks,
-            BiConsumer<TaskExecutor, TaskAggregate> executorAction,
+            TriFunction<TaskWorkerCreationContext, TaskExecutor, TaskAggregate, TaskResult> executorAction,
             String actionName,
             Function<TaskAggregate, Boolean> conflictCallback) {
 
@@ -122,7 +133,7 @@ public class TaskExecutionOrchestrator {
     private void submitTaskAction(
             PlanId planId,
             TaskAggregate task,
-            BiConsumer<TaskExecutor, TaskAggregate> executorAction,
+            TriFunction<TaskWorkerCreationContext, TaskExecutor, TaskAggregate, TaskResult> executorAction,
             String actionName,
             Function<TaskAggregate, Boolean> conflictCallback) {
 
@@ -153,7 +164,8 @@ public class TaskExecutionOrchestrator {
                 TaskExecutor executor = taskWorkerFactory.create(context);
 
                 // 2.4 执行传入的策略（execute/resume/retry/rollback）
-                executorAction.accept(executor, task);
+                // T-032: 策略函数接收 context, executor, task 三个参数
+                executorAction.apply(context, executor, task);
 
                 logger.info("[TaskExecutionOrchestrator] Task {} {} 完成", taskId, actionName);
 

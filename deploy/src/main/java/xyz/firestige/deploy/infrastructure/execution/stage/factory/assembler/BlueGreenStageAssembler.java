@@ -205,8 +205,7 @@ public class BlueGreenStageAssembler implements StageAssembler {
             for (var rule : config.getRouteRules()) {
                 Map<String, String> routeMap = new HashMap<>();
                 routeMap.put("id", rule.id());
-                routeMap.put("sourceUri", rule.sourceUri().toString());
-                routeMap.put("targetUri", rule.targetUri().toString());
+                routeMap.put("targetUri", rule.targets());
                 routes.add(routeMap);
             }
         }

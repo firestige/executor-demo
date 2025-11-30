@@ -73,22 +73,38 @@ public class TaskStateProjectionUpdater {
         logger.debug("[投影更新] Task失败: taskId={}", event.getTaskId());
     }
 
+    /**
+     * 回滚开始事件监听
+     * <p>
+     * T-032: 回滚不改变Task状态，仍保持 RUNNING，只是标志位不同
+     * 投影只记录状态为 RUNNING
+     */
     @EventListener
     public void onTaskRollingBack(TaskRollingBackEvent event) {
-        updateStatus(event.getTaskId(), TaskStatus.ROLLING_BACK);
-        logger.debug("[投影更新] Task回滚中: taskId={}", event.getTaskId());
+        updateStatus(event.getTaskId(), TaskStatus.RUNNING);
+        logger.debug("[投影更新] Task回滚中(RUNNING): taskId={}", event.getTaskId());
     }
 
+    /**
+     * 回滚完成事件监听
+     * <p>
+     * T-032: 回滚完成后Task状态为 COMPLETED
+     */
     @EventListener
     public void onTaskRolledBack(TaskRolledBackEvent event) {
-        updateStatus(event.getTaskId(), TaskStatus.ROLLED_BACK);
-        logger.debug("[投影更新] Task回滚完成: taskId={}", event.getTaskId());
+        updateStatus(event.getTaskId(), TaskStatus.COMPLETED);
+        logger.debug("[投影更新] Task回滚完成(COMPLETED): taskId={}", event.getTaskId());
     }
 
+    /**
+     * 回滚失败事件监听
+     * <p>
+     * T-032: 回滚失败事件已废弃，回滚失败就是普通的 TaskFailedEvent
+     */
     @EventListener
     public void onTaskRollbackFailed(TaskRollbackFailedEvent event) {
-        updateStatus(event.getTaskId(), TaskStatus.ROLLBACK_FAILED);
-        logger.debug("[投影更新] Task回滚失败: taskId={}", event.getTaskId());
+        updateStatus(event.getTaskId(), TaskStatus.FAILED);
+        logger.debug("[投影更新] Task回滚失败(FAILED): taskId={}", event.getTaskId());
     }
 
     @EventListener

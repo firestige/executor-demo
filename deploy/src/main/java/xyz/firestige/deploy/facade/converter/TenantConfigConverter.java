@@ -81,12 +81,9 @@ public class TenantConfigConverter {
 
         // 路由规则
         List<RouteRule> rules = external.getNetworkEndpoints().stream()
-                .map(ep -> RouteRule.of(
+                .map(ep -> new RouteRule(
                         ep.getKey(),
-                        ep.getSourceIp(),
-                        ep.getSourceDomain(),
-                        ep.getTargetIp(),
-                        ep.getTargetDomain()))
+                        ep.getTargetIp()))
                 .toList();
         internal.setRouteRules(rules);
 

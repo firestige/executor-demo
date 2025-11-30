@@ -58,10 +58,14 @@ public class FailOnceStage implements TaskStage {
                     "Simulated failure on attempt " + currentAttempt,
                     name
             );
-            return StageResult.failure(name, failureInfo);
+            StageResult result = StageResult.failure(name, failureInfo);
+            result.setDuration(Duration.ZERO);
+            return  result;
         }
 
-        return StageResult.success(name);
+        StageResult result = StageResult.success(name);
+        result.setDuration(Duration.ZERO);
+        return  result;
     }
 
     @Override

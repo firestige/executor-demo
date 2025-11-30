@@ -2,6 +2,7 @@ package xyz.firestige.deploy.domain.task;
 
 import xyz.firestige.deploy.infrastructure.execution.stage.TaskStage;
 
+import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
 
@@ -9,37 +10,40 @@ import java.util.Objects;
  * Stage 进度值对象（Value Object）
  * <p>
  * 职责：
- * 1. 封装 currentStageIndex 和 totalStages
- * 2. 提供进度计算和判断方法
+ * 1. 记录当前执行到哪个 Stage（currentStageIndex）
+ * 2. 提供进度查询方法
  * 3. 不可变对象，线程安全
+ * <p>
+ * 设计理念（T-034）：
+ * - 单一职责：只负责进度追踪
+ * - 与 ExecutionRange 分离：执行范围由 ExecutionRange 管理
+ * - 精简字段：只保存 currentStageIndex 和 stageNames
  * <p>
  * DDD 原则：值对象通过值相等性判断，不依赖标识符
  *
- * @since Phase 18 - RF-13
+ * @since T-034 分离执行范围和执行进度
  */
 public final class StageProgress {
 
+    /**
+     * 当前执行到哪个 Stage（核心状态）
+     */
     private final int currentStageIndex;
-    private final int totalStages;
+
+    /**
+     * Stage 名称列表（用于查询）
+     */
     private final List<String> stageNames;
 
     private StageProgress(int currentStageIndex, List<String> stageNames) {
-        int totalStages = stageNames.size();
-        if (totalStages <= 0) {
-            throw new IllegalArgumentException("totalStages 必须大于 0");
+        if (stageNames == null || stageNames.isEmpty()) {
+            throw new IllegalArgumentException("stageNames 不能为空");
         }
         if (currentStageIndex < 0) {
             throw new IllegalArgumentException("currentStageIndex 不能为负数");
         }
-        if (currentStageIndex > totalStages) {
-            throw new IllegalArgumentException(
-                String.format("currentStageIndex (%d) 不能大于 totalStages (%d)", 
-                    currentStageIndex, totalStages)
-            );
-        }
         this.currentStageIndex = currentStageIndex;
-        this.totalStages = totalStages;
-        this.stageNames = stageNames;
+        this.stageNames = List.copyOf(stageNames);
     }
 
     // ============================================
@@ -69,6 +73,24 @@ public final class StageProgress {
         return new StageProgress(currentStageIndex, names);
     }
 
+    /**
+     * 从检查点恢复创建 StageProgress
+     * <p>
+     * 用于从检查点恢复时重建进度对象（支持重启后恢复）
+     *
+     * @param checkpoint 检查点对象
+     * @return StageProgress 实例
+     * @since T-033 状态机简化
+     */
+    public static StageProgress of(TaskCheckpoint checkpoint) {
+        if (checkpoint == null) {
+            throw new IllegalArgumentException("checkpoint 不能为空");
+        }
+        int nextStageIndex = checkpoint.getLastCompletedStageIndex() + 1;
+        List<String> allStageNames = checkpoint.getAllStageNames();
+        return new StageProgress(nextStageIndex, allStageNames);
+    }
+
     // ============================================
     // 业务方法
     // ============================================
@@ -79,9 +101,6 @@ public final class StageProgress {
      * @return 新的 StageProgress（不可变）
      */
     public StageProgress next() {
-        if (isCompleted()) {
-            throw new IllegalStateException("已完成所有 Stage，无法继续推进");
-        }
         return new StageProgress(currentStageIndex + 1, stageNames);
     }
 
@@ -96,11 +115,15 @@ public final class StageProgress {
 
     /**
      * 判断是否所有 Stage 完成
+     * <p>
+     * 注意：此方法已废弃，请使用 ExecutionRange.isCompleted(progress, totalStages)
      *
      * @return true = 已完成，false = 未完成
+     * @deprecated 使用 ExecutionRange 判断是否完成
      */
+    @Deprecated
     public boolean isCompleted() {
-        return currentStageIndex >= totalStages;
+        return currentStageIndex >= stageNames.size();
     }
 
     /**
@@ -109,6 +132,7 @@ public final class StageProgress {
      * @return 0.0 ~ 1.0
      */
     public double getProgressPercentage() {
+        int totalStages = stageNames.size();
         if (totalStages == 0) {
             return 0.0;
         }
@@ -121,7 +145,7 @@ public final class StageProgress {
      * @return 剩余数量
      */
     public int getRemainingStages() {
-        return Math.max(0, totalStages - currentStageIndex);
+        return Math.max(0, stageNames.size() - currentStageIndex);
     }
 
     // ============================================
@@ -133,14 +157,26 @@ public final class StageProgress {
     }
 
     public String getCurrentStageName() {
-        if (isCompleted()) {
+        if (currentStageIndex >= stageNames.size()) {
             return null;
         }
         return stageNames.get(currentStageIndex);
     }
 
     public int getTotalStages() {
-        return totalStages;
+        return stageNames.size();
+    }
+
+    /**
+     * 获取所有 Stage 名称列表
+     * <p>
+     * 用于保存到检查点，支持重启后恢复
+     *
+     * @return Stage 名称列表（不可变）
+     * @since T-033 状态机简化
+     */
+    public List<String> getStageNames() {
+        return Collections.unmodifiableList(stageNames);
     }
 
     // ============================================
@@ -153,17 +189,17 @@ public final class StageProgress {
         if (o == null || getClass() != o.getClass()) return false;
         StageProgress that = (StageProgress) o;
         return currentStageIndex == that.currentStageIndex &&
-               totalStages == that.totalStages;
+               Objects.equals(stageNames, that.stageNames);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(currentStageIndex, totalStages);
+        return Objects.hash(currentStageIndex, stageNames);
     }
 
     @Override
     public String toString() {
-        return String.format("StageProgress[%d/%d, %.1f%%]", 
-            currentStageIndex, totalStages, getProgressPercentage() * 100);
+        return String.format("StageProgress{current=%d/%d, %.1f%%}",
+            currentStageIndex, stageNames.size(), getProgressPercentage() * 100);
     }
 }

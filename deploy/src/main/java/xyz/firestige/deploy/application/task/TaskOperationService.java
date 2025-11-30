@@ -99,6 +99,7 @@ public class TaskOperationService {
      * <p>
      * T-015: 移除 executorCreator 参数，内部创建 TaskExecutor
      * T-028: 使用传入的 version 作为回滚目标版本（planVersion）
+     * T-032: 使用标志位驱动，统一通过 execute() 方法
      * 通过领域事件通知回滚结果（TaskRollingBackEvent / TaskRolledBackEvent / TaskRollbackFailedEvent）
      *
      * @param tenantId 租户 ID
@@ -119,6 +120,9 @@ public class TaskOperationService {
             );
         }
 
+        // ✅ T-032: 设置回滚标志位
+        context.getRuntimeContext().requestRollback(version);
+
         // Step 2: 创建 TaskExecutor（内部注入）
         TaskExecutor executor = context.hasExistingExecutor()
             ? context.getExistingExecutor()
@@ -127,7 +131,8 @@ public class TaskOperationService {
         // Step 3: 异步执行回滚
         CompletableFuture.runAsync(() -> {
             try {
-                var result = executor.invokeRollback();
+                // ✅ T-032: 统一通过 execute() 方法，根据标志位驱动回滚
+                var result = executor.execute();
                 logger.info("[TaskOperationService] 租户任务回滚完成: {}, status: {}",
                             tenantId, result.getFinalStatus());
             } catch (Exception e) {
@@ -147,6 +152,7 @@ public class TaskOperationService {
      * 根据租户 ID 重试任务（异步执行）
      * <p>
      * T-015: 移除 executorCreator 参数，内部创建 TaskExecutor
+     * T-032: 使用标志位驱动，统一通过 execute() 方法
      * 通过领域事件通知重试结果（TaskRetryStartedEvent / TaskCompletedEvent / TaskFailedEvent）
      *
      * @param tenantId 租户 ID
@@ -168,6 +174,9 @@ public class TaskOperationService {
             );
         }
 
+        // ✅ T-032: 设置重试标志位
+        context.getRuntimeContext().requestRetry(fromCheckpoint);
+
         // Step 2: 创建 TaskExecutor（内部注入）
         TaskExecutor executor = context.hasExistingExecutor()
             ? context.getExistingExecutor()
@@ -176,7 +185,8 @@ public class TaskOperationService {
         // Step 3: 异步执行重试
         CompletableFuture.runAsync(() -> {
             try {
-                var result = executor.retry(fromCheckpoint);
+                // ✅ T-032: 统一通过 execute() 方法，根据标志位驱动重试
+                var result = executor.execute();
                 logger.info("[TaskOperationService] 租户任务重试完成: {}, status: {}",
                             tenantId, result.getFinalStatus());
             } catch (Exception e) {

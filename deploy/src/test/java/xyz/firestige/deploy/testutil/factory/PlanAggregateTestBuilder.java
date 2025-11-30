@@ -1,5 +1,6 @@
 package xyz.firestige.deploy.testutil.factory;
 
+import xyz.firestige.deploy.application.dto.TenantConfig;
 import xyz.firestige.deploy.domain.plan.PlanAggregate;
 import xyz.firestige.deploy.domain.plan.PlanStatus;
 import xyz.firestige.deploy.domain.shared.vo.PlanId;
@@ -22,13 +23,12 @@ public class PlanAggregateTestBuilder {
     private int maxConcurrency = 10;
     private List<TaskId> taskIds = new ArrayList<>();
 
-    public PlanAggregateTestBuilder() {
+    public PlanAggregateTestBuilder(){
         this.planId = ValueObjectTestFactory.randomPlanId();
     }
 
-    public PlanAggregateTestBuilder planId(PlanId planId) {
-        this.planId = planId;
-        return this;
+    public PlanAggregateTestBuilder(TenantConfig config) {
+        this.planId = config.getPlanId();
     }
 
     public PlanAggregateTestBuilder maxConcurrency(int maxConcurrency) {

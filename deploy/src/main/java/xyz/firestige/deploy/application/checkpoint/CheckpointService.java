@@ -40,8 +40,26 @@ public class CheckpointService {
      * @param task 任务聚合
      * @param completedStageNames 已完成的 Stage 名称列表
      * @param lastCompletedIndex 最后完成的 Stage 索引
+     *
+     * @since T-032 状态机重构：增强验证，防止最后一个 Stage 保存检查点
      */
     public void saveCheckpoint(TaskAggregate task, List<String> completedStageNames, int lastCompletedIndex) {
+        // ✅ T-032: 增强验证：检查是否是最后一个 Stage
+        int totalStages = task.getTotalStages();
+        if (totalStages > 0 && lastCompletedIndex >= totalStages - 1) {
+            // 最后一个 Stage 不应该保存检查点
+            // 注意：这是防御性检查，正常情况下 TaskExecutor 已经过滤
+            return;
+        }
+
+        // ✅ T-032: 验证 Task 状态必须是 RUNNING
+        if (task.getStatus() != xyz.firestige.deploy.domain.task.TaskStatus.RUNNING) {
+            throw new IllegalStateException(
+                String.format("只能在 RUNNING 状态保存检查点，当前状态: %s, taskId: %s",
+                    task.getStatus(), task.getTaskId())
+            );
+        }
+
         // ✅ 委托给聚合的业务方法（聚合内部验证不变量）
         task.recordCheckpoint(completedStageNames, lastCompletedIndex);
         

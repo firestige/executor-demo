@@ -52,7 +52,9 @@ public class AlwaysSuccessStage implements TaskStage {
                 Thread.currentThread().interrupt();
             }
         }
-        return StageResult.success(name);
+        StageResult result = StageResult.success(name);
+        result.setDuration(executionTime);
+        return  result;
     }
 
     @Override

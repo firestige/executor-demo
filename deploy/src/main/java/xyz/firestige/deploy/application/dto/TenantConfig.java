@@ -89,6 +89,10 @@ public class TenantConfig {
         this.tenantId = TenantId.of(tenantId);
     }
 
+    public void setTenantId(TenantId tenantId) {
+        this.tenantId = tenantId;
+    }
+
     public List<RouteRule> getRouteRules() {
         return routeRules;
     }
@@ -127,6 +131,10 @@ public class TenantConfig {
 
     public void setPlanId(Long planId) {
         this.planId = PlanId.of(planId);
+    }
+
+    public void setPlanId(PlanId planId) {
+        this.planId = planId;
     }
 
     public Long getPlanVersion() {
