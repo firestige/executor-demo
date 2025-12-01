@@ -60,16 +60,15 @@ public class TaskAggregate {
      * <p>
      * 定义本次执行的 Stage 范围 [startIndex, endIndex)
      * - 正常执行：[0, totalStages)
-     * - 重试执行：[checkpoint+1, totalStages)
-     * - 回滚执行：[0, checkpoint+2)
+     * - 重试执行：[lastCompletedIndex+1, totalStages)
+     * - 回滚执行：[0, lastCompletedIndex+2)
      *
      * @since T-034 分离执行范围和执行进度
+     * @since T-035 无状态执行器：移除 checkpoint，改为从外部提供索引
      */
     private ExecutionRange executionRange;
 
     private RetryPolicy retryPolicy;
-
-    private TaskCheckpoint checkpoint;
     private List<StageResult> stageResults = new ArrayList<>();
 
     private TimeRange timeRange;
@@ -113,6 +112,35 @@ public class TaskAggregate {
         this.status = TaskStatus.CREATED;
         this.timeRange = TimeRange.notStarted();
         this.duration = TaskDuration.notStarted();
+    }
+
+    /**
+     * T-035: 创建用于恢复的 TaskAggregate（复用 taskId）
+     * <p>
+     * 用于无状态恢复场景（Resume/Retry/Rollback），重建已清除的 Task 聚合。
+     * <p>
+     * 创建后需要调用：
+     * - setStageProgress() 设置执行进度
+     * - setExecutionRange() 设置执行范围
+     *
+     * @param taskId 复用的 taskId（保持与原 Task 相同）
+     * @param planId 计划 ID
+     * @param tenantId 租户 ID
+     * @param rollbackIntent 是否是回滚模式
+     * @return 新创建的 TaskAggregate 实例（初始状态 PENDING）
+     * @since T-035 无状态执行器
+     */
+    public static TaskAggregate createForRecovery(
+            TaskId taskId,
+            PlanId planId,
+            TenantId tenantId,
+            boolean rollbackIntent) {
+
+        TaskAggregate task = new TaskAggregate(taskId, planId, tenantId);
+        task.status = TaskStatus.PENDING;  // 恢复的 Task 总是从 PENDING 开始
+        task.rollbackIntent = rollbackIntent;
+        
+        return task;
     }
 
     // ============================================
@@ -402,10 +430,20 @@ public class TaskAggregate {
     }
 
     /**
-     * 重试任务
-     * 不变式：只有 FAILED 状态可以重试
+     * 重试任务（业务方法）
+     * <p>
+     * T-035: 简化重试策略，移除 fromCheckpoint 参数
+     * - 外部调用方决定是否提供 lastCompletedStageName 来恢复进度
+     * - TaskRecoveryService 负责计算 startIndex 并设置 StageProgress
+     * <p>
+     * 不变式：
+     * - 只有 FAILED 状态才能重试
+     * - 重试次数不能超过最大值
+     *
+     * @param globalMaxRetry 全局最大重试次数（可选）
+     * @since T-035 无状态执行器：简化重试逻辑
      */
-    public void retry(boolean fromCheckpoint, Integer globalMaxRetry) {
+    public void retry(Integer globalMaxRetry) {
         if (status != TaskStatus.FAILED) {
             throw new IllegalStateException(
                 String.format("只有 FAILED 状态可以重试，当前状态: %s, taskId: %s", status, taskId.getValue())
@@ -425,14 +463,11 @@ public class TaskAggregate {
         this.timeRange = timeRange.resetEnd();
         this.duration = TaskDuration.notStarted();
 
-        // 如果不是从 checkpoint 重试，清空进度
-        if (!fromCheckpoint) {
-            this.stageProgress = stageProgress.reset();
-            this.stageResults.clear();
-        }
+        // T-035: 进度和范围由外部 TaskRecoveryService 设置
+        // 这里不再清空或重置，保持当前状态
 
         // ✅ 产生领域事件
-        TaskRetryStartedEvent event = new TaskRetryStartedEvent(TaskInfo.from(this), fromCheckpoint);
+        TaskRetryStartedEvent event = new TaskRetryStartedEvent(TaskInfo.from(this), false);
         addDomainEvent(event);
     }
 
@@ -603,131 +638,65 @@ public class TaskAggregate {
         this.executionRange = ExecutionRange.full(stages.size());
     }
 
-    public TaskCheckpoint getCheckpoint() { return checkpoint; }
+    // ============================================
+    // T-035: Setter 方法（支持无状态恢复）
+    // ============================================
 
     /**
-     * 记录检查点（在 Stage 左边界）
+     * 设置 StageProgress（用于恢复场景）
+     * 
+     * @param stageProgress 进度对象
+     * @since T-035 无状态执行器
+     */
+    public void setStageProgress(StageProgress stageProgress) {
+        this.stageProgress = stageProgress;
+    }
+
+    /**
+     * 设置 ExecutionRange（用于恢复场景）
+     * 
+     * @param executionRange 执行范围
+     * @since T-035 无状态执行器
+     */
+    public void setExecutionRange(ExecutionRange executionRange) {
+        this.executionRange = executionRange;
+    }
+
+    // ============================================
+    // T-035: 执行范围准备方法（无状态版本）
+    // ============================================
+
+    /**
+     * 准备回滚执行范围（T-035: 基于外部提供的索引）
      * <p>
-     * 业务规则：
-     * 1. 只有 RUNNING 状态才能记录检查点
-     * 2. 一个 Task 最多保留 1 个检查点（覆盖旧的）
-     * 3. 检查点记录当前已完成的 Stage 列表和索引
+     * 回滚时只执行已改变的 Stage：[0, lastCompletedIndex+2)
      * <p>
-     * T-033: 保存所有 Stage 名称，用于重建 StageProgress
+     * 例如：lastCompletedIndex=0，执行范围=[0,2)，即 stage-1 和 stage-2
      *
-     * @param completedStageNames 已完成的 Stage 名称列表
      * @param lastCompletedIndex 最后完成的 Stage 索引
-     */
-    public void recordCheckpoint(List<String> completedStageNames, int lastCompletedIndex) {
-        if (status != TaskStatus.RUNNING) {
-            throw new IllegalStateException(
-                String.format("只有 RUNNING 状态才能记录检查点，当前状态: %s, taskId: %s", status, taskId.getValue())
-            );
-        }
-        
-        if (lastCompletedIndex < 0 || lastCompletedIndex >= getTotalStages()) {
-            throw new IllegalArgumentException(
-                String.format("无效的 Stage 索引: %d, 总 Stage 数: %d", lastCompletedIndex, getTotalStages())
-            );
-        }
-        
-        // ✅ 获取所有 Stage 名称（用于重建 StageProgress）
-        List<String> allStageNames = stageProgress != null
-            ? stageProgress.getStageNames()
-            : Collections.emptyList();
-
-        // 创建新的检查点（覆盖旧的）
-        this.checkpoint = new TaskCheckpoint(lastCompletedIndex, completedStageNames, allStageNames);
-    }
-    
-    /**
-     * 恢复到检查点
-     * <p>
-     * T-033: 移除状态检查，这是辅助方法，只设置字段不改变状态
-     * 调用方（ExecutionPreparer）负责在正确的时机调用
-     * <p>
-     * 关键：从检查点重建 StageProgress（支持重启后恢复）
-     *
-     * @param checkpoint 要恢复的检查点
-     */
-    public void restoreFromCheckpoint(TaskCheckpoint checkpoint) {
-        if (checkpoint == null) {
-            throw new IllegalArgumentException("检查点不能为空");
-        }
-        
-        this.checkpoint = checkpoint;
-
-        // ✅ 从检查点重建 StageProgress（委托给 StageProgress 工厂方法）
-        this.stageProgress = StageProgress.of(checkpoint);
-
-        // 注意：不改变 status，由 TaskExecutor 统一驱动状态转换
-    }
-    
-    /**
-     * 清除检查点
-     * <p>
-     * 使用场景：
-     * 1. Task 完成后清理
-     * 2. Task 失败且不需要恢复
-     * 3. 重新开始（不从检查点恢复）
-     */
-    public void clearCheckpoint() {
-        this.checkpoint = null;
-    }
-
-    // ============================================
-    // T-034: 执行范围准备方法
-    // ============================================
-
-    /**
-     * 准备回滚执行范围（使用内部 checkpoint）
-     * <p>
-     * 回滚时只执行已改变的 Stage：[0, checkpoint+2)
-     * <p>
-     * 例如：checkpoint.lastCompletedIndex=0，执行范围=[0,2)，即 stage-1 和 stage-2
-     *
      * @since T-034 分离执行范围和执行进度
+     * @since T-035 无状态执行器：移除 checkpoint 依赖，改为基于索引
      */
-    public void prepareRollbackRange() {
-        if (this.checkpoint == null) {
-            throw new IllegalStateException("无检查点，无法准备回滚");
-        }
-        this.executionRange = ExecutionRange.forRollback(checkpoint);
+    public void prepareRollbackRange(int lastCompletedIndex) {
+        this.executionRange = ExecutionRange.forRollback(lastCompletedIndex);
         this.stageProgress = stageProgress.reset();  // 重置进度到 0
     }
 
     /**
-     * 准备回滚执行范围（支持外部传入 checkpoint）
+     * 准备重试执行范围（T-035: 基于外部提供的索引）
      * <p>
-     * 用于无状态重建场景
-     *
-     * @param checkpoint 检查点对象
-     * @since T-034 分离执行范围和执行进度
-     */
-    public void prepareRollbackRange(TaskCheckpoint checkpoint) {
-        if (checkpoint == null) {
-            throw new IllegalArgumentException("checkpoint 不能为空");
-        }
-        this.executionRange = ExecutionRange.forRollback(checkpoint);
-        // 从检查点重建 StageProgress，然后重置到 0
-        this.stageProgress = StageProgress.of(checkpoint).reset();
-    }
-
-    /**
-     * 准备重试执行范围
+     * 重试时从 lastCompletedIndex+1 继续执行：[lastCompletedIndex+1, totalStages)
      * <p>
-     * 重试时从检查点后开始执行：[checkpoint+1, totalStages)
+     * 例如：lastCompletedIndex=0，执行范围=[1,totalStages)，从 stage-2 开始
      *
-     * @param checkpoint 检查点对象
+     * @param lastCompletedIndex 最后完成的 Stage 索引
+     * @param totalStages Stage 总数
      * @since T-034 分离执行范围和执行进度
+     * @since T-035 无状态执行器：移除 checkpoint 依赖，改为基于索引
      */
-    public void prepareRetryRange(TaskCheckpoint checkpoint) {
-        if (checkpoint == null) {
-            throw new IllegalArgumentException("checkpoint 不能为空");
-        }
-        this.executionRange = ExecutionRange.forRetry(checkpoint);
-        // 从检查点恢复进度（currentIndex = checkpoint+1）
-        this.stageProgress = StageProgress.of(checkpoint);
+    public void prepareRetryRange(int lastCompletedIndex, int totalStages) {
+        this.executionRange = ExecutionRange.forRetry(lastCompletedIndex, totalStages);
+        // 注意：重试时保留当前 stageProgress（继续执行）
     }
 
     /**

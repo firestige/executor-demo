@@ -72,12 +72,11 @@ public final class ExecutionRange {
      * <p>
      * 从头执行到 checkpoint+1（半开区间）：[0, lastCompletedIndex+2)
      *
-     * @param lastCompletedIndex 最后完成的 Stage 索引
+     * @param rollbackEndIndex 最后完成的 Stage 索引
      * @return ExecutionRange 实例
      */
-    public static ExecutionRange forRollback(int lastCompletedIndex) {
-        int endIndex = lastCompletedIndex + 2;  // [0, lastCompleted+2)
-        return new ExecutionRange(0, endIndex);
+    public static ExecutionRange forRollback(int rollbackEndIndex) {// [0, lastCompleted+2)
+        return new ExecutionRange(0, rollbackEndIndex + 1);
     }
 
     /**
@@ -85,40 +84,12 @@ public final class ExecutionRange {
      * <p>
      * 从 checkpoint+1 执行到最后：[lastCompletedIndex+1, totalStages)
      *
-     * @param lastCompletedIndex 最后完成的 Stage 索引
+     * @param retryStartIndex retry 起点索引
      * @param totalStages Stage 总数
      * @return ExecutionRange 实例
      */
-    public static ExecutionRange forRetry(int lastCompletedIndex, int totalStages) {
-        int startIndex = lastCompletedIndex + 1;
-        return new ExecutionRange(startIndex, totalStages);
-    }
-
-    /**
-     * 从检查点创建回滚范围（支持外部传入）
-     *
-     * @param checkpoint 检查点对象
-     * @return ExecutionRange 实例
-     */
-    public static ExecutionRange forRollback(TaskCheckpoint checkpoint) {
-        if (checkpoint == null) {
-            throw new IllegalArgumentException("checkpoint 不能为空");
-        }
-        return forRollback(checkpoint.getLastCompletedStageIndex());
-    }
-
-    /**
-     * 从检查点创建重试范围（支持外部传入）
-     *
-     * @param checkpoint 检查点对象
-     * @return ExecutionRange 实例
-     */
-    public static ExecutionRange forRetry(TaskCheckpoint checkpoint) {
-        if (checkpoint == null) {
-            throw new IllegalArgumentException("checkpoint 不能为空");
-        }
-        int totalStages = checkpoint.getAllStageNames().size();
-        return forRetry(checkpoint.getLastCompletedStageIndex(), totalStages);
+    public static ExecutionRange forRetry(int retryStartIndex, int totalStages) {
+        return new ExecutionRange(retryStartIndex, totalStages);
     }
 
     // ============================================

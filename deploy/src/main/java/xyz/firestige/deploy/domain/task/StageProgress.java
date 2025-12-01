@@ -73,24 +73,6 @@ public final class StageProgress {
         return new StageProgress(currentStageIndex, names);
     }
 
-    /**
-     * 从检查点恢复创建 StageProgress
-     * <p>
-     * 用于从检查点恢复时重建进度对象（支持重启后恢复）
-     *
-     * @param checkpoint 检查点对象
-     * @return StageProgress 实例
-     * @since T-033 状态机简化
-     */
-    public static StageProgress of(TaskCheckpoint checkpoint) {
-        if (checkpoint == null) {
-            throw new IllegalArgumentException("checkpoint 不能为空");
-        }
-        int nextStageIndex = checkpoint.getLastCompletedStageIndex() + 1;
-        List<String> allStageNames = checkpoint.getAllStageNames();
-        return new StageProgress(nextStageIndex, allStageNames);
-    }
-
     // ============================================
     // 业务方法
     // ============================================

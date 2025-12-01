@@ -148,22 +148,6 @@ public class TaskAggregateTestBuilder {
         return task;
     }
 
-    /**
-     * 构建带Checkpoint的Task（用于恢复测试）
-     */
-    public TaskAggregate buildWithCheckpoint(int lastCompletedStageIndex) {
-        TaskAggregate task = buildRunning(0);
-        
-        // 创建Checkpoint
-        List<String> completedStageNames = new java.util.ArrayList<>();
-        for (int i = 0; i <= lastCompletedStageIndex; i++) {
-            completedStageNames.add("stage-" + i);
-        }
-        
-        task.recordCheckpoint(completedStageNames, lastCompletedStageIndex);
-        return task;
-    }
-
     // ========== 快捷方法 ==========
 
     /**

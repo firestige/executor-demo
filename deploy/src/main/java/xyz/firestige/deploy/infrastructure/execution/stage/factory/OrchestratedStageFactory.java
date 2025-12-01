@@ -67,6 +67,47 @@ public class OrchestratedStageFactory implements StageFactory {
     }
 
     /**
+     * T-035: 根据最后完成的 Stage 名称计算索引
+     * <p>
+     * 实现说明：
+     * 1. 重新构建 Stage 列表（确保与执行时顺序一致）
+     * 2. 遍历查找匹配的 Stage 名称
+     * 3. 返回索引（从 0 开始）
+     *
+     * @param cfg 租户配置
+     * @param lastCompletedStageName 最后完成的 Stage 名称
+     * @return 该 Stage 的索引
+     * @throws IllegalArgumentException 如果找不到对应的 Stage
+     */
+    @Override
+    public int calculateStartIndex(TenantConfig cfg, String lastCompletedStageName) {
+        log.info("Calculating start index for lastCompletedStageName: {}, tenant: {}", 
+            lastCompletedStageName, cfg.getTenantId());
+
+        // 重建 Stage 列表（必须与 buildStages 逻辑一致）
+        List<TaskStage> stages = buildStages(cfg);
+
+        // 遍历查找匹配的 Stage
+        for (int i = 0; i < stages.size(); i++) {
+            TaskStage stage = stages.get(i);
+            if (stage.getName().equals(lastCompletedStageName)) {
+                log.info("Found lastCompletedStage: {} at index {}", lastCompletedStageName, i);
+                return i;
+            }
+        }
+
+        // 未找到则抛出异常
+        String availableStages = stages.stream()
+            .map(TaskStage::getName)
+            .collect(Collectors.joining(", "));
+        
+        throw new IllegalArgumentException(
+            String.format("Cannot find stage '%s' in tenant '%s'. Available stages: [%s]",
+                lastCompletedStageName, cfg.getTenantId(), availableStages)
+        );
+    }
+
+    /**
      * 排序并缓存策略列表
      */
     private List<StageAssembler> sortAndCache(List<StageAssembler> assemblers) {

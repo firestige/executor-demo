@@ -513,19 +513,8 @@ public class TaskDomainService {
             return null;
         }
 
-        // 补偿进度事件（checkpoint retry）
-        if (fromCheckpoint && target.getCheckpoint() != null) {
-            int completed = target.getCurrentStageIndex();
-            List<TaskStage> stages = taskRuntimeRepository.getStages(target.getTaskId()).orElseGet(List::of);
-            int total = stages.size();
-            
-            // ✅ 发布进度补偿事件（告知监控系统从检查点恢复）
-            TaskRetryStartedEvent retryEvent = new TaskRetryStartedEvent(TaskInfo.from(target), true);
-            domainEventPublisher.publish(retryEvent);
-            
-            logger.info("[TaskDomainService] 已发布检查点恢复进度事件: taskId={}, progress={}/{}", 
-                target.getTaskId(), completed, total);
-        }
+        // T-035: 移除 checkpoint 补偿逻辑，fromCheckpoint 参数已废弃
+        // 重试总是从调用方提供的 lastCompletedStageName 恢复
 
         // 获取运行时数据
         List<TaskStage> stages = taskRuntimeRepository.getStages(target.getTaskId()).orElseGet(List::of);

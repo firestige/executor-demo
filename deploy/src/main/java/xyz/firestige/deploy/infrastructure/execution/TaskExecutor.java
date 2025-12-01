@@ -226,16 +226,8 @@ public class TaskExecutor {
         dependencies.getTaskDomainService().completeStage(task, stageName, result.getDuration(), context);
         completedStages.add(result);
 
-        // ✅ T-034: 只有非执行范围内最后一个 Stage 才保存检查点
-        if (!isLastInRange) {
-            List<String> stageNames = completedStages.stream()
-                .map(StageResult::getStageName)
-                .toList();
-            dependencies.getCheckpointService().saveCheckpoint(task, stageNames, stageIndex);
-            log.debug("保存检查点: stage={}, index={}, taskId={}", stageName, stageIndex, taskId);
-        } else {
-            log.debug("跳过检查点保存（执行范围内最后一个 Stage）: stage={}, taskId={}", stageName, taskId);
-        }
+        // T-035: 无状态执行器，移除 checkpoint 保存逻辑
+        // 进度已在 StageProgress 中维护，caller 通过事件监听来持久化状态
 
         log.info("Stage 执行成功: {}, 耗时: {}ms, taskId: {}",
             stageName, result.getDuration().toMillis(), taskId);
@@ -344,11 +336,8 @@ public class TaskExecutor {
             releaseTenantLock();
         }
 
-        // ✅ T-032: 只有真正的终态（COMPLETED, CANCELLED）才清除检查点
-        // FAILED 状态保留检查点，用于重试恢复
-        if (finalStatus == TaskStatus.COMPLETED || finalStatus == TaskStatus.CANCELLED) {
-            dependencies.getCheckpointService().clearCheckpoint(task);
-        }
+        // T-035: 无状态执行器，移除 checkpoint 清理逻辑
+        // 不需要维护内部检查点，caller 负责状态管理
     }
 
     /**

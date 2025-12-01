@@ -16,13 +16,11 @@ import xyz.firestige.deploy.application.lifecycle.PlanLifecycleService;
 import xyz.firestige.deploy.application.orchestration.TaskExecutionOrchestrator;
 import xyz.firestige.deploy.application.plan.DeploymentPlanCreator;
 import xyz.firestige.deploy.application.task.TaskOperationService;
-import xyz.firestige.deploy.application.checkpoint.CheckpointService;
 import xyz.firestige.deploy.application.validation.ConflictValidator;
 import xyz.firestige.deploy.application.validation.BusinessValidator;
 import xyz.firestige.deploy.domain.plan.PlanDomainService;
 import xyz.firestige.deploy.domain.plan.PlanRepository;
 import xyz.firestige.deploy.domain.shared.event.DomainEventPublisher;
-import xyz.firestige.deploy.domain.task.CheckpointRepository;
 import xyz.firestige.deploy.domain.task.TaskDomainService;
 import xyz.firestige.deploy.domain.task.TaskRepository;
 import xyz.firestige.deploy.domain.task.TaskRuntimeRepository;
@@ -31,7 +29,6 @@ import xyz.firestige.deploy.facade.converter.TenantConfigConverter;
 import xyz.firestige.deploy.infrastructure.execution.DefaultTaskWorkerFactory;
 import xyz.firestige.deploy.infrastructure.execution.TaskWorkerFactory;
 import xyz.firestige.deploy.infrastructure.execution.stage.StageFactory;
-import xyz.firestige.deploy.infrastructure.persistence.checkpoint.InMemoryCheckpointRepository;
 import xyz.firestige.deploy.infrastructure.persistence.plan.InMemoryPlanRepository;
 import xyz.firestige.deploy.infrastructure.persistence.task.InMemoryTaskRepository;
 import xyz.firestige.deploy.infrastructure.persistence.task.InMemoryTaskRuntimeRepository;
@@ -40,10 +37,6 @@ import xyz.firestige.deploy.infrastructure.validation.ValidationChain;
 import xyz.firestige.deploy.infrastructure.validation.validator.BusinessRuleValidator;
 import xyz.firestige.deploy.infrastructure.validation.validator.NetworkEndpointValidator;
 import xyz.firestige.deploy.infrastructure.validation.validator.TenantIdValidator;
-import xyz.firestige.deploy.application.query.TaskQueryService;
-import xyz.firestige.deploy.infrastructure.persistence.projection.TaskStateProjectionStore;
-import xyz.firestige.deploy.infrastructure.persistence.projection.PlanStateProjectionStore;
-import xyz.firestige.deploy.infrastructure.persistence.projection.TenantTaskIndexStore;
 import xyz.firestige.deploy.infrastructure.event.SpringDomainEventPublisher;
 
 /**
@@ -75,27 +68,21 @@ public class ExecutorConfiguration {
         return new TenantConflictManager(TenantConflictManager.ConflictPolicy.FINE_GRAINED);
     }
 
-    @Bean
-    public CheckpointService checkpointService(CheckpointRepository repository) {
-        return new CheckpointService(repository);
-    }
-
     /**
      * RF-18: TaskWorkerFactory Bean（方案C架构）
      * 
      * <p>T-033: 移除 StateTransitionService，状态转换由聚合根保护
+     * <p>T-035: 移除 CheckpointService，无状态执行器
      */
     @Bean
     public TaskWorkerFactory taskWorkerFactory(
             TaskDomainService taskDomainService,
             ApplicationEventPublisher applicationEventPublisher,
-            CheckpointService checkpointService,
             TenantConflictManager conflictManager,
             ExecutorProperties executorProperties) {
         return new DefaultTaskWorkerFactory(
                 taskDomainService,
                 applicationEventPublisher,
-                checkpointService,
                 conflictManager,
                 executorProperties.getTaskProgressIntervalSeconds(),
                 null  // metrics: 使用默认的 NoopMetricsRegistry
@@ -239,31 +226,17 @@ public class ExecutorConfiguration {
 
     // ========== Facade Bean ==========
 
+    // T-035: 移除 TaskQueryService，调用方自行维护投影
     @Bean
     public DeploymentTaskFacade deploymentTaskFacade(
             PlanLifecycleService planLifecycleService,
             TaskOperationService taskOperationService,
             TenantConfigConverter tenantConfigConverter,
-            Validator validator,
-            TaskQueryService taskQueryService) {  // 注入 TaskQueryService
+            Validator validator) {
         return new DeploymentTaskFacade(
                 planLifecycleService,
                 taskOperationService,
                 tenantConfigConverter,
-                validator,
-                taskQueryService);
-    }
-
-
-    @Bean
-    public TaskQueryService taskQueryService(
-            TaskStateProjectionStore taskProjectionStore,
-            PlanStateProjectionStore planProjectionStore,
-            TenantTaskIndexStore tenantTaskIndexStore) {
-        return new TaskQueryService(
-                taskProjectionStore,
-                planProjectionStore,
-                tenantTaskIndexStore
-        );
+                validator);
     }
 }

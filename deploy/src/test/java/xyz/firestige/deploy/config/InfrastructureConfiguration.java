@@ -9,16 +9,8 @@ import org.springframework.context.annotation.FilterType;
 import xyz.firestige.deploy.config.properties.InfrastructureProperties;
 import xyz.firestige.deploy.domain.shared.vo.TaskId;
 import xyz.firestige.deploy.domain.shared.vo.TenantId;
-import xyz.firestige.deploy.domain.task.CheckpointRepository;
 import xyz.firestige.deploy.infrastructure.execution.stage.factory.OrchestratedStageFactory;
 import xyz.firestige.deploy.infrastructure.lock.TenantLockManager;
-import xyz.firestige.deploy.infrastructure.persistence.checkpoint.InMemoryCheckpointRepository;
-import xyz.firestige.deploy.infrastructure.persistence.projection.PlanStateProjectionStore;
-import xyz.firestige.deploy.infrastructure.persistence.projection.TaskStateProjectionStore;
-import xyz.firestige.deploy.infrastructure.persistence.projection.TenantTaskIndexStore;
-import xyz.firestige.deploy.infrastructure.persistence.projection.memory.InMemoryPlanStateProjectionStore;
-import xyz.firestige.deploy.infrastructure.persistence.projection.memory.InMemoryTaskStateProjectionStore;
-import xyz.firestige.deploy.infrastructure.persistence.projection.memory.InMemoryTenantTaskIndexStore;
 
 import java.time.Duration;
 import java.util.concurrent.ConcurrentHashMap;
@@ -34,29 +26,6 @@ public class InfrastructureConfiguration {
 
     @Configuration
     static class PersistenceConfiguration {
-
-        @Bean
-        public CheckpointRepository checkpointStore() {
-            return new InMemoryCheckpointRepository();
-        }
-
-        @Bean
-        public TaskStateProjectionStore redisTaskStateProjectionStore() {
-            return new InMemoryTaskStateProjectionStore();
-        }
-
-        @Bean
-        public PlanStateProjectionStore redisPlanStateProjectionStore() {
-            return new InMemoryPlanStateProjectionStore();
-        }
-
-        /**
-         * Redis 租户任务索引存储
-         */
-        @Bean
-        public TenantTaskIndexStore redisTenantTaskIndexStore() {
-            return new InMemoryTenantTaskIndexStore();
-        }
 
         @Bean
         public TenantLockManager redisTenantLockManager() {
