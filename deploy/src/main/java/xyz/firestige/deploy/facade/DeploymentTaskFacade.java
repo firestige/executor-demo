@@ -1,49 +1,52 @@
 package xyz.firestige.deploy.facade;
 
-import jakarta.validation.ConstraintViolation;
-import jakarta.validation.Validator;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.stereotype.Component;
-import xyz.firestige.deploy.domain.shared.vo.PlanId;
-import xyz.firestige.deploy.domain.shared.vo.TaskId;
-import xyz.firestige.deploy.domain.shared.vo.TenantId;
-import xyz.firestige.dto.deploy.TenantDeployConfig;
-import xyz.firestige.deploy.application.lifecycle.PlanLifecycleService;
-import xyz.firestige.deploy.application.task.TaskOperationService;
-import xyz.firestige.deploy.application.dto.TenantConfig;
-import xyz.firestige.deploy.domain.plan.PlanCreationResult;
-import xyz.firestige.deploy.domain.plan.PlanInfo;
-import xyz.firestige.deploy.domain.plan.PlanOperationResult;
-import xyz.firestige.deploy.domain.task.TaskOperationResult;
-import xyz.firestige.deploy.domain.shared.exception.FailureInfo;
-import xyz.firestige.deploy.facade.converter.TenantConfigConverter;
-import xyz.firestige.deploy.facade.exception.PlanNotFoundException;
-import xyz.firestige.deploy.facade.exception.TaskCreationException;
-import xyz.firestige.deploy.facade.exception.TaskNotFoundException;
-import xyz.firestige.deploy.facade.exception.TaskOperationException;
-
-
 import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Component;
+
+import jakarta.validation.ConstraintViolation;
+import jakarta.validation.Validator;
+import xyz.firestige.deploy.application.dto.TenantConfig;
+import xyz.firestige.deploy.application.lifecycle.PlanLifecycleService;
+import xyz.firestige.deploy.application.task.TaskOperationService;
+import xyz.firestige.deploy.domain.plan.PlanCreationResult;
+import xyz.firestige.deploy.domain.plan.PlanInfo;
+import xyz.firestige.deploy.domain.shared.exception.FailureInfo;
+import xyz.firestige.deploy.domain.shared.vo.TaskId;
+import xyz.firestige.deploy.domain.shared.vo.TenantId;
+import xyz.firestige.deploy.domain.task.TaskOperationResult;
+import xyz.firestige.deploy.facade.converter.TenantConfigConverter;
+import xyz.firestige.deploy.facade.exception.TaskCreationException;
+import xyz.firestige.deploy.facade.exception.TaskNotFoundException;
+import xyz.firestige.deploy.facade.exception.TaskOperationException;
+import xyz.firestige.dto.deploy.TenantDeployConfig;
+
 /**
- * 部署任务 Facade（RF-20: 服务拆分优化版）
+ * 部署任务 Facade（T-035: 无状态执行器适配）
  * <p>
- * 职责：
- * 1. DTO 转换：外部 DTO (TenantDeployConfig) → 内部 DTO（当前直接使用，后续可优化）
+ * 职责（纯胶水层）：
+ * 1. DTO 转换：外部 DTO (TenantDeployConfig) → 内部 DTO (TenantConfig)
  * 2. 参数校验（快速失败）
- * 3. 调用应用服务（PlanLifecycleService, TaskOperationService）
+ * 3. 委派给应用层服务（PlanLifecycleService, TaskOperationService）
  * 4. 异常转换：应用层 Result → Facade 异常
  * <p>
- * 设计说明：
- * - 不定义接口，直接使用具体类（符合 YAGNI 原则）
+ * 设计原则：
+ * - 不做业务编排，只做转换和委派
+ * - 不直接调用领域服务或基础设施层
  * - 返回 void（查询操作除外），通过异常机制处理错误
  * - 保护应用层接口稳定，外部 DTO 变化不影响应用层
- * - RF-20: 拆分后依赖 PlanLifecycleService 和 TaskOperationService
+ * <p>
+ * T-035 改造：
+ * - retry/rollback 每次创建新 Task（不复用 taskId）
+ * - 废弃查询方法（pause/resume/cancel/query）
+ * - Caller 监听事件自行维护状态
  *
  * @since RF-20 - 服务拆分
+ * @since T-035 - 无状态执行器适配
  */
 @Component
 public class DeploymentTaskFacade {
@@ -115,34 +118,69 @@ public class DeploymentTaskFacade {
     }
 
     /**
-     * 回滚任务
+     * 回滚任务（T-035: 无状态执行器适配）
+     * <p>
+     * 设计要点：
+     * 1. 纯胶水层：只做 DTO 转换和委派
+     * 2. 使用旧版本配置重新执行 stages（不是逆向操作）
+     * 3. 委派给 TaskOperationService 处理业务逻辑
+     * 4. version 用于单调递增版本校验
      *
-     * @param rollbackConfig 重试配置
-     * @param taskId 任务 ID
-     * @param lastCompletedStageName 最后完成的 Stage 名称
-     * @param version 计划版本
+     * @param rollbackConfig 旧版本配置（回滚目标）
+     * @param lastCompletedStageName 最近完成的 Stage 名称（null 表示全部回滚）
+     * @param version 操作版本号
      */
-    public void rollbackTask(TenantDeployConfig rollbackConfig, String taskId, String lastCompletedStageName, Long version) {
-        logger.info("[DeploymentTaskFacade] 回滚租户任务: {}, version: {}", rollbackConfig.getTenantId(), version);
+    public void rollbackTask(
+        TenantDeployConfig rollbackConfig, 
+        String lastCompletedStageName, 
+        String version
+    ) {
+        logger.info("[DeploymentTaskFacade] 回滚租户任务: {}, version: {}", 
+                    rollbackConfig.getTenantId(), version);
+        
+        // 1. DTO 转换
         TenantConfig config = tenantConfigConverter.convert(rollbackConfig);
-        TaskOperationResult result = taskOperationService.rollbackTask(config, taskId, lastCompletedStageName, version);  // T-015: 异步执行，监听领域事件
+        
+        // 2. 委派给应用层服务
+        TaskOperationResult result = taskOperationService.rollbackTask(
+            config,
+            lastCompletedStageName,  // null 表示全部回滚
+            version
+        );
+        
+        // 3. 处理结果
         handleTaskOperationResult(result, "回滚任务");
-        logger.info("[Facade] 租户任务回滚成功: {}", rollbackConfig.getTenantId());
+        logger.info("[Facade] 租户任务回滚已提交: {}", rollbackConfig.getTenantId());
     }
 
     /**
-     * 重试任务
+     * 重试任务（T-035: 无状态执行器适配）
+     * <p>
+     * 设计要点：
+     * 1. 纯胶水层：只做 DTO 转换和委派
+     * 2. 每次创建新 Task（不复用 taskId）
+     * 3. 委派给 TaskOperationService 处理业务逻辑
+     * 4. 异步执行，Caller 监听事件获取结果
      *
-     * @param retryConfig 重试配置
-     * @param taskId 任务 ID
-     * @param lastCompletedStageName 最后完成的 Stage 名称
+     * @param retryConfig 用于重试的配置（和上次执行一样）
+     * @param lastCompletedStageName 最近完成的 Stage 名称（null 表示从头重试）
      */
-    public void retryTask(TenantDeployConfig retryConfig, String taskId, String lastCompletedStageName) {
-        logger.info("[DeploymentTaskFacade] 重试租户任务: {}, from: {}", retryConfig.getTenantId(), lastCompletedStageName);
+    public void retryTask(TenantDeployConfig retryConfig, String lastCompletedStageName) {
+        logger.info("[DeploymentTaskFacade] 重试租户任务: {}, from: {}", 
+                    retryConfig.getTenantId(), lastCompletedStageName);
+        
+        // 1. DTO 转换
         TenantConfig config = tenantConfigConverter.convert(retryConfig);
-        TaskOperationResult result = taskOperationService.retryTaskByTenant(config, taskId, lastCompletedStageName);  // T-015: 异步执行，监听领域事件
+        
+        // 2. 委派给应用层服务
+        TaskOperationResult result = taskOperationService.retryTask(
+            config,
+            lastCompletedStageName  // null 表示从头重试
+        );
+        
+        // 3. 处理结果
         handleTaskOperationResult(result, "重试任务");
-        logger.info("[Facade] 租户任务重试成功: {}", retryConfig.getTenantId());
+        logger.info("[Facade] 租户任务重试已提交: {}", retryConfig.getTenantId());
     }
 
     /**

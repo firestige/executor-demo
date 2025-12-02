@@ -1,26 +1,27 @@
-# T-035 Facade 集成设计：DeploymentTaskFacade → TaskExecutor
+# T-035 Facade 集成设计：打通 Retry/Rollback 调用链路
 
 > **设计日期**: 2025-12-02  
-> **设计状态**: 讨论中  
+> **设计状态**: 设计完成  
 > **相关任务**: T-035 无状态执行器重构  
 > **更新记录**: 
-> - 2025-12-02 14:30: 初稿完成，提交问题 1-5
+> - 2025-12-02 14:30: 初稿完成，提交问题 1-7
 > - 2025-12-02 15:00: 用户明确 - caller 监听事件，保证传参，无需 TaskStateProjection
 > - 2025-12-02 15:15: 简化设计 - 查询走内存（TaskRuntimeRepository），不破坏现有数据流
+> - 2025-12-02 16:00: **重大更新** - 每次调用创建新 Task，废弃查询方法，简化 API
 
 ---
 
 ## 📋 设计目标
 
-在 T-035 无状态执行器改造完成后，设计从 DeploymentTaskFacade 到 TaskExecutor 的完整调用链路，确保符合 DDD 战略和战术设计原则。
+**打通从 DeploymentTaskFacade 到 TaskExecutor 的 Retry/Rollback 调用链路**，适配 T-035 无状态执行器改造。
 
 ### 核心改造点
 
-1. **Facade API 不变**：DeploymentTaskFacade 的公共 API 保持稳定（对外契约）
-2. **内部流程重构**：调用链路适配 TaskRecoveryService（无状态恢复）
-3. **事件驱动状态管理**：Caller 通过监听领域事件来持久化任务状态
-4. **分层职责清晰**：严格遵循 Facade → Application → Domain → Infrastructure 分层
-5. **最小改动原则**：不引入新组件（TaskStateManager/TaskStateProjection），保持现有数据流
+1. **每次调用创建新 Task**：不复用 taskId，每次 retry/rollback 都是新任务
+2. **简化 Facade API**：只保留 create/retry/rollback，废弃查询和状态管理方法
+3. **统一执行路径**：retry/rollback 复用 PlanExecutionFacade 的编排能力
+4. **事件驱动**：Caller 监听领域事件自行持久化状态
+5. **最小改动原则**：复用现有类和方法签名（必须修改的除外）
 
 ---
 

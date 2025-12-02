@@ -1,5 +1,8 @@
 package xyz.firestige.deploy.application.task;
 
+import java.util.List;
+import java.util.concurrent.CompletableFuture;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.transaction.annotation.Transactional;
@@ -14,16 +17,10 @@ import xyz.firestige.deploy.domain.task.TaskAggregate;
 import xyz.firestige.deploy.domain.task.TaskDomainService;
 import xyz.firestige.deploy.domain.task.TaskOperationResult;
 import xyz.firestige.deploy.domain.task.TaskRepository;
-import xyz.firestige.deploy.domain.task.TaskRuntimeRepository;
-import xyz.firestige.deploy.domain.task.TaskStatus;
 import xyz.firestige.deploy.facade.TaskStatusInfo;
 import xyz.firestige.deploy.infrastructure.execution.TaskExecutor;
 import xyz.firestige.deploy.infrastructure.execution.TaskWorkerCreationContext;
 import xyz.firestige.deploy.infrastructure.execution.TaskWorkerFactory;
-
-import java.util.List;
-import java.util.concurrent.CompletableFuture;
-import java.util.function.Function;
 
 /**
  * 任务操作服务（RF-20: DeploymentApplicationService 拆分）
@@ -53,17 +50,14 @@ public class TaskOperationService {
 
     private final TaskDomainService taskDomainService;
     private final TaskRepository taskRepository;
-    private final TaskRuntimeRepository taskRuntimeRepository;
     private final TaskWorkerFactory taskWorkerFactory;
 
     public TaskOperationService(
             TaskDomainService taskDomainService,
             TaskRepository taskRepository,
-            TaskRuntimeRepository taskRuntimeRepository,
             TaskWorkerFactory taskWorkerFactory) {
         this.taskDomainService = taskDomainService;
         this.taskRepository = taskRepository;
-        this.taskRuntimeRepository = taskRuntimeRepository;
         this.taskWorkerFactory = taskWorkerFactory;
 
         logger.info("[TaskOperationService] 初始化完成");
@@ -96,23 +90,40 @@ public class TaskOperationService {
     }
 
     /**
-     * 根据租户 ID 回滚任务（异步执行）
+     * 回滚任务（T-035: 无状态执行器适配）
      * <p>
      * T-015: 移除 executorCreator 参数，内部创建 TaskExecutor
      * T-028: 使用传入的 version 作为回滚目标版本（planVersion）
      * T-032: 使用标志位驱动，统一通过 execute() 方法
+     * T-035: 修改方法名，添加 lastCompletedStageName 参数
      * 通过领域事件通知回滚结果（TaskRollingBackEvent / TaskRolledBackEvent / TaskRollbackFailedEvent）
+     * <p>
+     * 设计说明：
+     * - 回滚不是逆向操作，而是用旧版本配置重新执行 stages
+     * - lastCompletedStageName 为 null 时，全部回滚
      *
-     * @param tenantId 租户 ID
+     * @param oldConfig 旧版本配置（回滚目标）
+     * @param lastCompletedStageName 最近完成的 Stage 名称（null 表示全部回滚）
      * @param version 回滚目标版本（planVersion）
      * @return 操作结果（立即返回，实际回滚异步执行）
      */
     @Transactional
-    public TaskOperationResult rollbackTaskByTenant(TenantId tenantId, String version) {
+    public TaskOperationResult rollbackTask(
+        TenantConfig oldConfig,
+        String lastCompletedStageName,
+        String version
+    ) {
+        TenantId tenantId = oldConfig.getTenantId();
         logger.info("[TaskOperationService] 回滚租户任务（异步）: {}, version: {}", tenantId, version);
 
+        // TODO T-035: 需要在 TaskDomainService 中添加新方法：
+        //  prepareRollback(TenantConfig oldConfig, String lastCompletedStageName, String version)
         // Step 1: 调用领域服务准备回滚（传递 planVersion）
-        TaskWorkerCreationContext context = taskDomainService.prepareRollbackByTenant(tenantId, version);
+        TaskWorkerCreationContext context = taskDomainService.prepareRollback(
+            oldConfig,
+            lastCompletedStageName,
+            version
+        );
         if (context == null) {
             return TaskOperationResult.failure(
                 null,
@@ -150,24 +161,27 @@ public class TaskOperationService {
     }
 
     /**
-     * 根据租户 ID 重试任务（异步执行）
+     * 重试任务（T-035: 无状态执行器适配）
      * <p>
      * T-015: 移除 executorCreator 参数，内部创建 TaskExecutor
      * T-032: 使用标志位驱动，统一通过 execute() 方法
+     * T-035: 修改方法名，移除 taskId 参数
      * 通过领域事件通知重试结果（TaskRetryStartedEvent / TaskCompletedEvent / TaskFailedEvent）
      *
-     * @param config 租户配置
-     * @param takId 任务 ID
-     * @param lastCompletedStageName 最后完成的 Stage 名称
+     * @param config 用于重试的配置（和上次执行一样）
+     * @param lastCompletedStageName 最近完成的 Stage 名称（null 表示从头重试）
      * @return 操作结果（立即返回，实际重试异步执行）
      */
     @Transactional
-    public TaskOperationResult retryTaskByTenant(TenantConfig config, String takId, String lastCompletedStageName) {
+    public TaskOperationResult retryTask(TenantConfig config, String lastCompletedStageName) {
+        TenantId tenantId = config.getTenantId();
         logger.info("[TaskOperationService] 重试租户任务（异步）: {}, from: {}",
                     tenantId, lastCompletedStageName);
 
+        // TODO T-035: 需要在 TaskDomainService 中添加新方法：
+        //  prepareRetry(TenantConfig config, String lastCompletedStageName)
         // Step 1: 调用领域服务准备重试
-        TaskWorkerCreationContext context = taskDomainService.prepareRetryByTenant(tenantId, fromCheckpoint);
+        TaskWorkerCreationContext context = taskDomainService.prepareRetry(config, lastCompletedStageName);
         if (context == null) {
             return TaskOperationResult.failure(
                 null,
@@ -177,7 +191,8 @@ public class TaskOperationService {
         }
 
         // ✅ T-032: 设置重试标志位
-        context.getRuntimeContext().requestRetry(fromCheckpoint);
+        // T-035: lastCompletedStageName 不为 null 表示从检查点继续
+        context.getRuntimeContext().requestRetry(lastCompletedStageName != null);
 
         // Step 2: 创建 TaskExecutor（内部注入）
         TaskExecutor executor = context.hasExistingExecutor()

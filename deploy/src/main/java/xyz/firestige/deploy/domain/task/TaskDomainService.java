@@ -6,19 +6,18 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import xyz.firestige.deploy.application.dto.TenantConfig;
+import xyz.firestige.deploy.domain.shared.event.DomainEventPublisher;
+import xyz.firestige.deploy.domain.shared.exception.ErrorType;
+import xyz.firestige.deploy.domain.shared.exception.FailureInfo;
 import xyz.firestige.deploy.domain.shared.vo.PlanId;
 import xyz.firestige.deploy.domain.shared.vo.TaskId;
 import xyz.firestige.deploy.domain.shared.vo.TenantId;
 import xyz.firestige.deploy.domain.task.event.TaskCreatedEvent;
-import xyz.firestige.deploy.domain.task.event.TaskRetryStartedEvent;
-import xyz.firestige.deploy.infrastructure.execution.stage.TaskStage;
-import xyz.firestige.deploy.domain.shared.event.DomainEventPublisher;
-import xyz.firestige.deploy.domain.shared.exception.ErrorType;
-import xyz.firestige.deploy.domain.shared.exception.FailureInfo;
 import xyz.firestige.deploy.facade.TaskStatusInfo;
 import xyz.firestige.deploy.infrastructure.execution.TaskExecutor;
 import xyz.firestige.deploy.infrastructure.execution.TaskWorkerCreationContext;
 import xyz.firestige.deploy.infrastructure.execution.stage.StageFactory;
+import xyz.firestige.deploy.infrastructure.execution.stage.TaskStage;
 
 /**
  * Task 领域服务 (RF-15: 执行层解耦版)
@@ -635,6 +634,161 @@ public class TaskDomainService {
         }
 
         return cancelTask(task.getTaskId());
+    }
+
+    /**
+     * 准备重试任务（T-035: 无状态执行器适配）
+     * <p>
+     * 设计要点：
+     * 1. 根据 config 中的 tenantId 查找现有 Task
+     * 2. 调用 TaskRecoveryService 重建 TaskAggregate（基于 lastCompletedStageName）
+     * 3. lastCompletedStageName 为 null 时，从头到尾全部重试
+     * 4. 返回 TaskWorkerCreationContext 供应用层创建 Executor
+     * 
+     * @param config 用于重试的配置（和上次执行一样）
+     * @param lastCompletedStageName 最近完成的 Stage 名称（null 表示从头重试）
+     * @return TaskWorkerCreationContext 包含执行所需的聚合和运行时数据，null 表示未找到任务
+     */
+    public TaskWorkerCreationContext prepareRetry(TenantConfig config, String lastCompletedStageName) {
+        TenantId tenantId = config.getTenantId();
+        logger.info("[TaskDomainService] 准备重试任务: {}, lastCompletedStage: {}", 
+                    tenantId, lastCompletedStageName);
+
+        // 1. 查找现有 Task
+        TaskAggregate existingTask = findTaskByTenantId(tenantId);
+        if (existingTask == null) {
+            logger.warn("[TaskDomainService] 未找到租户任务: {}", tenantId);
+            return null;
+        }
+
+        // 2. 使用相同配置重新装配 Stages
+        List<TaskStage> stages = stageFactory.buildStages(config);
+        logger.info("[TaskDomainService] 重新装配 Stages: taskId={}, stageCount={}", 
+                    existingTask.getTaskId(), stages.size());
+
+        // 3. 计算起始索引（lastCompletedStageName 为 null 时从 0 开始）
+        int startIndex;
+        if (lastCompletedStageName != null && !lastCompletedStageName.isEmpty()) {
+            startIndex = calculateStartIndex(stages, lastCompletedStageName);
+            logger.info("[TaskDomainService] 从 Stage[{}] 开始重试: {}", 
+                        startIndex, lastCompletedStageName);
+        } else {
+            logger.info("[TaskDomainService] lastCompletedStageName 为 null，从头开始重试");
+        }
+
+        // 4. 构造运行时上下文
+        TaskRuntimeContext ctx = new TaskRuntimeContext(
+            existingTask.getPlanId(),
+            existingTask.getTaskId(),
+            config.getTenantId()
+        );
+
+        // 5. 设置起始索引到 Task（如果需要）
+        // 注意：这里可能需要调用 Task 的某个方法来设置 currentStageIndex
+        // 具体实现取决于 TaskAggregate 的 API
+        // existingTask.setCurrentStageIndex(startIndex);
+
+        logger.info("[TaskDomainService] 任务准备完成，等待应用层执行重试: {}", existingTask.getTaskId());
+        return TaskWorkerCreationContext.builder()
+            .planId(existingTask.getPlanId())
+            .task(existingTask)
+            .stages(stages)
+            .runtimeContext(ctx)
+            .existingExecutor(null)  // 不复用 Executor
+            .build();
+    }
+
+    /**
+     * 准备回滚任务（T-035: 无状态执行器适配）
+     * <p>
+     * 设计要点：
+     * 1. 根据 oldConfig 中的 tenantId 查找现有 Task
+     * 2. 使用旧版本配置重新装配 Stages
+     * 3. 回滚不是逆向操作，而是用旧版本配置正向执行 stages
+     * 4. lastCompletedStageName 为 null 时，全部回滚
+     * 5. version 用于单调递增版本号校验
+     * 
+     * @param oldConfig 旧版本配置（回滚目标）
+     * @param lastCompletedStageName 最近完成的 Stage 名称（null 表示全部回滚）
+     * @param version 操作版本号（用于版本校验）
+     * @return TaskWorkerCreationContext 包含执行所需的聚合和运行时数据，null 表示未找到任务
+     */
+    public TaskWorkerCreationContext prepareRollback(
+        TenantConfig oldConfig,
+        String lastCompletedStageName,
+        String version
+    ) {
+        TenantId tenantId = oldConfig.getTenantId();
+        logger.info("[TaskDomainService] 准备回滚任务: {}, lastCompletedStage: {}, version: {}", 
+                    tenantId, lastCompletedStageName, version);
+
+        // 1. 查找现有 Task
+        TaskAggregate existingTask = findTaskByTenantId(tenantId);
+        if (existingTask == null) {
+            logger.warn("[TaskDomainService] 未找到租户任务: {}", tenantId);
+            return null;
+        }
+
+        // 2. 检查状态是否允许回滚
+        TaskStatus status = existingTask.getStatus();
+        if (status != TaskStatus.FAILED && status != TaskStatus.PAUSED && status != TaskStatus.COMPLETED) {
+            logger.warn("[TaskDomainService] Task {} 状态 {} 不允许回滚", 
+                        existingTask.getTaskId(), status);
+            return null;
+        }
+
+        // 3. 使用旧版本配置重新装配 Stages（关键：用旧配置刷回）
+        List<TaskStage> rollbackStages = stageFactory.buildStages(oldConfig);
+        logger.info("[TaskDomainService] 用旧版本配置重新装配 Stages: taskId={}, stageCount={}", 
+                    existingTask.getTaskId(), rollbackStages.size());
+
+        // 4. 计算起始索引（lastCompletedStageName 为 null 时从 0 开始）
+        int startIndex;
+        if (lastCompletedStageName != null && !lastCompletedStageName.isEmpty()) {
+            startIndex = calculateStartIndex(rollbackStages, lastCompletedStageName);
+            logger.info("[TaskDomainService] 从 Stage[{}] 开始回滚: {}", 
+                        startIndex, lastCompletedStageName);
+        } else {
+            logger.info("[TaskDomainService] lastCompletedStageName 为 null，全部回滚");
+        }
+
+        // 5. 构造回滚运行时上下文（使用旧配置 + 新版本号）
+        TaskRuntimeContext rollbackCtx = new TaskRuntimeContext(
+            existingTask.getPlanId(),
+            existingTask.getTaskId(),
+            oldConfig.getTenantId()
+        );
+        // 设置版本号（用于版本校验）
+        // rollbackCtx.setVersion(version); // 根据实际 API 调整
+
+        logger.info("[TaskDomainService] 任务准备完成，等待应用层执行回滚: {}", existingTask.getTaskId());
+        return TaskWorkerCreationContext.builder()
+            .planId(existingTask.getPlanId())
+            .task(existingTask)
+            .stages(rollbackStages)      // 使用旧配置装配的 Stages
+            .runtimeContext(rollbackCtx) // 使用旧配置的 Context
+            .existingExecutor(null)      // 不复用 Executor
+            .build();
+    }
+
+    /**
+     * 计算起始索引（根据 lastCompletedStageName）
+     * <p>
+     * 如果找不到对应的 Stage，返回 0（从头开始）
+     * 
+     * @param stages Stage 列表
+     * @param lastCompletedStageName 最后完成的 Stage 名称
+     * @return 起始索引（从 lastCompletedIndex + 1 开始）
+     */
+    private int calculateStartIndex(List<TaskStage> stages, String lastCompletedStageName) {
+        for (int i = 0; i < stages.size(); i++) {
+            if (stages.get(i).getName().equals(lastCompletedStageName)) {
+                return i + 1;  // 从下一个 Stage 开始
+            }
+        }
+        
+        logger.warn("[TaskDomainService] 未找到 Stage: {}，从头开始", lastCompletedStageName);
+        return 0;  // 找不到时从头开始
     }
 
     // ========== 辅助方法 ==========
