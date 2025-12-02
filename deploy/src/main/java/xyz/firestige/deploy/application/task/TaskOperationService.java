@@ -116,8 +116,6 @@ public class TaskOperationService {
         TenantId tenantId = oldConfig.getTenantId();
         logger.info("[TaskOperationService] 回滚租户任务（异步）: {}, version: {}", tenantId, version);
 
-        // TODO T-035: 需要在 TaskDomainService 中添加新方法：
-        //  prepareRollback(TenantConfig oldConfig, String lastCompletedStageName, String version)
         // Step 1: 调用领域服务准备回滚（传递 planVersion）
         TaskWorkerCreationContext context = taskDomainService.prepareRollback(
             oldConfig,

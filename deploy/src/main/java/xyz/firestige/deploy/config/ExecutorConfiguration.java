@@ -46,7 +46,6 @@ import xyz.firestige.deploy.infrastructure.event.SpringDomainEventPublisher;
  * - 新增 Repository Bean (InMemoryPlanRepository, InMemoryTaskRepository)
  * - 新增 DomainService Bean (PlanDomainService, TaskDomainService)
  * - 新增 ApplicationService Bean (DeploymentApplicationService)
- * - 保留旧 Bean 以保持向后兼容（标记为 @Deprecated）
  *
  * @since DDD 重构 Phase 2.2.5
  * @updated T-027 启用 @ConfigurationProperties（InfrastructureProperties, ExecutorProperties）
@@ -194,12 +193,10 @@ public class ExecutorConfiguration {
     public TaskOperationService taskOperationService(
             TaskDomainService taskDomainService,
             TaskRepository taskRepository,
-            TaskRuntimeRepository taskRuntimeRepository,
             TaskWorkerFactory taskWorkerFactory) {
         return new TaskOperationService(
                 taskDomainService,
                 taskRepository,
-                taskRuntimeRepository,
                 taskWorkerFactory
         );
     }

@@ -96,19 +96,6 @@ public final class StageProgress {
     }
 
     /**
-     * 判断是否所有 Stage 完成
-     * <p>
-     * 注意：此方法已废弃，请使用 ExecutionRange.isCompleted(progress, totalStages)
-     *
-     * @return true = 已完成，false = 未完成
-     * @deprecated 使用 ExecutionRange 判断是否完成
-     */
-    @Deprecated
-    public boolean isCompleted() {
-        return currentStageIndex >= stageNames.size();
-    }
-
-    /**
      * 计算进度百分比
      *
      * @return 0.0 ~ 1.0
