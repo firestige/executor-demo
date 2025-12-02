@@ -14,7 +14,7 @@ import xyz.firestige.redis.ack.core.VerifyStageBuilderImpl;
 import xyz.firestige.redis.ack.core.WriteStageBuilderImpl;
 
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executor;
 
 /**
  * Redis ACK 服务默认实现
@@ -28,7 +28,7 @@ public class DefaultRedisAckService implements RedisAckService {
     private final HttpClient httpClient;
     private final ObjectMapper objectMapper;
     private final AckMetricsRecorder metricsRecorder;
-    private final ExecutorService executorService;
+    private final Executor executorService;
 
     public DefaultRedisAckService(RedisClient redisClient,
                                   HttpClient httpClient,
@@ -47,7 +47,7 @@ public class DefaultRedisAckService implements RedisAckService {
                                   HttpClient httpClient,
                                   ObjectMapper objectMapper,
                                   AckMetricsRecorder metricsRecorder,
-                                  ExecutorService executorService) {
+                                  Executor executorService) {
         this.redisClient = redisClient;
         this.httpClient = httpClient;
         this.objectMapper = objectMapper;
@@ -70,8 +70,8 @@ public class DefaultRedisAckService implements RedisAckService {
                                       HttpClient httpClient,
                                       ObjectMapper objectMapper,
                                       AckMetricsRecorder metricsRecorder,
-                                      ExecutorService executorService) {
-            super(redisClient, httpClient, objectMapper, metricsRecorder, executorService);
+                                      Executor executor) {
+            super(redisClient, httpClient, objectMapper, metricsRecorder, executor);
             this.metricsRecorder = metricsRecorder;
         }
 

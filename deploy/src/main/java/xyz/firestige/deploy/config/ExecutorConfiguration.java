@@ -5,9 +5,8 @@ import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
-import jakarta.validation.Validation;
 import jakarta.validation.Validator;
-import jakarta.validation.ValidatorFactory;
+import xyz.firestige.deploy.application.task.TaskRecoveryService;
 import xyz.firestige.deploy.config.properties.ExecutorProperties;
 import xyz.firestige.deploy.config.properties.InfrastructureProperties;
 import xyz.firestige.deploy.application.conflict.TenantConflictCoordinator;
@@ -16,7 +15,6 @@ import xyz.firestige.deploy.application.lifecycle.PlanLifecycleService;
 import xyz.firestige.deploy.application.orchestration.TaskExecutionOrchestrator;
 import xyz.firestige.deploy.application.plan.DeploymentPlanCreator;
 import xyz.firestige.deploy.application.task.TaskOperationService;
-import xyz.firestige.deploy.application.validation.ConflictValidator;
 import xyz.firestige.deploy.application.validation.BusinessValidator;
 import xyz.firestige.deploy.domain.plan.PlanDomainService;
 import xyz.firestige.deploy.domain.plan.PlanRepository;
@@ -33,11 +31,6 @@ import xyz.firestige.deploy.infrastructure.persistence.plan.InMemoryPlanReposito
 import xyz.firestige.deploy.infrastructure.persistence.task.InMemoryTaskRepository;
 import xyz.firestige.deploy.infrastructure.persistence.task.InMemoryTaskRuntimeRepository;
 import xyz.firestige.deploy.infrastructure.scheduling.TenantConflictManager;
-import xyz.firestige.deploy.infrastructure.validation.ValidationChain;
-import xyz.firestige.deploy.infrastructure.validation.validator.BusinessRuleValidator;
-import xyz.firestige.deploy.infrastructure.validation.validator.NetworkEndpointValidator;
-import xyz.firestige.deploy.infrastructure.validation.validator.TenantIdValidator;
-import xyz.firestige.deploy.infrastructure.event.SpringDomainEventPublisher;
 
 /**
  * 执行器配置类（DDD 重构版）
@@ -127,12 +120,14 @@ public class ExecutorConfiguration {
             TaskRepository taskRepository,
             TaskRuntimeRepository taskRuntimeRepository,
             DomainEventPublisher domainEventPublisher,
-            StageFactory stageFactory) {  // T-028: 新增依赖用于回滚时重新装配 Stages
+            StageFactory stageFactory,
+            TaskRecoveryService recoveryService) {  // T-028: 新增依赖用于回滚时重新装配 Stages
         return new TaskDomainService(
                 taskRepository,
                 taskRuntimeRepository,
                 domainEventPublisher,
-                stageFactory
+                stageFactory,
+                recoveryService
         );
     }
 
@@ -235,5 +230,10 @@ public class ExecutorConfiguration {
                 taskOperationService,
                 tenantConfigConverter,
                 validator);
+    }
+
+    @Bean
+    public TaskRecoveryService taskRecoveryService(StageFactory stageFactory) {
+        return new TaskRecoveryService(stageFactory);
     }
 }

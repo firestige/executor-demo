@@ -176,8 +176,6 @@ public class TaskOperationService {
         logger.info("[TaskOperationService] 重试租户任务（异步）: {}, from: {}",
                     tenantId, lastCompletedStageName);
 
-        // TODO T-035: 需要在 TaskDomainService 中添加新方法：
-        //  prepareRetry(TenantConfig config, String lastCompletedStageName)
         // Step 1: 调用领域服务准备重试
         TaskWorkerCreationContext context = taskDomainService.prepareRetry(config, lastCompletedStageName);
         if (context == null) {

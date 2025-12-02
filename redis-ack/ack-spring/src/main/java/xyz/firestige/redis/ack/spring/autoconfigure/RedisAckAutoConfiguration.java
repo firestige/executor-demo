@@ -78,7 +78,7 @@ public class RedisAckAutoConfiguration {
             ackHttpClient,
             objectMapper,
             metricsRecorder,
-            (java.util.concurrent.ExecutorService) ackVerifyExecutor
+            ackVerifyExecutor
         );
     }
 

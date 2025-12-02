@@ -9,7 +9,9 @@ import xyz.firestige.deploy.domain.task.event.TaskCompletedEvent;
 import xyz.firestige.deploy.domain.task.event.TaskFailedEvent;
 import xyz.firestige.deploy.domain.task.event.TaskPausedEvent;
 import xyz.firestige.deploy.domain.task.event.TaskResumedEvent;
+import xyz.firestige.deploy.domain.task.event.TaskRetryStartedEvent;
 import xyz.firestige.deploy.domain.task.event.TaskRolledBackEvent;
+import xyz.firestige.deploy.domain.task.event.TaskRollingBackEvent;
 import xyz.firestige.deploy.domain.task.event.TaskStageCompletedEvent;
 import xyz.firestige.deploy.domain.task.event.TaskStageFailedEvent;
 import xyz.firestige.deploy.domain.task.event.TaskStageStartedEvent;
@@ -27,6 +29,26 @@ public class TestEventTracker {
 
     @EventListener
     public void onTaskStarted(TaskStartedEvent event) {
+        events.add(new TrackedEvent(
+                EventType.TASK_STARTED,
+                event.getTaskId(),
+                event.getStatus(),
+                null
+        ));
+    }
+
+    @EventListener
+    public void onTaskRetryStarted(TaskRetryStartedEvent event) {
+        events.add(new TrackedEvent(
+                EventType.TASK_STARTED,
+                event.getTaskId(),
+                event.getStatus(),
+                null
+        ));
+    }
+
+    @EventListener
+    public void onTaskRollbackStarted(TaskRollingBackEvent event) {
         events.add(new TrackedEvent(
                 EventType.TASK_STARTED,
                 event.getTaskId(),

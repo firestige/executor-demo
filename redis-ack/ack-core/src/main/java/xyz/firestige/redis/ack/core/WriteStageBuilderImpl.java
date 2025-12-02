@@ -16,7 +16,8 @@ import xyz.firestige.redis.ack.extractor.JsonFieldExtractor;
 import xyz.firestige.redis.ack.extractor.JsonFieldVersionTagExtractor;
 
 import java.time.Duration;
-import java.util.concurrent.ExecutorService;
+import java.util.Map;
+import java.util.concurrent.Executor;
 import java.util.function.Function;
 
 /**
@@ -31,7 +32,7 @@ public class WriteStageBuilderImpl implements WriteStageBuilder {
     private final HttpClient httpClient;
     private final ObjectMapper objectMapper;
     private final AckMetricsRecorder metricsRecorder;
-    private final ExecutorService executorService; // 用于并发验证
+    private final Executor executor; // 用于并发验证
 
     // Write 配置
     private String key;
@@ -42,10 +43,10 @@ public class WriteStageBuilderImpl implements WriteStageBuilder {
     private Double zsetScore; // 仅当 ZADD 时使用
 
     // 多字段模式配置（Phase 2 新增）
-    private java.util.Map<String, Object> fields;  // 多字段模式的 fields
+    private Map<String, Object> fields;  // 多字段模式的 fields
     private String versionTagSourceField;  // 从哪个 field 提取 versionTag
     private VersionTagExtractor fieldLevelExtractor;  // field 级别提取器
-    private Function<java.util.Map<String, Object>, String> fieldsLevelExtractor;  // 多 fields 组合提取器
+    private Function<Map<String, Object>, String> fieldsLevelExtractor;  // 多 fields 组合提取器
 
     // Footprint 配置
     private FootprintExtractor footprintExtractor;
@@ -67,12 +68,12 @@ public class WriteStageBuilderImpl implements WriteStageBuilder {
                                  HttpClient httpClient,
                                  ObjectMapper objectMapper,
                                  AckMetricsRecorder metricsRecorder,
-                                 ExecutorService executorService) {
+                                 Executor executor) {
         this.redisClient = redisClient;
         this.httpClient = httpClient;
         this.objectMapper = objectMapper;
         this.metricsRecorder = metricsRecorder;
-        this.executorService = executorService;
+        this.executor = executor;
     }
 
     @Override
@@ -188,7 +189,7 @@ public class WriteStageBuilderImpl implements WriteStageBuilder {
     RedisClient getRedisClient() { return redisClient; }
     HttpClient getHttpClient() { return httpClient; }
     ObjectMapper getObjectMapper() { return objectMapper; }
-    ExecutorService getExecutorService() { return executorService; }
+    Executor getExecutor() { return executor; }
     public WriteStageBuilder zsetScore(double score) { this.zsetScore = score; return this; }
     Double getZsetScore() { return zsetScore; }
     AckMetricsRecorder getMetricsRecorder() { return metricsRecorder; }

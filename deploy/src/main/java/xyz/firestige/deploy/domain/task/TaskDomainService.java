@@ -1,11 +1,13 @@
 package xyz.firestige.deploy.domain.task;
 
 import java.util.List;
+import java.util.UUID;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import xyz.firestige.deploy.application.dto.TenantConfig;
+import xyz.firestige.deploy.application.task.TaskRecoveryService;
 import xyz.firestige.deploy.domain.shared.event.DomainEventPublisher;
 import xyz.firestige.deploy.domain.shared.exception.ErrorType;
 import xyz.firestige.deploy.domain.shared.exception.FailureInfo;
@@ -46,16 +48,19 @@ public class TaskDomainService {
     private final TaskRuntimeRepository taskRuntimeRepository;
     private final DomainEventPublisher domainEventPublisher;
     private final StageFactory stageFactory;  // T-028: 回滚时重新装配 Stages
+    private final TaskRecoveryService taskRecoveryService;
 
     public TaskDomainService(
             TaskRepository taskRepository,
             TaskRuntimeRepository taskRuntimeRepository,
             DomainEventPublisher domainEventPublisher,
-            StageFactory stageFactory) {
+            StageFactory stageFactory,
+            TaskRecoveryService taskRecoveryService) {
         this.taskRepository = taskRepository;
         this.taskRuntimeRepository = taskRuntimeRepository;
         this.domainEventPublisher = domainEventPublisher;
         this.stageFactory = stageFactory;
+        this.taskRecoveryService = taskRecoveryService;
     }
 
     /**
@@ -365,173 +370,6 @@ public class TaskDomainService {
     }
 
     /**
-     * 准备回滚任务（T-028: 用 prevConfig + planVersion 重新装配 Stages）
-     * 应用层负责创建 TaskExecutor 并执行回滚
-     *
-     * @param tenantId 租户 ID
-     * @param planVersion 回滚目标版本（用于 RedisAck 的 metadata.version、footprint 验证）
-     * @return TaskWorkerCreationContext 包含执行所需的聚合和运行时数据，null 表示未找到任务或无法回滚
-     */
-    public TaskWorkerCreationContext prepareRollbackByTenant(TenantId tenantId, String planVersion) {
-        logger.info("[TaskDomainService] 准备回滚租户任务: {}, planVersion: {}", tenantId, planVersion);
-
-        TaskAggregate task = findTaskByTenantId(tenantId);
-        if (task == null) {
-            logger.warn("[TaskDomainService] 未找到租户任务: {}", tenantId);
-            return null;
-        }
-
-        // 1. 检查前置条件：必须有 prevConfig
-        TenantConfig prevConfig = task.getPrevConfig();
-        if (prevConfig == null) {
-            logger.warn("[TaskDomainService] Task {} 无 prevConfig，无法回滚", task.getTaskId());
-            return null;
-        }
-
-        // 2. 检查状态是否允许回滚
-        TaskStatus status = task.getStatus();
-        if (status != TaskStatus.FAILED && status != TaskStatus.PAUSED) {
-            logger.warn("[TaskDomainService] Task {} 状态 {} 不允许回滚", task.getTaskId(), status);
-            return null;
-        }
-
-        // 3. 构造回滚配置：用 prevConfig + 新的 planVersion
-        TenantConfig rollbackConfig = buildRollbackConfig(prevConfig, planVersion);
-        logger.info("[TaskDomainService] 构造回滚配置: taskId={}, prevPlanVersion={}, rollbackPlanVersion={}",
-            task.getTaskId(), prevConfig.getPlanVersion(), rollbackConfig.getPlanVersion());
-
-        // 4. 用回滚配置重新装配 Stages（关键：DataPreparer 会捕获 rollbackConfig）
-        List<TaskStage> rollbackStages = stageFactory.buildStages(rollbackConfig);
-        logger.info("[TaskDomainService] 用回滚配置重新装配 Stages: taskId={}, stageCount={}",
-            task.getTaskId(), rollbackStages.size());
-
-        // 5. 构造回滚 RuntimeContext（装填旧配置数据 + 新的 planVersion）
-        TaskRuntimeContext rollbackCtx = buildRollbackContext(task, rollbackConfig);
-        logger.info("[TaskDomainService] 构造回滚 RuntimeContext: taskId={}, planVersion={}",
-            task.getTaskId(), planVersion);
-
-        // 6. 发布回滚开始事件
-        domainEventPublisher.publishAll(task.getDomainEvents());
-        task.clearDomainEvents();
-
-        // 7. 返回执行上下文（不复用原有 Executor）
-        logger.info("[TaskDomainService] 任务准备完成，等待应用层执行回滚: {}", task.getTaskId());
-        return TaskWorkerCreationContext.builder()
-            .planId(task.getPlanId())
-            .task(task)
-            .stages(rollbackStages)           // ← 使用回滚配置装配的 Stages
-            .runtimeContext(rollbackCtx)      // ← 使用回滚配置装填的 Context
-            .existingExecutor(null)           // ← 不复用 Executor
-            .build();
-    }
-
-    /**
-     * T-028: 构造回滚配置（基于 prevConfig + 新的 planVersion）
-     *
-     * @param prevConfig 上一版完整配置
-     * @param planVersion 回滚目标版本
-     * @return 回滚配置
-     */
-    private TenantConfig buildRollbackConfig(TenantConfig prevConfig, String planVersion) {
-        // 创建新的 TenantConfig（深拷贝 prevConfig）
-        TenantConfig rollbackConfig = new TenantConfig();
-
-        // 复制所有字段from prevConfig (使用 getValue() 提取原始类型)
-        rollbackConfig.setPlanId(Long.parseLong(prevConfig.getPlanId().getValue()));  // PlanId.getValue() 返回 String
-        rollbackConfig.setTenantId(prevConfig.getTenantId().getValue());  // TenantId.getValue() 返回 String
-        rollbackConfig.setDeployUnit(prevConfig.getDeployUnit());
-        rollbackConfig.setRouteRules(prevConfig.getRouteRules());  // ← 关键：routeRules 来自 prevConfig
-        rollbackConfig.setNacosNameSpace(prevConfig.getNacosNameSpace());
-        rollbackConfig.setHealthCheckEndpoints(prevConfig.getHealthCheckEndpoints());
-        rollbackConfig.setDefaultFlag(prevConfig.getDefaultFlag());
-        rollbackConfig.setServiceNames(prevConfig.getServiceNames());
-        rollbackConfig.setMediaRoutingConfig(prevConfig.getMediaRoutingConfig());
-
-        // ✅ 关键：设置新的 planVersion（回滚目标版本）
-        rollbackConfig.setPlanVersion(Long.parseLong(planVersion));
-
-        logger.debug("[TaskDomainService] 构造回滚配置: prevVersion={}, rollbackVersion={}, deployUnit={}, routeRules={}",
-            prevConfig.getPlanVersion(), planVersion,
-            prevConfig.getDeployUnit().name(),
-            prevConfig.getRouteRules() != null ? prevConfig.getRouteRules().size() : 0);
-
-        return rollbackConfig;
-    }
-
-    /**
-     * T-028: 构造回滚 RuntimeContext（装填旧配置数据）
-     *
-     * @param task Task 聚合
-     * @param rollbackConfig 回滚配置
-     * @return 回滚 RuntimeContext
-     */
-    private TaskRuntimeContext buildRollbackContext(TaskAggregate task, TenantConfig rollbackConfig) {
-        TaskRuntimeContext ctx = new TaskRuntimeContext(
-            task.getPlanId(),
-            task.getTaskId(),
-            task.getTenantId()
-        );
-
-        // 装填旧配置的部署单元信息
-        if (rollbackConfig.getDeployUnit() != null) {
-            ctx.addVariable("deployUnitVersion", rollbackConfig.getDeployUnit().version());
-            ctx.addVariable("deployUnitId", rollbackConfig.getDeployUnit().id());
-            ctx.addVariable("deployUnitName", rollbackConfig.getDeployUnit().name());
-        }
-
-        // 装填健康检查端点
-        if (rollbackConfig.getHealthCheckEndpoints() != null) {
-            ctx.addVariable("healthCheckEndpoints", rollbackConfig.getHealthCheckEndpoints());
-        }
-
-        // ✅ 关键：设置新的 planVersion（RedisAckService.verify 会用到）
-        ctx.addVariable("planVersion", rollbackConfig.getPlanVersion());
-
-        logger.debug("[TaskDomainService] 构造回滚 RuntimeContext: deployUnit={}, version={}, planVersion={}",
-            rollbackConfig.getDeployUnit() != null ? rollbackConfig.getDeployUnit().name() : null,
-            rollbackConfig.getDeployUnit() != null ? rollbackConfig.getDeployUnit().version() : null,
-            rollbackConfig.getPlanVersion());
-
-        return ctx;
-    }
-
-    /**
-     * 准备重试任务（RF-17: 返回简化的 TaskWorkerCreationContext）
-     * 应用层负责创建 TaskExecutor 并执行重试
-     *
-     * @param tenantId 租户 ID
-     * @param fromCheckpoint 是否从检查点恢复
-     * @return TaskWorkerCreationContext 包含执行所需的聚合和运行时数据，null 表示未找到任务
-     */
-    public TaskWorkerCreationContext prepareRetryByTenant(TenantId tenantId, boolean fromCheckpoint) {
-        logger.info("[TaskDomainService] 准备重试租户任务: {}, fromCheckpoint: {}", tenantId, fromCheckpoint);
-
-        TaskAggregate target = findTaskByTenantId(tenantId);
-        if (target == null) {
-            logger.warn("[TaskDomainService] 未找到租户任务: {}", tenantId);
-            return null;
-        }
-
-        // T-035: 移除 checkpoint 补偿逻辑，fromCheckpoint 参数已废弃
-        // 重试总是从调用方提供的 lastCompletedStageName 恢复
-
-        // 获取运行时数据
-        List<TaskStage> stages = taskRuntimeRepository.getStages(target.getTaskId()).orElseGet(List::of);
-        TaskRuntimeContext ctx = taskRuntimeRepository.getContext(target.getTaskId()).orElse(null);
-        TaskExecutor executor = taskRuntimeRepository.getExecutor(target.getTaskId()).orElse(null);
-
-        logger.info("[TaskDomainService] 任务准备完成，等待应用层执行重试: {}", target.getTaskId());
-        return TaskWorkerCreationContext.builder()
-            .planId(target.getPlanId())
-            .task(target)
-            .stages(stages)
-            .runtimeContext(ctx)
-            .existingExecutor(executor)
-            .build();
-    }
-
-
-    /**
      * 查询任务状态
      * @param taskId 执行单 ID
      * @return TaskStatusInfo
@@ -657,8 +495,10 @@ public class TaskDomainService {
         // 1. 查找现有 Task
         TaskAggregate existingTask = findTaskByTenantId(tenantId);
         if (existingTask == null) {
-            logger.warn("[TaskDomainService] 未找到租户任务: {}", tenantId);
-            return null;
+            logger.warn("[TaskDomainService] 未找到租户任务: {}, 开始重建", tenantId);
+            TaskId taskId = TaskId.of("task-" + UUID.randomUUID());
+            existingTask = taskRecoveryService.recoverForRetry(taskId, config, lastCompletedStageName);
+            taskRepository.save(existingTask);
         }
 
         // 2. 使用相同配置重新装配 Stages
@@ -725,16 +565,10 @@ public class TaskDomainService {
         // 1. 查找现有 Task
         TaskAggregate existingTask = findTaskByTenantId(tenantId);
         if (existingTask == null) {
-            logger.warn("[TaskDomainService] 未找到租户任务: {}", tenantId);
-            return null;
-        }
-
-        // 2. 检查状态是否允许回滚
-        TaskStatus status = existingTask.getStatus();
-        if (status != TaskStatus.FAILED && status != TaskStatus.PAUSED && status != TaskStatus.COMPLETED) {
-            logger.warn("[TaskDomainService] Task {} 状态 {} 不允许回滚", 
-                        existingTask.getTaskId(), status);
-            return null;
+            logger.warn("[TaskDomainService] 未找到租户任务: {}, 开始重建", tenantId);
+            TaskId taskId = TaskId.of("task-" + UUID.randomUUID());
+            existingTask = taskRecoveryService.recoverForRollback(taskId, oldConfig, lastCompletedStageName);
+            taskRepository.save(existingTask);
         }
 
         // 3. 使用旧版本配置重新装配 Stages（关键：用旧配置刷回）

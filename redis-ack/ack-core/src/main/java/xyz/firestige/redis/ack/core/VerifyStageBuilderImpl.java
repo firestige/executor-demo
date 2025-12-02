@@ -13,7 +13,7 @@ import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
-import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executor;
 import java.util.function.BiFunction;
 import java.util.function.Function;
 
@@ -47,8 +47,8 @@ public class VerifyStageBuilderImpl implements VerifyStageBuilder {
 
     @Override
     public VerifyStageBuilder httpGetMultiple(List<String> urls) {
-        ExecutorService executorService = writeStage.getExecutorService();
-        if (executorService == null) {
+        Executor executor = writeStage.getExecutor();
+        if (executor == null) {
             throw new IllegalStateException("ExecutorService is required for httpGetMultiple. Please configure ack-verify executor.");
         }
 
@@ -63,7 +63,7 @@ public class VerifyStageBuilderImpl implements VerifyStageBuilder {
                     } catch (Exception e) {
                         throw new CompletionException("Failed to query URL: " + url, e);
                     }
-                }, executorService))
+                }, executor))
                 .collect(java.util.stream.Collectors.toList());
 
             // 等待所有请求完成
