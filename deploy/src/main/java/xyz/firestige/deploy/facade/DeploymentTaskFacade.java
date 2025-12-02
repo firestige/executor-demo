@@ -115,66 +115,34 @@ public class DeploymentTaskFacade {
     }
 
     /**
-     * 根据租户 ID 暂停任务
+     * 回滚任务
+     *
+     * @param rollbackConfig 重试配置
+     * @param taskId 任务 ID
+     * @param lastCompletedStageName 最后完成的 Stage 名称
+     * @param version 计划版本
      */
-    public void pauseTaskByTenant(String tenantId) {
-        logger.info("[Facade] 暂停租户任务: {}", tenantId);
-        TaskOperationResult result = taskOperationService.pauseTaskByTenant(TenantId.of(tenantId));
-        handleTaskOperationResult(result, "暂停任务");
-        logger.info("[Facade] 租户任务暂停成功: {}", tenantId);
-    }
-
-    /**
-     * 根据计划 ID 暂停任务
-     */
-    public void pauseTaskByPlan(Long planId) {
-        logger.info("[Facade] 暂停计划: {}", planId);
-        PlanOperationResult result = planLifecycleService.pausePlan(PlanId.of(planId));
-        handlePlanOperationResult(result, "暂停计划");
-        logger.info("[Facade] 计划暂停成功: {}", planId);
-    }
-
-    /**
-     * 根据租户 ID 恢复任务
-     */
-    public void resumeTaskByTenant(String tenantId) {
-        logger.info("[Facade] 恢复租户任务: {}", tenantId);
-        TaskOperationResult result = taskOperationService.resumeTaskByTenant(TenantId.of(tenantId));
-        handleTaskOperationResult(result, "恢复任务");
-        logger.info("[Facade] 租户任务恢复成功: {}", tenantId);
-    }
-
-    /**
-     * 根据计划 ID 恢复任务
-     */
-    public void resumeTaskByPlan(Long planId) {
-        logger.info("[Facade] 恢复计划: {}", planId);
-        PlanOperationResult result = planLifecycleService.resumePlan(PlanId.of(planId));
-        handlePlanOperationResult(result, "恢复计划");
-        logger.info("[Facade] 计划恢复成功: {}", planId);
-    }
-
-    /**
-     * 根据租户 ID 回滚任务
-     */
-    public void rollbackTaskByTenant(String tenantId, Long version) {
-        logger.info("[DeploymentTaskFacade] 回滚租户任务: {}, version: {}", tenantId, version);
-        TaskOperationResult result = taskOperationService.rollbackTaskByTenant(
-            TenantId.of(tenantId),
-            String.valueOf(version)  // T-028: 转换为 String (planVersion)
-        );
+    public void rollbackTask(TenantDeployConfig rollbackConfig, String taskId, String lastCompletedStageName, Long version) {
+        logger.info("[DeploymentTaskFacade] 回滚租户任务: {}, version: {}", rollbackConfig.getTenantId(), version);
+        TenantConfig config = tenantConfigConverter.convert(rollbackConfig);
+        TaskOperationResult result = taskOperationService.rollbackTask(config, taskId, lastCompletedStageName, version);  // T-015: 异步执行，监听领域事件
         handleTaskOperationResult(result, "回滚任务");
-        logger.info("[Facade] 租户任务回滚成功: {}", tenantId);
+        logger.info("[Facade] 租户任务回滚成功: {}", rollbackConfig.getTenantId());
     }
 
     /**
-     * 根据租户 ID 重试任务
+     * 重试任务
+     *
+     * @param retryConfig 重试配置
+     * @param taskId 任务 ID
+     * @param lastCompletedStageName 最后完成的 Stage 名称
      */
-    public void retryTaskByTenant(String tenantId, boolean fromCheckpoint) {
-        logger.info("[DeploymentTaskFacade] 重试租户任务: {}, fromCheckpoint: {}", tenantId, fromCheckpoint);
-        TaskOperationResult result = taskOperationService.retryTaskByTenant(TenantId.of(tenantId), fromCheckpoint);  // T-015: 异步执行，监听领域事件
+    public void retryTask(TenantDeployConfig retryConfig, String taskId, String lastCompletedStageName) {
+        logger.info("[DeploymentTaskFacade] 重试租户任务: {}, from: {}", retryConfig.getTenantId(), lastCompletedStageName);
+        TenantConfig config = tenantConfigConverter.convert(retryConfig);
+        TaskOperationResult result = taskOperationService.retryTaskByTenant(config, taskId, lastCompletedStageName);  // T-015: 异步执行，监听领域事件
         handleTaskOperationResult(result, "重试任务");
-        logger.info("[Facade] 租户任务重试成功: {}", tenantId);
+        logger.info("[Facade] 租户任务重试成功: {}", retryConfig.getTenantId());
     }
 
     /**
@@ -201,15 +169,7 @@ public class DeploymentTaskFacade {
         return result;
     }
 
-    /**
-     * 根据租户 ID 取消任务
-     */
-    public void cancelTaskByTenant(String tenantId) {
-        logger.info("[Facade] 取消租户任务: {}", tenantId);
-        TaskOperationResult result = taskOperationService.cancelTaskByTenant(TenantId.of(tenantId));
-        handleTaskOperationResult(result, "取消任务");
-        logger.info("[Facade] 租户任务取消成功: {}", tenantId);
-    }
+
 
     // T-035: 移除查询 API - queryPlanStatus 和 hasCheckpoint
     // 调用方应自行通过事件监听维护投影状态
@@ -222,17 +182,6 @@ public class DeploymentTaskFacade {
             String message = result.getMessage();
             if (message != null && message.contains("未找到")) {
                 throw new TaskNotFoundException(message);
-            }
-            throw new TaskOperationException(operation + "失败: " + message, failureInfo);
-        }
-    }
-
-    private void handlePlanOperationResult(PlanOperationResult result, String operation) {
-        if (!result.isSuccess()) {
-            FailureInfo failureInfo = result.getFailureInfo();
-            String message = result.getMessage();
-            if (message != null && message.contains("不存在")) {
-                throw new PlanNotFoundException(message);
             }
             throw new TaskOperationException(operation + "失败: " + message, failureInfo);
         }

@@ -4,6 +4,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.transaction.annotation.Transactional;
 
+import xyz.firestige.deploy.application.dto.TenantConfig;
 import xyz.firestige.deploy.domain.shared.exception.ErrorType;
 import xyz.firestige.deploy.domain.shared.exception.FailureInfo;
 import xyz.firestige.deploy.domain.shared.vo.PlanId;
@@ -155,14 +156,15 @@ public class TaskOperationService {
      * T-032: 使用标志位驱动，统一通过 execute() 方法
      * 通过领域事件通知重试结果（TaskRetryStartedEvent / TaskCompletedEvent / TaskFailedEvent）
      *
-     * @param tenantId 租户 ID
-     * @param fromCheckpoint 是否从 checkpoint 恢复
+     * @param config 租户配置
+     * @param takId 任务 ID
+     * @param lastCompletedStageName 最后完成的 Stage 名称
      * @return 操作结果（立即返回，实际重试异步执行）
      */
     @Transactional
-    public TaskOperationResult retryTaskByTenant(TenantId tenantId, boolean fromCheckpoint) {
-        logger.info("[TaskOperationService] 重试租户任务（异步）: {}, fromCheckpoint: {}",
-                    tenantId, fromCheckpoint);
+    public TaskOperationResult retryTaskByTenant(TenantConfig config, String takId, String lastCompletedStageName) {
+        logger.info("[TaskOperationService] 重试租户任务（异步）: {}, from: {}",
+                    tenantId, lastCompletedStageName);
 
         // Step 1: 调用领域服务准备重试
         TaskWorkerCreationContext context = taskDomainService.prepareRetryByTenant(tenantId, fromCheckpoint);
